@@ -17,7 +17,8 @@
         "CHANGE_WIFI_STATE",
         "ACCESS_NETWORK_STATE",
         "INTERNET"
-      ]
+      ],
+      "package": "com.yasser.loupgarou"
     },
     "extra": {
       "eas": {
