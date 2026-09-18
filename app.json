@@ -3,6 +3,7 @@
     "name": "WerewolfManager",
     "slug": "werewolf-manager",
     "version": "1.0.0",
+    "entryPoint": "./App.tsx",
     "ios": {
       "bundleIdentifier": "com.loupgarou.game",
       "infoPlist": {
@@ -10,8 +11,7 @@
         "NSBonjourServices": [
           "_werewolf._tcp"
         ]
-      },
-      "entryPoint": "./App.tsx"
+      }
     },
     "android": {
       "package": "com.loupgarou.game",
