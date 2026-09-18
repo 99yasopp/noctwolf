@@ -1,11 +1,13 @@
 import React, { createContext, useContext, useState } from 'react';
-import { GameManager } from '/home/yasopp/Documents/Program/LoupGarou/src/engine/gameManager';
+import { GameManager } from '../engine/gameManager';
+import { NarratorServer } from '../network/socketServer';
 
 const GameContext = createContext<GameManager | null>(null);
 
 export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Initialize the manager here (or load it from storage later)
-  const [manager] = useState(new GameManager([], [])); 
+  // Initialize server and game manager with empty players/roles for now
+  const [server] = useState(() => new NarratorServer());
+  const [manager] = useState(() => new GameManager([], [], server)); 
 
   return (
     <GameContext.Provider value={manager}>

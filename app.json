@@ -4,21 +4,23 @@
     "slug": "werewolf-manager",
     "version": "1.0.0",
     "ios": {
+      "bundleIdentifier": "com.loupgarou.game",
       "infoPlist": {
         "NSLocalNetworkUsageDescription": "This app needs local network access to host game rooms and connect to players.",
         "NSBonjourServices": [
           "_werewolf._tcp"
         ]
-      }
+      },
+      "entryPoint": "./App.tsx"
     },
     "android": {
+      "package": "com.loupgarou.game",
       "permissions": [
         "ACCESS_WIFI_STATE",
         "CHANGE_WIFI_STATE",
         "ACCESS_NETWORK_STATE",
         "INTERNET"
-      ],
-      "package": "com.yasser.loupgarou"
+      ]
     },
     "extra": {
       "eas": {
@@ -26,7 +28,12 @@
       }
     },
     "plugins": [
-      "expo-asset"
+      "expo-asset",
+      "expo-build-properties",{
+        "android": {
+          "kotlinVersion": "1.9.25"
+        }
+      }
     ]
   }
 }

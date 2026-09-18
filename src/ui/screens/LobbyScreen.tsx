@@ -6,7 +6,7 @@ import { LobbyManager } from '../../network/lobby';
 
 const lobby = new LobbyManager();
 
-export const LobbyScreen = ({ navigation }: { navigation: any }) => {
+export const LobbyScreen = ({ navigation }: { navigation?: any }) => {
   const [isHosting, setIsHosting] = useState(false);
   const [roomCode, setRoomCode] = useState('');
 
@@ -51,5 +51,11 @@ const styles = StyleSheet.create({
   },
   menu: {
     width: '100%',
+  },
+  text: {
+    color: theme.colors.text,
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: theme.spacing.small,
   },
 });

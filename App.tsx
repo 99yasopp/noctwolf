@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { View, StyleSheet } from 'react-native';
-import { GameProvider } from './ui/GameContext';
-import { LobbyScreen } from './ui/screens/LobbyScreen';
-import { NarratorDashboard } from './ui/screens/NarratorDashboard';
-import { PlayerScreen } from './ui/screens/PlayerScreen';
-import { theme } from './ui/theme/colors';
+import { GameProvider } from './src/ui/GameContext';
+import { LobbyScreen } from './src/ui/screens/LobbyScreen';
+import { NarratorDashboard } from './src/ui/screens/NarratorDashboard';
+import { PlayerScreen } from './src/ui/screens/PlayerScreen';
+import { theme } from './src/ui/theme/colors';
 
 // Simple navigation state for MVP
 type Screen = 'Lobby' | 'Narrator' | 'Player';
