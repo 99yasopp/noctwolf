@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState } from 'react';
-import { GameManager } from './engine/gameManager';
+import { GameManager } from '/home/yasopp/Documents/Program/LoupGarou/src/engine/gameManager';
 
 const GameContext = createContext<GameManager | null>(null);
 
