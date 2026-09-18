@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "WerewolfManager",
+    "slug": "werewolf-manager",
+    "version": "1.0.0",
+    "ios": {
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "This app needs local network access to host game rooms and connect to players.",
+        "NSBonjourServices": [
+          "_werewolf._tcp"
+        ]
+      }
+    },
+    "android": {
+      "permissions": [
+        "ACCESS_WIFI_STATE",
+        "CHANGE_WIFI_STATE",
+        "ACCESS_NETWORK_STATE",
+        "INTERNET"
+      ]
+    },
+    "extra": {
+      "eas": {
+        "projectId": "78db7f9e-3012-45f6-b3a6-f2cc68ce33fb"
+      }
+    }
+  }
+}
