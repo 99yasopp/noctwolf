@@ -7,10 +7,10 @@ export class GameManager {
   public state: GameState;
   private server: NarratorServer;
 
-  constructor(players: Player[], roles: Role[], server: NarratorServer) {
-    this.state = new GameState(players);
+  constructor(players: Player[], roles: Role[], server: NarratorServer, isHost: boolean = false) {
+    this.state = new GameState(players, isHost);
     this.server = server;
-    console.log("Game Manager initialized with server.");
+    console.log(`Game Manager initialized. Is Host: ${isHost}`);
   }
 
   // Orchestrate phase transitions

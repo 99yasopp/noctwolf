@@ -1,20 +1,28 @@
+import TcpSocket from 'react-native-tcp-socket';
 import { NetworkMessage } from './protocol';
 
 export class PlayerClient {
-  private roomId: string;
-  
-  constructor(roomId: string) {
-    this.roomId = roomId;
+  private socket: any;
+
+  constructor(host: string, port: number = 12345) {
+    this.socket = TcpSocket.connect({ port, host }, () => {
+      console.log('Connected to host');
+    });
+
+    this.socket.on('data', (data: any) => {
+      console.log('Message from host:', data.toString());
+    });
   }
 
-  // Send action to Narrator
   sendMessage(message: NetworkMessage) {
-    console.log(`Sending message to host: ${message.type}`);
+    if (this.socket) {
+      this.socket.write(JSON.stringify(message));
+    }
   }
 
-  // Listener for server updates
   onMessage(callback: (message: NetworkMessage) => void) {
-    console.log("Listening for messages from host...");
-    // In real implementation, this would be websocket.on('message', ...)
+    this.socket.on('data', (data: any) => {
+      callback(JSON.parse(data.toString()));
+    });
   }
 }

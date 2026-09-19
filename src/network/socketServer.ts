@@ -1,24 +1,42 @@
 import { EventEmitter } from 'events';
 import { NetworkMessage } from './protocol';
+import TcpSocket from 'react-native-tcp-socket';
 
 export class NarratorServer extends EventEmitter {
-  // Simulate connected clients
-  private clients: any[] = []; 
+  private clients: any[] = [];
+  private server: any;
 
-  constructor() {
+  constructor(port: number = 12345) {
     super();
+    this.server = TcpSocket.createServer((socket) => {
+      this.clients.push(socket);
+      socket.on('data', (data) => {
+        try {
+          const message = JSON.parse(data.toString());
+          this.emit('message', message, socket);
+        } catch (e) {
+          console.error("Failed to parse message", e);
+        }
+      });
+      socket.on('close', () => {
+        this.clients = this.clients.filter(c => c !== socket);
+      });
+    });
+
+    this.server.listen({ port, host: '0.0.0.0' });
+    console.log(`TCP Server started on port ${port}`);
   }
 
   // Broadcast to all clients
   broadcast(message: NetworkMessage) {
-    console.log(`Broadcasting ${message.type} to all players...`);
+    const data = JSON.stringify(message);
     this.clients.forEach(client => {
-      // In real WebSocket implementation, this would be client.send(JSON.stringify(message))
+      client.write(data);
     });
   }
 
-  // Send to specific player
-  sendToPlayer(playerId: string, message: NetworkMessage) {
-    console.log(`Sending ${message.type} to player ${playerId}`);
+  // Send to specific player (this assumes player has a socket reference)
+  sendToPlayer(playerSocket: any, message: NetworkMessage) {
+    playerSocket.write(JSON.stringify(message));
   }
 }

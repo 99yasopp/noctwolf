@@ -6,10 +6,12 @@ export class GameState {
   players: Player[] = [];
   queue: any[] = [];
   presidentManager: PresidentManager;
+  isHost: boolean;
 
-  constructor(players: Player[]) {
+  constructor(players: Player[], isHost: boolean = false) {
     this.players = players;
     this.presidentManager = new PresidentManager(players);
+    this.isHost = isHost;
   }
 
   setPhase(phase: Phase) {
