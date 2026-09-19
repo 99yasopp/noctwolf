@@ -1,25 +1,29 @@
-import React, { useState } from 'react';
-import { View, StyleSheet } from 'react-native';
+import React from 'react';
+import { View, StyleSheet, Text } from 'react-native';
 import { GameProvider } from './src/ui/GameContext';
 import { LobbyScreen } from './src/ui/screens/LobbyScreen';
-import { NarratorDashboard } from './src/ui/screens/NarratorDashboard';
-import { PlayerScreen } from './src/ui/screens/PlayerScreen';
 import { theme } from './src/ui/theme/colors';
 
-// Simple navigation state for MVP
-type Screen = 'Lobby' | 'Narrator' | 'Player';
+// Error Boundary Component
+class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean}> {
+  state = { hasError: false };
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(error: any) { console.error(error); }
+  render() {
+    if (this.state.hasError) return <View style={styles.container}><Text style={styles.text}>Something went wrong. Please restart the app.</Text></View>;
+    return this.props.children;
+  }
+}
 
 export default function App() {
-  const [currentScreen, setCurrentScreen] = useState<Screen>('Lobby');
-
   return (
-    <GameProvider>
-      <View style={styles.container}>
-        {currentScreen === 'Lobby' && <LobbyScreen />}
-        {currentScreen === 'Narrator' && <NarratorDashboard />}
-        {currentScreen === 'Player' && <PlayerScreen />}
-      </View>
-    </GameProvider>
+    <ErrorBoundary>
+      <GameProvider>
+        <View style={styles.container}>
+          <LobbyScreen />
+        </View>
+      </GameProvider>
+    </ErrorBoundary>
   );
 }
 
@@ -28,4 +32,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.colors.background,
   },
+  text: {
+    color: '#fff',
+    textAlign: 'center',
+    marginTop: 50,
+  }
 });

@@ -1,13 +1,23 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { GameManager } from '../engine/gameManager';
 import { NarratorServer } from '../network/socketServer';
 
 const GameContext = createContext<GameManager | null>(null);
 
 export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Initialize server and game manager with empty players/roles for now
-  const [server] = useState(() => new NarratorServer());
-  const [manager] = useState(() => new GameManager([], [], server)); 
+  const [manager, setManager] = useState<GameManager | null>(null);
+
+  useEffect(() => {
+    // Initialize server and game manager only after component mounts
+    const server = new NarratorServer();
+    const newManager = new GameManager([], [], server);
+    setManager(newManager);
+  }, []);
+
+  if (!manager) {
+    // Return null or a loading component until initialized
+    return null; 
+  }
 
   return (
     <GameContext.Provider value={manager}>
