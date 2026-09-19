@@ -1,42 +1,57 @@
 import { Player } from '../engine/types';
 import { NarratorServer } from './socketServer';
-import Zeroconf from 'react-native-zeroconf';
+import { PlayerClient } from './socketClient';
+import { Platform } from 'react-native';
 
-const zeroconf = new Zeroconf();
+// Lazy load the native module only on mobile
+let Zeroconf: any;
+if (Platform.OS !== 'web') {
+  Zeroconf = require('react-native-zeroconf').default;
+}
+
+const zeroconf = Platform.OS !== 'web' ? new Zeroconf() : null;
 
 export class LobbyManager {
   private roomCode: string = '';
-  private players: Player[] = [];
+  public players: Player[] = [];
   public server?: NarratorServer;
+  public client?: PlayerClient;
+  private discoveredHosts: any[] = [];
+
+  constructor() {
+    if (zeroconf) {
+      zeroconf.on('found', (service: any) => {
+        this.discoveredHosts.push(service);
+        console.log('Found service:', service);
+      });
+    }
+  }
 
   generateRoomCode(): string {
     this.roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
     
     // Start TCP Server
-    this.server = new NarratorServer(12345);
-    this.server.on('message', (msg, socket) => {
-      if (msg.type === 'PLAYER_JOIN') {
-        this.players.push(msg.payload.player);
-      }
-    });
+    if (Platform.OS !== 'web') {
+      this.server = new NarratorServer(12345);
+      this.server.on('message', (msg, socket) => {
+        if (msg.type === 'PLAYER_JOIN') {
+          this.players.push(msg.payload.player);
+        }
+      });
 
-    // Publish service
-    zeroconf.publishService('http', 'tcp', 'local.', 'WerewolfServer', 12345, { roomCode: this.roomCode });
+      // Publish service
+      zeroconf.publishService('http', 'tcp', 'local.', 'WerewolfServer', 12345, { roomCode: this.roomCode });
+    }
     
     return this.roomCode;
   }
 
-  public client?: PlayerClient;
-  private discoveredHosts: any[] = [];
-
-  constructor() {
-    zeroconf.on('found', (service: any) => {
-      this.discoveredHosts.push(service);
-      console.log('Found service:', service);
-    });
-  }
-
   joinGame(code: string, player: Player): Promise<boolean> {
+    if (Platform.OS === 'web') {
+      console.warn("Networking not supported on web");
+      return Promise.resolve(false);
+    }
+
     zeroconf.scan('http', 'tcp', 'local.');
     
     return new Promise((resolve) => {

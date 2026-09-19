@@ -1,6 +1,12 @@
 import { EventEmitter } from 'events';
 import { NetworkMessage } from './protocol';
-import TcpSocket from 'react-native-tcp-socket';
+import { Platform } from 'react-native';
+
+// Lazy load the native module only on mobile
+let TcpSocket: any;
+if (Platform.OS !== 'web') {
+  TcpSocket = require('react-native-tcp-socket').default;
+}
 
 export class NarratorServer extends EventEmitter {
   private clients: any[] = [];
@@ -8,9 +14,14 @@ export class NarratorServer extends EventEmitter {
 
   constructor(port: number = 12345) {
     super();
-    this.server = TcpSocket.createServer((socket) => {
+    if (Platform.OS === 'web') {
+        console.warn("TCP Server not supported on Web");
+        return;
+    }
+
+    this.server = TcpSocket.createServer((socket: any) => {
       this.clients.push(socket);
-      socket.on('data', (data) => {
+      socket.on('data', (data: any) => {
         try {
           const message = JSON.parse(data.toString());
           this.emit('message', message, socket);
@@ -29,6 +40,7 @@ export class NarratorServer extends EventEmitter {
 
   // Broadcast to all clients
   broadcast(message: NetworkMessage) {
+    if (Platform.OS === 'web') return;
     const data = JSON.stringify(message);
     this.clients.forEach(client => {
       client.write(data);
@@ -37,6 +49,7 @@ export class NarratorServer extends EventEmitter {
 
   // Send to specific player (this assumes player has a socket reference)
   sendToPlayer(playerSocket: any, message: NetworkMessage) {
+    if (Platform.OS === 'web') return;
     playerSocket.write(JSON.stringify(message));
   }
 }
