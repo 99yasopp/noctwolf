@@ -725,6 +725,54 @@ console.log('\n21. the host clock');
   check('the clock leaves with the vote round', game.getTimerRemainingMs() === null);
 }
 
+console.log('\n22. the pack decides the bite');
+{
+  // Seven players, so two nights of losses do not end the game on parity
+  // before the second bite can be checked.
+  const players = makePlayers(7);
+  const game = new GameManager(players, new RecordingTransport());
+  game.start([
+    WerewolfRole,
+    WerewolfRole,
+    VillagerRole,
+    VillagerRole,
+    VillagerRole,
+    VillagerRole,
+    VillagerRole,
+  ]);
+
+  const wolves = players.filter(p => game.getRoleOf(p.id)?.id === 'werewolf');
+  const villagers = players.filter(p => game.getRoleOf(p.id)?.id === 'villager');
+
+  game.advance(); // quiet night -> Day
+  game.advance(); // Day -> Vote
+  game.advance(); // Vote -> Night
+
+  check('night two is no longer quiet', !game.isQuietNight());
+
+  // A split pack: the bite is settled by seating order, not by who tapped last.
+  game.handleNightAction(wolves[0].id, 'kill', villagers[0].id);
+  game.handleNightAction(wolves[1].id, 'kill', villagers[1].id);
+  check(
+    'the host can see what each wolf picked',
+    game.getNightChoice(wolves[1].id, 'kill') === villagers[1].id,
+  );
+
+  game.advance(); // night resolves -> Day
+  const bitten = [villagers[0], villagers[1]].filter(v => !v.isAlive);
+  check('a split pack still bites exactly one', bitten.length === 1, `bitten: ${bitten.length}`);
+
+  // A unanimous pack: the target they agree on is the one that dies.
+  game.advance(); // Day -> Vote
+  game.advance(); // Vote -> Night
+  const agreed = villagers.find(v => v.isAlive)!;
+  game.handleNightAction(wolves[0].id, 'kill', agreed.id);
+  game.handleNightAction(wolves[1].id, 'kill', agreed.id);
+  game.advance(); // night resolves -> Day
+  check('a unanimous pack eats their target', !agreed.isAlive);
+}
+
+
 
 console.log(failures === 0 ? `\nAll checks passed.` : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

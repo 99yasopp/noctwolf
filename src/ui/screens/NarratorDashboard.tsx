@@ -86,6 +86,22 @@ export const NarratorDashboard = () => {
   const revoteCandidates = manager.getRevoteCandidates();
   const remaining = manager.getTimerRemainingMs();
 
+  // What each wolf has picked tonight, so the host can relay the pack's aim.
+  const packPicks = players
+    .filter(player => player.isAlive && manager.getRoleOf(player.id)?.team === 'Wolf')
+    .map(player => {
+      const attack = manager
+        .getRoleOf(player.id)
+        ?.nightActions?.find(option => option.kind === 'attack');
+      if (!attack) return null;
+
+      const target = players.find(
+        entry => entry.id === manager.getNightChoice(player.id, attack.id),
+      );
+      return target ? `${player.name} \u2192 ${target.name}` : null;
+    })
+    .filter((line): line is string => !!line);
+
   // One tick a second while a clock is running: it moves the countdown and,
   // when it is up, moves the game on for the host.
   useEffect(() => {
@@ -164,6 +180,17 @@ export const NarratorDashboard = () => {
           <Text style={styles.pending}>
             {pendingHunter.name} is choosing who to take down.
           </Text>
+        )}
+
+        {/* Wolves hunt as a pack, and the engine settles the bite by a majority
+            of their picks: the host needs to see the picks to relay them. */}
+        {phase === 'Night' && packPicks.length > 0 && (
+          <Text style={styles.pending}>
+            The pack is aiming at: {packPicks.join(', ')}
+          </Text>
+        )}
+        {phase === 'Vote' && aliveCount > 0 && pendingVoters.length === 0 && (
+          <Text style={styles.ready}>Everyone has voted.</Text>
         )}
 
         {/* The clock is the host's: a party game dies when the day never ends. */}
@@ -451,6 +478,11 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     marginBottom: theme.spacing.small,
+  },
+  ready: {
+    color: theme.colors.secondary,
+    fontSize: 15,
+    marginTop: theme.spacing.small,
   },
   ballotText: {
     color: '#999',

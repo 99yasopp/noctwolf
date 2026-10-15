@@ -317,6 +317,11 @@ export class GameManager {
     return this.state.players.filter(p => p.isAlive);
   }
 
+  // What a player has already picked for one of tonight's actions, if anything.
+  getNightChoice(playerId: string, actionId: string): string | null {
+    return this.nightChoices.get(playerId)?.get(actionId) ?? null;
+  }
+
   // The opening night is peaceful: the seer still gets a read, but nobody is
   // devoured, so the first day vote actually decides the game.
   isQuietNight(): boolean {
@@ -547,6 +552,23 @@ export class GameManager {
 
   // --------------------------------------------------------------- resolution
 
+  // The most chosen entry of a tally. Ties go to the first player in seating
+  // order, so every device settles on the same victim.
+  private pickMostVoted(tally: Map<string, number>): string | null {
+    let best: string | null = null;
+    let bestCount = 0;
+
+    for (const player of this.state.players) {
+      const count = tally.get(player.id) ?? 0;
+      if (count > bestCount) {
+        best = player.id;
+        bestCount = count;
+      }
+    }
+
+    return best;
+  }
+
   private resolveNight(): Player[] {
     const deaths: Player[] = [];
 
@@ -556,7 +578,9 @@ export class GameManager {
     // potion is not literally called "heal" still spends exactly once.
     const healed = new Map<string, { playerId: string; actionId: string }>();
     const poisoned = new Map<string, { playerId: string; actionId: string }>();
-    let attack: { sourceId: string; targetId: string } | null = null;
+    // Wolves hunt as a pack: their bite is the majority of the pack's picks,
+    // not whichever device happened to tap last.
+    const attackVotes = new Map<string, number>();
     let inspect: { sourceId: string; targetId: string } | null = null;
     let link: { sourceId: string; targetId: string } | null = null;
 
@@ -581,7 +605,7 @@ export class GameManager {
             poisoned.set(targetId, { playerId, actionId });
             break;
           case 'attack':
-            attack = { sourceId: playerId, targetId };
+            attackVotes.set(targetId, (attackVotes.get(targetId) ?? 0) + 1);
             break;
           case 'inspect':
             inspect = { sourceId: playerId, targetId };
@@ -595,14 +619,14 @@ export class GameManager {
 
     // Read once into locals: the values were assigned inside a callback, which
     // control-flow analysis cannot follow.
-    const bite = attack as { sourceId: string; targetId: string } | null;
+    const biteTarget = this.pickMostVoted(attackVotes);
     const peek = inspect as { sourceId: string; targetId: string } | null;
     const bond = link as { sourceId: string; targetId: string } | null;
 
     if (this.isQuietNight()) {
       this.actionLog.push('Night 1 was peaceful: the wolves only looked around.');
-    } else if (bite) {
-      const target = this.state.players.find(p => p.id === bite.targetId);
+    } else if (biteTarget) {
+      const target = this.state.players.find(p => p.id === biteTarget);
       if (target?.isAlive) {
         if (shielded.has(target.id)) {
           this.actionLog.push(`Night ${this.round}: the guard saved ${target.name}.`);

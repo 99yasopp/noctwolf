@@ -27,6 +27,8 @@ export const PlayerScreen = () => {
   const [voteResult, setVoteResult] = useState<VoteResultPayload | null>(null);
   const [outcome, setOutcome] = useState<GameOverPayload | null>(null);
   const [submitted, setSubmitted] = useState<string[]>([]);
+  // Whether the role card is covered, for when phones are handed around.
+  const [roleHidden, setRoleHidden] = useState(false);
   // The public story of the game, built from what the host already tells us.
   const [log, setLog] = useState<string[]>([]);
   // The countdown is anchored when TIME_SYNC arrives, never on the raw clock,
@@ -91,6 +93,7 @@ export const PlayerScreen = () => {
           setDeaths([]);
           setSubmitted([]);
           setLog([]);
+          setRoleHidden(false);
           setClock(null);
           break;
 
@@ -254,11 +257,30 @@ export const PlayerScreen = () => {
         </View>
       )}
 
+      {/* Phones get passed around and glanced at: the role can be covered. */}
       <View style={styles.roleCard}>
         <Text style={styles.roleLabel}>Your Role</Text>
-        <Text style={styles.roleName}>{role?.roleName ?? '...'}</Text>
-        <Text style={styles.roleTeam}>{role ? `${role.team} team` : ''}</Text>
-        {role && <Text style={styles.roleDescription}>{role.description}</Text>}
+
+        {roleHidden ? (
+          <BaseButton
+            title="Tap to show my role"
+            onPress={() => setRoleHidden(false)}
+            variant="secondary"
+          />
+        ) : (
+          <>
+            <Text style={styles.roleName}>{role?.roleName ?? '...'}</Text>
+            <Text style={styles.roleTeam}>{role ? `${role.team} team` : ''}</Text>
+            {role && <Text style={styles.roleDescription}>{role.description}</Text>}
+            {role && (
+              <BaseButton
+                title="Hide my role"
+                onPress={() => setRoleHidden(true)}
+                variant="secondary"
+              />
+            )}
+          </>
+        )}
       </View>
 
       {!role && (
