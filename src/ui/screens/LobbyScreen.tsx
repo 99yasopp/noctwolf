@@ -5,12 +5,14 @@ import { BaseButton } from '../components/BaseButton';
 import { GAME_PORT, HOST_PLAYER_ID, LOCAL_GUEST_ID, lobby } from '../../network/lobby';
 import { getPreset, getCustomRoles, ROLE_PRESETS, setCustomRoles } from '../../engine/roleSet';
 import { loadCustomRoles } from '../../services/customRoles';
+import { loadPreferences, savePreferences } from '../../services/preferences';
 import { SettingsScreen } from './SettingsScreen';
+import { RulesScreen } from './RulesScreen';
 import { Player } from '../../engine/types';
 import { useGame } from '../GameContext';
 import { randomPlayerName } from '../randomName';
 
-type LobbyView = 'menu' | 'host' | 'join' | 'waiting' | 'settings';
+type LobbyView = 'menu' | 'host' | 'join' | 'waiting' | 'settings' | 'rules';
 
 const MIN_PLAYERS = 3;
 
@@ -43,6 +45,12 @@ export const LobbyScreen = () => {
       setCustomRoles(roles);
       setCustomRoleCount(roles.length);
     });
+
+    // Remember where this device last joined, and which setup this host likes.
+    loadPreferences().then(saved => {
+      if (saved.lastHost) setInputIp(saved.lastHost);
+      if (saved.presetId) setPresetId(saved.presetId);
+    });
   }, []);
 
   const availablePresets = ROLE_PRESETS.filter(
@@ -52,7 +60,9 @@ export const LobbyScreen = () => {
   const cyclePreset = () =>
     setPresetId(current => {
       const index = availablePresets.findIndex(entry => entry.id === current);
-      return availablePresets[(index + 1) % availablePresets.length].id;
+      const next = availablePresets[(index + 1) % availablePresets.length].id;
+      savePreferences({ presetId: next });
+      return next;
     });
 
   // The host owns the roster; guests receive it over the network.
@@ -168,6 +178,7 @@ export const LobbyScreen = () => {
 
     setIsHost(false);
     setView('waiting');
+    if (inputIp.trim()) savePreferences({ lastHost: inputIp.trim() });
   };
 
   const startGame = () => {
@@ -227,6 +238,7 @@ export const LobbyScreen = () => {
             />
             <BaseButton title="Host a Game" onPress={() => setView('host')} />
             <BaseButton title="Join a Game" onPress={() => setView('join')} variant="secondary" />
+            <BaseButton title="How to Play" onPress={() => setView('rules')} variant="secondary" />
             <BaseButton
               title="Settings"
               onPress={() => setView('settings')}
@@ -331,6 +343,10 @@ export const LobbyScreen = () => {
   };
 
   // Settings takes the whole screen: it has its own scrolling and header.
+  if (view === 'rules') {
+    return <RulesScreen onBack={() => setView('menu')} />;
+  }
+
   if (view === 'settings') {
     return (
       <SettingsScreen

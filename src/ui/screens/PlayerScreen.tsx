@@ -13,6 +13,7 @@ import {
   RoleAssignPayload,
   VoteResultPayload,
 } from '../../network/protocol';
+import { formatRemaining } from '../format';
 
 export const PlayerScreen = () => {
   const { localPlayer, returnToLobby } = useGame();
@@ -26,6 +27,17 @@ export const PlayerScreen = () => {
   const [voteResult, setVoteResult] = useState<VoteResultPayload | null>(null);
   const [outcome, setOutcome] = useState<GameOverPayload | null>(null);
   const [submitted, setSubmitted] = useState<string[]>([]);
+  // The public story of the game, built from what the host already tells us.
+  const [log, setLog] = useState<string[]>([]);
+  // The countdown is anchored when TIME_SYNC arrives, never on the raw clock,
+  // because two phones rarely agree on the time.
+  const [clock, setClock] = useState<{ remainingMs: number; receivedAt: number } | null>(
+    null,
+  );
+  const [tickNow, setTickNow] = useState(Date.now());
+  // The round as the message handler knows it: the handler outlives any single
+  // render, so it reads the round from here rather than from state.
+  const roundRef = React.useRef(1);
   const [status, setStatus] = useState('Connecting to host...');
   const [disconnected, setDisconnected] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
@@ -50,9 +62,22 @@ export const PlayerScreen = () => {
           setStatus('');
           setPhase(payload.phase);
           setRound(payload.round);
+          roundRef.current = payload.round;
           setRoster(payload.players ?? []);
           setDeaths(payload.deaths ?? []);
           setSubmitted([]);
+          // The phase changed, so the phase clock is gone until a new sync.
+          setClock(null);
+
+          // Deaths are announced when the morning comes, not at nightfall.
+          if (payload.phase === 'Day') {
+            setLog(prev => [
+              payload.deaths?.length
+                ? `Night ${payload.round}: ${payload.deaths.map(d => d.name).join(', ')} died.`
+                : `Night ${payload.round}: nobody died.`,
+              ...prev,
+            ]);
+          }
           break;
         }
 
@@ -65,19 +90,63 @@ export const PlayerScreen = () => {
           setOutcome(null);
           setDeaths([]);
           setSubmitted([]);
+          setLog([]);
+          setClock(null);
           break;
+
+        case 'TIME_SYNC': {
+          const remainingMs = message.payload?.remainingMs;
+          setClock(
+            typeof remainingMs === 'number'
+              ? { remainingMs, receivedAt: Date.now() }
+              : null,
+          );
+          break;
+        }
 
         case 'SECRET_INFO':
           setSecrets(prev => [...prev, message.payload?.message].filter(Boolean));
           break;
 
-        case 'VOTE_RESULT':
-          setVoteResult(message.payload as VoteResultPayload);
-          break;
+        case 'VOTE_RESULT': {
+          const payload = message.payload as VoteResultPayload;
+          setVoteResult(payload);
 
-        case 'GAME_OVER':
-          setOutcome(message.payload as GameOverPayload);
+          if (payload.revote) {
+            // Votes were wiped for a second round between the tied players.
+            setSubmitted([]);
+            setClock(null);
+            setLog(prev => [
+              `Day ${roundRef.current}: the vote was tied. Voting again.`,
+              ...prev,
+            ]);
+          } else if (payload.eliminatedName) {
+            setLog(prev => [
+              `Day ${roundRef.current}: ${payload.eliminatedName} was voted out.`,
+              ...prev,
+            ]);
+          } else if (payload.tie) {
+            setLog(prev => [
+              `Day ${roundRef.current}: the vote was tied again. Nobody left.`,
+              ...prev,
+            ]);
+          }
           break;
+        }
+
+        case 'GAME_OVER': {
+          const payload = message.payload as GameOverPayload;
+          setOutcome(payload);
+          setLog(prev => [
+            payload.winner === 'Wolf'
+              ? 'The Werewolves won.'
+              : payload.winner === 'Solitary'
+              ? 'The Lovers won.'
+              : 'The Village won.',
+            ...prev,
+          ]);
+          break;
+        }
 
         case 'KICK':
           // Either the host took this seat away, or the game was already
@@ -101,6 +170,14 @@ export const PlayerScreen = () => {
 
     return () => client.offMessage();
   }, [linkVersion]);
+
+  // One tick a second while a countdown is running, so the remaining time
+  // moves without the host having to say anything.
+  useEffect(() => {
+    if (!clock) return;
+    const handle = setInterval(() => setTickNow(Date.now()), 1000);
+    return () => clearInterval(handle);
+  }, [clock]);
 
   const reconnect = async () => {
     if (!localPlayer) return;
@@ -213,20 +290,35 @@ export const PlayerScreen = () => {
           <Text style={styles.statusText}>
             Phase: {phase} (round {round})
           </Text>
+          {clock && (
+            <Text style={styles.timerText}>
+              {formatRemaining(clock.remainingMs - (tickNow - clock.receivedAt))} left
+            </Text>
+          )}
           {deaths.length > 0 && (
             <Text style={styles.deathText}>
               Died in the night: {deaths.map(d => d.name).join(', ')}
             </Text>
           )}
           {voteResult && (
-            <Text style={styles.statusText}>
-              Last vote:{' '}
-              {voteResult.eliminatedName
-                ? `${voteResult.eliminatedName} was eliminated`
-                : voteResult.tie
-                ? 'tied, nobody eliminated'
-                : 'no votes cast'}
-            </Text>
+            <>
+              <Text style={styles.statusText}>
+                Last vote:{' '}
+                {voteResult.revote
+                  ? 'tied, vote again'
+                  : voteResult.eliminatedName
+                  ? `${voteResult.eliminatedName} was eliminated`
+                  : voteResult.tie
+                  ? 'tied, nobody eliminated'
+                  : 'no votes cast'}
+              </Text>
+              {voteResult.ballots?.map(ballot => (
+                <Text key={ballot.voterId} style={styles.ballotText}>
+                  {ballot.voterName} → {ballot.targetName}
+                  {ballot.weight > 1 ? ` (${ballot.weight} votes)` : ''}
+                </Text>
+              ))}
+            </>
           )}
         </View>
       )}
@@ -250,6 +342,8 @@ export const PlayerScreen = () => {
         submitted={submitted}
         gameOver={!!outcome}
         quietNight={round === 1}
+        selfAlive={roster.find(entry => entry.id === localPlayer?.id)?.isAlive ?? true}
+        candidates={voteResult?.revote ? voteResult.candidates?.map(c => c.id) : undefined}
         onChoose={submit}
       />
 
@@ -259,6 +353,17 @@ export const PlayerScreen = () => {
           {secrets.map((secret, index) => (
             <Text key={index} style={styles.secretText}>
               {secret}
+            </Text>
+          ))}
+        </View>
+      )}
+
+      {log.length > 0 && (
+        <View style={styles.secretCard}>
+          <Text style={styles.secretHeading}>What has happened</Text>
+          {log.slice(0, 12).map((entry, index) => (
+            <Text key={index} style={styles.secretText}>
+              {entry}
             </Text>
           ))}
         </View>
@@ -303,6 +408,17 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     fontSize: 15,
     marginBottom: theme.spacing.small,
+  },
+  timerText: {
+    color: theme.colors.primary,
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginTop: theme.spacing.small,
+  },
+  ballotText: {
+    color: '#999',
+    fontSize: 13,
+    marginTop: 2,
   },
   roleCard: {
     backgroundColor: theme.colors.primary,

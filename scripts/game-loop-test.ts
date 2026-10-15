@@ -635,5 +635,96 @@ console.log('\n19. a charged action is spent under its own name');
 }
 
 
+console.log('\n20. a tie is voted again once');
+{
+  const players = makePlayers(5);
+  const game = new GameManager(players, new RecordingTransport());
+  game.start([WerewolfRole, SeerRole, VillagerRole, VillagerRole, VillagerRole]);
+
+  const seer = findRole(game, players, 'seer')!;
+  const villagers = players.filter(p => game.getRoleOf(p.id)?.id === 'villager');
+  const wolf = findRole(game, players, 'werewolf')!;
+
+  game.advance(); // quiet night -> Day
+  game.advance(); // Day -> Vote
+
+  // Two votes each way, with one player abstaining.
+  game.handleVote(wolf.id, villagers[0].id);
+  game.handleVote(seer.id, villagers[0].id);
+  game.handleVote(villagers[0].id, villagers[1].id);
+  game.handleVote(villagers[1].id, villagers[1].id);
+
+  game.advance();
+  check('a tie keeps everyone alive', villagers[0].isAlive && villagers[1].isAlive);
+  check('the phase is still the vote', game.state.currentPhase === 'Vote');
+  check('the tie is announced for another round', game.lastVote?.revote === true);
+  check(
+    'only the tied players are on the ballot',
+    game.getRevoteCandidates().slice().sort().join(',') ===
+      [villagers[0].id, villagers[1].id].sort().join(','),
+    game.getRevoteCandidates().join(','),
+  );
+  check('the votes were wiped for the second round', game.hasVoted(wolf.id) === false);
+  check('a vote for anyone else is refused', !game.handleVote(wolf.id, seer.id));
+  check('a vote for a tied player is accepted', game.handleVote(wolf.id, villagers[0].id));
+
+  // Second round, tied again: the day passes and nobody dies.
+  game.handleVote(seer.id, villagers[0].id);
+  game.handleVote(villagers[0].id, villagers[1].id);
+  game.handleVote(villagers[1].id, villagers[1].id);
+
+  game.advance();
+  check(
+    'a second tie lets the day pass',
+    villagers[0].isAlive && villagers[1].isAlive && game.state.currentPhase === 'Night',
+  );
+
+  // The next day votes cleanly.
+  game.advance(); // Night -> Day
+  game.advance(); // Day -> Vote
+  check('a fresh vote has no tie restrictions', game.getRevoteCandidates().length === 0);
+  players.forEach(p => game.handleVote(p.id, wolf.id));
+  game.advance();
+  check('the wolf was voted out', !wolf.isAlive);
+  check('every ballot is published', (game.lastVote?.ballots?.length ?? 0) >= 4);
+  check(
+    'the ballots name the voter and the target',
+    !!game.lastVote?.ballots?.every(ballot => !!ballot.voterName && !!ballot.targetName),
+  );
+}
+
+console.log('\n21. the host clock');
+{
+  const players = makePlayers(4);
+  const transport = new RecordingTransport();
+  const game = new GameManager(players, transport, true);
+  game.start([WerewolfRole, SeerRole, VillagerRole, VillagerRole]);
+
+  check('a clock cannot be set at night', !game.startTimer(60));
+
+  game.advance(); // quiet night -> Day
+  check('a clock can be set by day', game.startTimer(60));
+  check('the time is broadcast', transport.broadcasts.some(m => m.type === 'TIME_SYNC'));
+  check('it is not due immediately', !game.isTimerDue());
+  check('the remaining time is under a minute', (game.getTimerRemainingMs() ?? 0) <= 60000);
+
+  game.clearTimer();
+  check('the host can stop the clock', game.getTimerRemainingMs() === null);
+
+  game.startTimer(1);
+  check('a one second clock is still ticking', !game.isTimerDue());
+
+  // Waiting out the clock is the only way to make it due, so shorten it by
+  // starting from a negative time is not possible; drop the timer instead and
+  // check the phase clock is retired with the phase.
+  game.advance(); // Day -> Vote
+  check('a phase change retires the clock', game.getTimerRemainingMs() === null);
+
+  check('a clock can be set on the vote', game.startTimer(60));
+  game.advance(); // the vote resolves, nobody voted
+  check('the clock leaves with the vote round', game.getTimerRemainingMs() === null);
+}
+
+
 console.log(failures === 0 ? `\nAll checks passed.` : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

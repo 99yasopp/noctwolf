@@ -16,6 +16,8 @@ import {
   PlayerRef,
   RoleAssignPayload,
   SecretInfoPayload,
+  TimeSyncPayload,
+  VoteBallot,
   VoteResultPayload,
 } from '../network/protocol';
 
@@ -68,6 +70,10 @@ export class GameManager {
   private revengeDeaths: Player[] = [];
 
   private votes = new Map<string, string>();
+  // Set while the day's vote is being re-run between tied players.
+  private revoteCandidates: string[] = [];
+  // The host's clock for the current phase, if one was set.
+  private timer: { endsAt: number; totalMs: number } | null = null;
   private listeners = new Set<(event: GameEvent) => void>();
 
   constructor(
@@ -113,6 +119,8 @@ export class GameManager {
     this.revengeChoice = null;
     this.revengeOrigin = null;
     this.revengeDeaths = [];
+    this.revoteCandidates = [];
+    this.timer = null;
     this.actionLog = [];
     this.lastVote = null;
     this.round = 1;
@@ -289,6 +297,11 @@ export class GameManager {
     const target = this.state.players.find(p => p.id === targetId);
     if (!target || !target.isAlive) return false;
 
+    // During a re-vote only the tied players are on the ballot.
+    if (this.revoteCandidates.length > 0 && !this.revoteCandidates.includes(targetId)) {
+      return false;
+    }
+
     this.votes.set(voterId, targetId);
     this.emit({ type: 'changed' });
     return true;
@@ -380,6 +393,18 @@ export class GameManager {
       });
     }
 
+    if (this.timer) {
+      const payload: TimeSyncPayload = {
+        remainingMs: this.getTimerRemainingMs(),
+        totalMs: this.timer.totalMs,
+      };
+      this.transport.sendToPlayer(playerId, {
+        type: 'TIME_SYNC',
+        payload,
+        timestamp: Date.now(),
+      });
+    }
+
     if (this.winner) {
       this.transport.sendToPlayer(playerId, {
         type: 'GAME_OVER',
@@ -453,12 +478,16 @@ export class GameManager {
     if (phase === 'Night') {
       this.nightChoices.clear();
       this.votes.clear();
+      this.revoteCandidates = [];
     }
 
     if (phase === 'Vote') {
       this.votes.clear();
       this.lastVote = null;
     }
+
+    // Any phase change retires the clock: the next phase needs its own.
+    this.timer = null;
 
     this.transport.broadcast({
       type: 'PHASE_UPDATE',
@@ -695,38 +724,94 @@ export class GameManager {
   }
 
   private resolveVote() {
+    // The vote is being counted, so whatever clock was running for it is over.
+    // Without this a re-vote would inherit a clock that is already past due
+    // and be resolved instantly.
+    this.timer = null;
+
     const alive = this.state.players.filter(p => p.isAlive);
 
     const tally = new Map<string, number>();
     alive.forEach(p => tally.set(p.id, 0));
 
+    const ballots: VoteBallot[] = [];
+
     this.votes.forEach((targetId, voterId) => {
       const voter = this.state.players.find(p => p.id === voterId);
       if (!voter || !voter.isAlive) return;
       if (!tally.has(targetId)) return;
-      tally.set(targetId, (tally.get(targetId) ?? 0) + (voter.voteWeight || 1));
-    });
 
-    let topId: string | null = null;
-    let topVotes = 0;
-    let tie = false;
+      const weight = voter.voteWeight || 1;
+      tally.set(targetId, (tally.get(targetId) ?? 0) + weight);
 
-    tally.forEach((count, id) => {
-      if (count > topVotes) {
-        topId = id;
-        topVotes = count;
-        tie = false;
-      } else if (count === topVotes && count > 0) {
-        tie = true;
+      const target = this.state.players.find(p => p.id === targetId);
+      if (target) {
+        ballots.push({
+          voterId,
+          voterName: voter.name,
+          targetId,
+          targetName: target.name,
+          weight,
+        });
       }
     });
+
+    let topVotes = 0;
+    tally.forEach(count => {
+      if (count > topVotes) topVotes = count;
+    });
+
+    const leaders =
+      topVotes > 0
+        ? [...tally.entries()].filter(([, count]) => count === topVotes).map(([id]) => id)
+        : [];
+    const tie = leaders.length > 1;
+    const candidates = leaders.map(id => ({
+      id,
+      name: this.state.players.find(p => p.id === id)?.name ?? id,
+    }));
+
+    const tallyRows = () =>
+      alive.map(p => ({ id: p.id, name: p.name, count: tally.get(p.id) ?? 0 }));
+
+    // A first tie is re-run between the tied players. A second one lets the
+    // day pass, or two stubborn camps could stall the table forever.
+    if (tie && this.revoteCandidates.length === 0) {
+      this.revoteCandidates = leaders;
+      this.votes.clear();
+
+      const redo: VoteResultPayload = {
+        eliminatedId: null,
+        eliminatedName: null,
+        tie: true,
+        tally: tallyRows(),
+        ballots,
+        revote: true,
+        candidates,
+      };
+
+      this.lastVote = redo;
+      this.actionLog.push(
+        `Day ${this.round}: the vote was tied between ${candidates
+          .map(candidate => candidate.name)
+          .join(' and ')}. They vote again.`,
+      );
+
+      this.transport.broadcast({
+        type: 'VOTE_RESULT',
+        payload: redo,
+        timestamp: Date.now(),
+      });
+      this.emit({ type: 'changed' });
+      return;
+    }
 
     let eliminatedId: string | null = null;
     let eliminatedName: string | null = null;
     const deaths: Player[] = [];
 
-    if (topId && !tie && topVotes > 0) {
-      const target = this.state.players.find(p => p.id === topId);
+    if (topVotes > 0 && !tie) {
+      const target = this.state.players.find(p => p.id === leaders[0]);
       if (target) {
         target.isAlive = false;
         eliminatedId = target.id;
@@ -736,7 +821,9 @@ export class GameManager {
         this.applyLoverDeaths(deaths);
       }
     } else if (topVotes > 0) {
-      this.actionLog.push(`Day ${this.round}: the vote was tied, nobody was eliminated.`);
+      this.actionLog.push(
+        `Day ${this.round}: the vote was tied again, nobody was eliminated.`,
+      );
     } else {
       this.actionLog.push(`Day ${this.round}: nobody voted.`);
     }
@@ -745,11 +832,8 @@ export class GameManager {
       eliminatedId,
       eliminatedName,
       tie,
-      tally: alive.map(p => ({
-        id: p.id,
-        name: p.name,
-        count: tally.get(p.id) ?? 0,
-      })),
+      tally: tallyRows(),
+      ballots,
     };
 
     this.lastVote = result;
@@ -771,6 +855,61 @@ export class GameManager {
 
     // The hunter may still owe a shot before the round can close.
     this.enterRevengeOr('Vote', deaths);
+  }
+
+  // The players the current re-vote is limited to, or an empty list.
+  getRevoteCandidates(): string[] {
+    return this.revoteCandidates;
+  }
+
+  // -------------------------------------------------------------------- clock
+
+  // The host runs the clock, not the engine: the host UI ticks once a second
+  // and asks whether the phase is up. That keeps the loop deterministic and
+  // runnable in plain Node, with no timers of its own.
+  startTimer(seconds: number): boolean {
+    if (this.winner) return false;
+    if (this.state.currentPhase !== 'Day' && this.state.currentPhase !== 'Vote') return false;
+    if (!(seconds > 0)) return false;
+
+    this.timer = { endsAt: Date.now() + seconds * 1000, totalMs: seconds * 1000 };
+    this.broadcastTime();
+    this.emit({ type: 'changed' });
+    return true;
+  }
+
+  clearTimer() {
+    if (!this.timer) return;
+    this.timer = null;
+    this.broadcastTime();
+    this.emit({ type: 'changed' });
+  }
+
+  getTimerRemainingMs(): number | null {
+    if (!this.timer) return null;
+    return Math.max(0, this.timer.endsAt - Date.now());
+  }
+
+  getTimerTotalMs(): number | null {
+    return this.timer?.totalMs ?? null;
+  }
+
+  // True once the host's clock has run out. The tick calls this, then advance.
+  isTimerDue(): boolean {
+    return !!this.timer && this.getTimerRemainingMs() === 0;
+  }
+
+  private broadcastTime() {
+    const payload: TimeSyncPayload = {
+      remainingMs: this.getTimerRemainingMs(),
+      totalMs: this.timer?.totalMs,
+    };
+
+    this.transport.broadcast({
+      type: 'TIME_SYNC',
+      payload,
+      timestamp: Date.now(),
+    });
   }
 
   private checkWin(): Team | null {

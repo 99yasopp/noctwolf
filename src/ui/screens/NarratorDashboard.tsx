@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-nati
 import { theme } from '../theme/colors';
 import { BaseButton } from '../components/BaseButton';
 import { ActionPanel, OwnRole } from '../components/ActionPanel';
+import { formatRemaining } from '../format';
 import { useGame } from '../GameContext';
 import { lobby } from '../../network/lobby';
 
@@ -82,6 +83,22 @@ export const NarratorDashboard = () => {
   const pendingActors = manager.getPendingNightActors();
   const pendingVoters = manager.getPendingVoters();
   const pendingHunter = manager.getPendingRevengeHunter();
+  const revoteCandidates = manager.getRevoteCandidates();
+  const remaining = manager.getTimerRemainingMs();
+
+  // One tick a second while a clock is running: it moves the countdown and,
+  // when it is up, moves the game on for the host.
+  useEffect(() => {
+    if (remaining === null) return;
+
+    const handle = setInterval(() => {
+      forceRender(n => n + 1);
+      if (manager.isTimerDue()) manager.advance();
+    }, 1000);
+
+    return () => clearInterval(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [remaining === null, manager]);
 
   const nextLabel = manager.winner
     ? null
@@ -148,6 +165,27 @@ export const NarratorDashboard = () => {
             {pendingHunter.name} is choosing who to take down.
           </Text>
         )}
+
+        {/* The clock is the host's: a party game dies when the day never ends. */}
+        {(phase === 'Day' || phase === 'Vote') && !manager.winner && (
+          <View style={styles.timerRow}>
+            {remaining !== null ? (
+              <>
+                <Text style={styles.timerText}>{formatRemaining(remaining)} left</Text>
+                <BaseButton title="Stop the clock" onPress={() => manager.clearTimer()} variant="secondary" />
+              </>
+            ) : (
+              <>
+                <Text style={styles.pending}>Put the phase on a clock:</Text>
+                <View style={styles.timerButtons}>
+                  <BaseButton title="1 min" onPress={() => manager.startTimer(60)} variant="secondary" />
+                  <BaseButton title="2 min" onPress={() => manager.startTimer(120)} variant="secondary" />
+                  <BaseButton title="5 min" onPress={() => manager.startTimer(300)} variant="secondary" />
+                </View>
+              </>
+            )}
+          </View>
+        )}
       </View>
 
       {manager.winner && (
@@ -170,7 +208,9 @@ export const NarratorDashboard = () => {
         <View style={styles.statusCard}>
           <Text style={styles.statusText}>
             Last vote:{' '}
-            {manager.lastVote.eliminatedName
+            {manager.lastVote.revote
+              ? 'tied, voting again'
+              : manager.lastVote.eliminatedName
               ? `${manager.lastVote.eliminatedName} was eliminated`
               : manager.lastVote.tie
               ? 'tied, nobody eliminated'
@@ -183,6 +223,12 @@ export const NarratorDashboard = () => {
                 {entry.name}: {entry.count}
               </Text>
             ))}
+          {manager.lastVote.ballots?.map(ballot => (
+            <Text key={ballot.voterId} style={styles.ballotText}>
+              {ballot.voterName} → {ballot.targetName}
+              {ballot.weight > 1 ? ` (${ballot.weight} votes)` : ''}
+            </Text>
+          ))}
         </View>
       )}
 
@@ -204,6 +250,10 @@ export const NarratorDashboard = () => {
         submitted={submitted}
         gameOver={!!manager.winner}
         quietNight={manager.isQuietNight()}
+        selfAlive={localPlayer.isAlive}
+        candidates={
+          revoteCandidates.length > 0 ? revoteCandidates : undefined
+        }
         onChoose={submitLocalAction}
       />
 
@@ -388,6 +438,24 @@ const styles = StyleSheet.create({
   removeText: {
     color: theme.colors.danger,
     fontSize: 13,
+  },
+  timerRow: {
+    marginTop: theme.spacing.small,
+  },
+  timerButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  timerText: {
+    color: theme.colors.primary,
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: theme.spacing.small,
+  },
+  ballotText: {
+    color: '#999',
+    fontSize: 13,
+    marginTop: 2,
   },
   winnerSub: {
     color: theme.colors.background,
