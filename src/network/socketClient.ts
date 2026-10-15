@@ -6,6 +6,9 @@ export class PlayerClient {
   private socket: any;
   private decoder = new MessageDecoder();
   private messageHandler: ((message: NetworkMessage) => void) | null = null;
+  private connectHandler: (() => void) | null = null;
+  private errorHandler: ((error: any) => void) | null = null;
+  private connected = false;
 
   constructor(host: string, port: number = 12345) {
     const TcpSocket = loadTcpSocket();
@@ -15,11 +18,14 @@ export class PlayerClient {
     }
 
     this.socket = TcpSocket.connect({ port, host }, () => {
+      this.connected = true;
       console.log('Connected to host');
+      this.connectHandler?.();
     });
 
     this.socket.on('error', (error: any) => {
       console.error('Client socket error', error);
+      this.errorHandler?.(error);
     });
 
     // A single 'data' listener dispatches to the registered callback, so
@@ -32,13 +38,24 @@ export class PlayerClient {
   }
 
   isConnected(): boolean {
-    return !!this.socket;
+    return this.connected;
   }
 
   sendMessage(message: NetworkMessage) {
     if (this.socket) {
       this.socket.write(encodeMessage(message));
     }
+  }
+
+  // Fires once the TCP handshake succeeds. Replays immediately when the
+  // connection was already established, so a late caller cannot miss it.
+  onConnect(callback: () => void) {
+    this.connectHandler = callback;
+    if (this.connected) callback();
+  }
+
+  onError(callback: (error: any) => void) {
+    this.errorHandler = callback;
   }
 
   onMessage(callback: (message: NetworkMessage) => void) {
@@ -56,5 +73,8 @@ export class PlayerClient {
     }
     this.decoder.reset();
     this.messageHandler = null;
+    this.connectHandler = null;
+    this.errorHandler = null;
+    this.connected = false;
   }
 }

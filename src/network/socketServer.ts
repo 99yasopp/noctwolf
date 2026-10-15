@@ -47,6 +47,9 @@ export class NarratorServer extends EventEmitter {
       socket.on('close', () => {
         this.clients = this.clients.filter(c => c !== socket);
         this.decoders.delete(socket);
+        // The host needs this to drop players that went away instead of
+        // leaving phantom entries in the lobby roster.
+        this.emit('client-disconnected', socket);
       });
     });
 

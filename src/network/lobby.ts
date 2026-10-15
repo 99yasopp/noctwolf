@@ -2,20 +2,42 @@ import { Player } from '../engine/types';
 import { NarratorServer } from './socketServer';
 import { PlayerClient } from './socketClient';
 import { createZeroconf } from './nativeModules';
+import { NetworkMessage } from './protocol';
+import { GameTransport } from '../engine/transport';
 import { Platform } from 'react-native';
 
 type ZeroconfLike = any;
 
+export const GAME_PORT = 12345;
+
+// Connecting can be genuinely slow (an emulator NAT hop measured ~4s), and a
+// premature timeout would report failure for a connection that then succeeds.
+const JOIN_TIMEOUT_MS = 15000;
+
+// The host plays from the narrator dashboard and has no socket of its own, so
+// anything addressed to it is handled locally by the UI instead.
+export const HOST_PLAYER_ID = 'host-1';
+
 // Discovery is best-effort. If the native module is missing or fails to load
-// we simply disable it and let players join by room code.
+// we simply disable it and let players join by IP.
 let zeroconf: ZeroconfLike | null = null;
 let zeroconfUnavailable = false;
 
-export class LobbyManager {
+export class LobbyManager implements GameTransport {
   private roomCode: string = '';
   public players: Player[] = [];
   public server?: NarratorServer;
   public client?: PlayerClient;
+
+  // The host can only talk to individual players through their socket, so the
+  // join message is what establishes this mapping.
+  private sockets = new Map<string, any>();
+  private socketOwners = new Map<any, string>();
+
+  private gameMessageHandler:
+    | ((playerId: string, message: NetworkMessage) => void)
+    | null = null;
+
   private discoveredHosts: any[] = [];
   private foundListenerAttached = false;
 
@@ -47,23 +69,63 @@ export class LobbyManager {
     return zeroconf;
   }
 
+  getRoomCode(): string {
+    return this.roomCode;
+  }
+
   // Returns the room code, or null when hosting could not be started.
   generateRoomCode(): string | null {
     if (Platform.OS === 'web') {
-      console.warn("Networking not supported on web");
+      console.warn('Networking not supported on web');
       return null;
     }
 
     // Reuse one server instance so hosting twice cannot bind the port twice.
     if (!this.server) {
-      this.server = new NarratorServer(12345);
-      this.server.on('message', (msg: any) => {
+      this.server = new NarratorServer(GAME_PORT);
+
+      this.server.on('message', (msg: any, socket: any) => {
+        if (!msg || typeof msg.type !== 'string') return;
+
         if (msg.type === 'PLAYER_JOIN') {
-          this.addPlayer(msg.payload.player);
+          const player = msg.payload?.player;
+          if (!player?.id) return;
+
+          this.addPlayer(player);
+          this.registerSocket(player.id, socket);
+          this.broadcastPlayerList();
+          return;
+        }
+
+        const playerId = this.socketOwners.get(socket);
+        if (playerId) {
+          this.gameMessageHandler?.(playerId, msg);
+        } else {
+          console.warn(`Ignoring ${msg.type} from an unrecognised client`);
         }
       });
+
       this.server.on('server-error', (error: any) => {
         console.error('Lobby server error', error);
+      });
+
+      // A guest that goes away must not linger in the roster, otherwise the
+      // host sees phantom players and can start a game with people who left.
+      this.server.on('client-disconnected', (socket: any) => {
+        const playerId = this.socketOwners.get(socket);
+        if (!playerId) return;
+
+        this.sockets.delete(playerId);
+        this.socketOwners.delete(socket);
+
+        // Mid-game the player keeps their seat so they can reconnect; before
+        // the game starts they are simply removed.
+        const gameRunning = this.gameMessageHandler !== null;
+        if (gameRunning) return;
+
+        const before = this.players.length;
+        this.players = this.players.filter(p => p.id !== playerId);
+        if (this.players.length !== before) this.broadcastPlayerList();
       });
     }
 
@@ -75,14 +137,16 @@ export class LobbyManager {
 
     this.roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
 
-    // Advertising is best-effort: joining by code still works without it, and
-    // a discovery failure must never break hosting.
+    // Advertising is best-effort: joining by IP still works without it, and a
+    // discovery failure must never break hosting.
     const zc = this.getZeroconf();
     if (zc) {
       try {
-        zc.publishService('http', 'tcp', 'local.', 'WerewolfServer', 12345, { roomCode: this.roomCode });
+        zc.publishService('http', 'tcp', 'local.', 'WerewolfServer', GAME_PORT, {
+          roomCode: this.roomCode,
+        });
       } catch (error) {
-        console.error('Failed to advertise the room; players can still join by code', error);
+        console.error('Failed to advertise the room; players can still join by IP', error);
       }
     }
 
@@ -99,26 +163,32 @@ export class LobbyManager {
     }
 
     this.server?.stop();
+    // Drop the instance entirely: a server that was closed cannot always be
+    // re-listened on, so the next host session builds a fresh one.
     this.server = undefined;
+    this.sockets.clear();
+    this.socketOwners.clear();
+    this.gameMessageHandler = null;
     this.players = [];
     this.roomCode = '';
   }
 
-  joinGame(code: string, player: Player): Promise<boolean> {
+  // Join a host found over mDNS/Bonjour. Kept for the room-code flow.
+  async joinGame(code: string, player: Player): Promise<boolean> {
     const zc = this.getZeroconf();
     if (!zc) {
-      console.warn("Local discovery is not available on this platform");
-      return Promise.resolve(false);
+      console.warn('Local discovery is not available on this platform');
+      return false;
     }
 
     try {
       zc.scan('http', 'tcp', 'local.');
     } catch (error) {
       console.error('Failed to start the discovery scan', error);
-      return Promise.resolve(false);
+      return false;
     }
 
-    return new Promise((resolve) => {
+    return new Promise(resolve => {
       setTimeout(() => {
         // Stop the scan whether or not we found the host.
         try {
@@ -128,19 +198,117 @@ export class LobbyManager {
         }
 
         const host = this.discoveredHosts.find(h => h.txt?.roomCode === code);
-        if (host) {
-          const hostIp = host.addresses[0];
-          this.client = new PlayerClient(hostIp, 12345);
-          this.client.sendMessage({ 
-            type: 'PLAYER_JOIN', 
-            payload: { player }, 
-            timestamp: Date.now() 
-          });
-          resolve(true);
-        } else {
+        const hostIp = host?.addresses?.[0];
+        if (!hostIp) {
           resolve(false);
+          return;
         }
+
+        this.connect(hostIp, player).then(resolve);
       }, 2000); // Give 2 seconds for discovery
+    });
+  }
+
+  // Join by typing the host's IP. This is the reliable path when mDNS is
+  // blocked or when the two devices are on different subnets.
+  joinGameByIp(ip: string, player: Player, port: number = GAME_PORT): Promise<boolean> {
+    return this.connect(ip.trim(), player, port);
+  }
+
+  private connect(host: string, player: Player, port: number = GAME_PORT): Promise<boolean> {
+    if (Platform.OS === 'web') {
+      console.warn('Networking not supported on web');
+      return Promise.resolve(false);
+    }
+
+    this.disconnectClient();
+    const client = new PlayerClient(host, port);
+    this.client = client;
+
+    return new Promise(resolve => {
+      let settled = false;
+
+      const fail = () => {
+        if (settled) return;
+        settled = true;
+
+        // Never leave a half-open client behind: it would finish connecting
+        // after we already reported failure and silently join the room.
+        if (this.client === client) this.disconnectClient();
+        resolve(false);
+      };
+
+      client.onConnect(() => {
+        if (settled) return;
+        settled = true;
+
+        client.sendMessage({
+          type: 'PLAYER_JOIN',
+          payload: { player },
+          senderId: player.id,
+          timestamp: Date.now(),
+        });
+        resolve(true);
+      });
+
+      client.onError(fail);
+
+      // A refused connection reports an error, but an unreachable host can
+      // hang, so time out rather than leave the UI spinning forever.
+      setTimeout(fail, JOIN_TIMEOUT_MS);
+    });
+  }
+
+  disconnectClient() {
+    this.client?.disconnect();
+    this.client = undefined;
+  }
+
+  // ------------------------------------------------------------- game traffic
+
+  // Set by the host session so player actions reach the game engine.
+  onGameMessage(handler: ((playerId: string, message: NetworkMessage) => void) | null) {
+    this.gameMessageHandler = handler;
+  }
+
+  broadcast(message: NetworkMessage) {
+    this.server?.broadcast(message);
+  }
+
+  sendToPlayer(playerId: string, message: NetworkMessage) {
+    const socket = this.sockets.get(playerId);
+    if (!socket) return; // the host itself has no socket
+
+    try {
+      this.server?.sendToPlayer(socket, message);
+    } catch (error) {
+      console.error(`Failed to send to player ${playerId}`, error);
+    }
+  }
+
+  private registerSocket(playerId: string, socket: any) {
+    this.sockets.set(playerId, socket);
+    this.socketOwners.set(socket, playerId);
+  }
+
+  // Roles never leave the host, so the shared roster is stripped down.
+  private publicPlayers(): Player[] {
+    return this.players.map(p => ({
+      id: p.id,
+      name: p.name,
+      role: 'Unknown',
+      team: 'Village' as const,
+      isAlive: p.isAlive,
+      statusEffects: [...p.statusEffects],
+      voteWeight: p.voteWeight,
+    }));
+  }
+
+  private broadcastPlayerList() {
+    this.server?.broadcast({
+      type: 'PLAYER_LIST',
+      payload: { players: this.publicPlayers() },
+      timestamp: Date.now(),
     });
   }
 
@@ -159,3 +327,7 @@ export class LobbyManager {
     return this.players;
   }
 }
+
+// One session per app instance: the lobby screen, the narrator dashboard and
+// the player screen all talk to the same connections.
+export const lobby = new LobbyManager();

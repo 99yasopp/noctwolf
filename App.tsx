@@ -1,7 +1,9 @@
 import React from 'react';
 import { View, StyleSheet, Text } from 'react-native';
-import { GameProvider } from './src/ui/GameContext';
+import { GameProvider, useGame } from './src/ui/GameContext';
 import { LobbyScreen } from './src/ui/screens/LobbyScreen';
+import { NarratorDashboard } from './src/ui/screens/NarratorDashboard';
+import { PlayerScreen } from './src/ui/screens/PlayerScreen';
 import { theme } from './src/ui/theme/colors';
 
 // Error Boundary Component
@@ -15,12 +17,22 @@ class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasErr
   }
 }
 
+// The host runs the table from the dashboard, guests only ever see their own
+// role and actions.
+const Session = () => {
+  const { mode } = useGame();
+
+  if (mode === 'narrator') return <NarratorDashboard />;
+  if (mode === 'player') return <PlayerScreen />;
+  return <LobbyScreen />;
+};
+
 export default function App() {
   return (
     <ErrorBoundary>
       <GameProvider>
         <View style={styles.container}>
-          <LobbyScreen />
+          <Session />
         </View>
       </GameProvider>
     </ErrorBoundary>

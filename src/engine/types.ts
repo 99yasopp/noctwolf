@@ -10,6 +10,8 @@ export interface Player {
   isAlive: boolean;
   statusEffects: string[];
   voteWeight: number; // For the President
+  // Test players the host adds so a game can be played without extra devices.
+  isBot?: boolean;
 }
 
 export type TriggerType = 

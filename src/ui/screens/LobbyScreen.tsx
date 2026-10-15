@@ -1,64 +1,176 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TextInput, ScrollView } from 'react-native';
 import { theme } from '../theme/colors';
 import { BaseButton } from '../components/BaseButton';
-import { LobbyManager } from '../../network/lobby';
+import { GAME_PORT, HOST_PLAYER_ID, lobby } from '../../network/lobby';
+import { Player } from '../../engine/types';
+import { useGame } from '../GameContext';
 
-const lobby = new LobbyManager();
+type LobbyView = 'menu' | 'host' | 'join' | 'waiting';
 
-export const LobbyScreen = ({ navigation }: { navigation?: any }) => {
-  const [view, setView] = useState<'menu' | 'host' | 'join' | 'waiting'>('menu');
+const MIN_PLAYERS = 3;
+
+export const LobbyScreen = () => {
+  const { startHostGame, enterPlayerMode } = useGame();
+
+  // Stable guest identity: the host keys players by id, so it must not change
+  // between the join attempt and the game starting.
+  const guestRef = React.useRef<Player | null>(null);
+
+  const [view, setView] = useState<LobbyView>('menu');
   const [roomCode, setRoomCode] = useState('');
   const [inputCode, setInputCode] = useState('');
+  const [inputIp, setInputIp] = useState('');
   const [playerName, setPlayerName] = useState('Player');
-  const [players, setPlayers] = useState<any[]>([]);
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [isHost, setIsHost] = useState(false);
 
+  // The host owns the roster; guests receive it over the network.
   useEffect(() => {
-    if (view === 'waiting') {
-      const interval = setInterval(() => {
-        setPlayers([...lobby.getPlayers()]);
-      }, 1000);
-      return () => clearInterval(interval);
+    if (view !== 'waiting' || !isHost) return;
+
+    const refresh = () => setPlayers([...lobby.getPlayers()]);
+    refresh();
+
+    const interval = setInterval(refresh, 1000);
+    return () => clearInterval(interval);
+  }, [view, isHost]);
+
+  // A guest stays in the waiting room until the host starts the game, which
+  // is signalled by the first role or phase message.
+  useEffect(() => {
+    if (view !== 'waiting' || isHost) return;
+
+    const client = lobby.client;
+    const me = guestRef.current;
+    if (!client || !me) return;
+
+    let handedOff = false;
+
+    const handler = (message: any) => {
+      if (message?.type === 'PLAYER_LIST') {
+        setPlayers(message.payload?.players ?? []);
+        return;
+      }
+
+      if (
+        message?.type === 'ROLE_ASSIGN' ||
+        message?.type === 'PHASE_UPDATE' ||
+        message?.type === 'GAME_OVER'
+      ) {
+        handedOff = true;
+        // PlayerScreen takes over the message handler on mount.
+        enterPlayerMode(me);
+      }
+    };
+
+    client.onMessage(handler);
+    return () => {
+      if (!handedOff) client.offMessage();
+    };
+  }, [view, isHost, enterPlayerMode]);
+
+  const buildGuest = (): Player => {
+    if (!guestRef.current) {
+      guestRef.current = guest(
+        Math.random().toString(36).substring(2, 10),
+        playerName,
+      );
     }
-  }, [view]);
+    guestRef.current.name = playerName.trim() || 'Guest';
+    return guestRef.current;
+  };
 
   const hostGame = () => {
+    setError('');
+
     const code = lobby.generateRoomCode();
     if (!code) {
-      alert('Could not start hosting on this device.');
+      setError('Could not start hosting on this device.');
       return;
     }
 
-    // Host adds themselves
     lobby.addPlayer({
-      id: 'host-1',
-      name: playerName,
+      id: HOST_PLAYER_ID,
+      name: playerName.trim() || 'Host',
       role: 'Unknown',
       team: 'Village',
       isAlive: true,
       statusEffects: [],
       voteWeight: 1,
     });
+
+    setIsHost(true);
     setRoomCode(code);
     setView('waiting');
   };
 
   const joinGame = async () => {
-    const success = await lobby.joinGame(inputCode, {
-      id: Math.random().toString(),
-      name: playerName,
+    setError('');
+    setBusy(true);
+
+    const succeeded = inputIp.trim()
+      ? await lobby.joinGameByIp(inputIp, buildGuest(), GAME_PORT)
+      : await lobby.joinGame(inputCode.trim().toUpperCase(), buildGuest());
+
+    setBusy(false);
+
+    if (!succeeded) {
+      setError(
+        inputIp.trim()
+          ? `Could not reach ${inputIp.trim()}:${GAME_PORT}. Check the address and that the host is hosting.`
+          : 'Could not find that room code. Try joining by IP instead.',
+      );
+      return;
+    }
+
+    setIsHost(false);
+    setView('waiting');
+  };
+
+  const startGame = () => {
+    const roster = lobby.getPlayers();
+    const host = roster.find(p => p.id === HOST_PLAYER_ID);
+
+    if (!host || roster.length < MIN_PLAYERS) {
+      setError(`You need at least ${MIN_PLAYERS} players to start.`);
+      return;
+    }
+
+    setError('');
+    startHostGame(roster, host);
+  };
+
+  // Lets the host exercise a full game without extra devices. Bots act and
+  // vote on their own.
+  const addTestPlayer = () => {
+    const botNumber = lobby.getPlayers().filter(p => p.isBot).length + 1;
+
+    lobby.addPlayer({
+      id: `bot-${botNumber}`,
+      name: `Bot ${botNumber}`,
       role: 'Unknown',
       team: 'Village',
       isAlive: true,
       statusEffects: [],
       voteWeight: 1,
+      isBot: true,
     });
 
-    if (success) {
-      setView('waiting');
-    } else {
-      alert('Could not find room code');
-    }
+    setPlayers([...lobby.getPlayers()]);
+  };
+
+  const backToMenu = () => {
+    if (isHost) lobby.closeRoom();
+    else lobby.disconnectClient();
+
+    setIsHost(false);
+    setPlayers([]);
+    setRoomCode('');
+    setError('');
+    setView('menu');
   };
 
   const renderView = () => {
@@ -69,6 +181,7 @@ export const LobbyScreen = ({ navigation }: { navigation?: any }) => {
             <TextInput
               style={styles.input}
               placeholder="Enter your name"
+              placeholderTextColor="#666"
               value={playerName}
               onChangeText={setPlayerName}
             />
@@ -76,6 +189,7 @@ export const LobbyScreen = ({ navigation }: { navigation?: any }) => {
             <BaseButton title="Join a Game" onPress={() => setView('join')} variant="secondary" />
           </View>
         );
+
       case 'host':
         return (
           <View style={styles.menu}>
@@ -84,31 +198,75 @@ export const LobbyScreen = ({ navigation }: { navigation?: any }) => {
             <BaseButton title="Back" onPress={() => setView('menu')} variant="danger" />
           </View>
         );
+
       case 'join':
         return (
           <View style={styles.menu}>
             <TextInput
               style={styles.input}
-              placeholder="Enter Room Code"
+              placeholder="Host IP (e.g. 192.168.0.42)"
+              placeholderTextColor="#666"
+              value={inputIp}
+              onChangeText={setInputIp}
+              keyboardType="numbers-and-punctuation"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <Text style={styles.hint}>
+              Leave the IP empty to search for the room code instead.
+            </Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Room code (optional)"
+              placeholderTextColor="#666"
               value={inputCode}
               onChangeText={setInputCode}
               autoCapitalize="characters"
             />
-            <BaseButton title="Join" onPress={joinGame} />
+            <BaseButton title={busy ? 'Joining...' : 'Join'} onPress={joinGame} />
             <BaseButton title="Back" onPress={() => setView('menu')} variant="danger" />
           </View>
         );
+
       case 'waiting':
         return (
-          <View style={styles.menu}>
-            <Text style={styles.text}>Room Code: {roomCode}</Text>
+          <ScrollView contentContainerStyle={styles.menu}>
+            {isHost && <Text style={styles.text}>Room Code: {roomCode}</Text>}
+            {isHost && (
+              <Text style={styles.hint}>
+                Guests join by IP. Your address is shown on your phone's Wi-Fi settings.
+              </Text>
+            )}
             <Text style={styles.title}>Waiting Room</Text>
-            <Text style={styles.text}>Players connected:</Text>
-            {players.map((p) => (
-              <Text key={p.id} style={styles.playerText}>{p.name}</Text>
+            <Text style={styles.text}>Players connected ({players.length}):</Text>
+
+            {players.map(p => (
+              <Text key={p.id} style={styles.playerText}>
+                {p.name}
+                {p.id === HOST_PLAYER_ID ? ' (host)' : ''}
+                {p.isBot ? ' [bot]' : ''}
+              </Text>
             ))}
-            <BaseButton title="Back" onPress={() => setView('menu')} variant="danger" />
-          </View>
+
+            {isHost && (
+              <BaseButton title="Add Test Player" onPress={addTestPlayer} variant="secondary" />
+            )}
+
+            {isHost && (
+              <BaseButton
+                title={
+                  players.length >= MIN_PLAYERS
+                    ? 'Start Game'
+                    : `Start Game (${players.length}/${MIN_PLAYERS})`
+                }
+                onPress={startGame}
+              />
+            )}
+
+            {!isHost && <Text style={styles.hint}>Waiting for the host to start...</Text>}
+
+            <BaseButton title="Back" onPress={backToMenu} variant="danger" />
+          </ScrollView>
         );
     }
   };
@@ -116,10 +274,21 @@ export const LobbyScreen = ({ navigation }: { navigation?: any }) => {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Werewolf Manager</Text>
+      {error ? <Text style={styles.error}>{error}</Text> : null}
       {renderView()}
     </View>
   );
 };
+
+const guest = (id: string, name: string): Player => ({
+  id,
+  name: name.trim() || 'Guest',
+  role: 'Unknown',
+  team: 'Village',
+  isAlive: true,
+  statusEffects: [],
+  voteWeight: 1,
+});
 
 const styles = StyleSheet.create({
   menu: {
@@ -154,6 +323,18 @@ const styles = StyleSheet.create({
   text: {
     color: theme.colors.text,
     fontSize: 16,
+    textAlign: 'center',
+    marginBottom: theme.spacing.small,
+  },
+  hint: {
+    color: '#888',
+    fontSize: 13,
+    textAlign: 'center',
+    marginBottom: theme.spacing.small,
+  },
+  error: {
+    color: theme.colors.danger,
+    fontSize: 15,
     textAlign: 'center',
     marginBottom: theme.spacing.small,
   },

@@ -1,26 +1,89 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useCallback, useContext, useRef, useState } from 'react';
 import { GameManager } from '../engine/gameManager';
-import { NarratorServer } from '../network/socketServer';
+import { Player } from '../engine/types';
+import { lobby } from '../network/lobby';
 
-const GameContext = createContext<GameManager | null>(null);
+export type AppMode = 'lobby' | 'narrator' | 'player';
+
+interface GameContextValue {
+  mode: AppMode;
+  // The player this device controls. The host plays from the dashboard.
+  localPlayer: Player | null;
+  // Only set on the host; guests read their state from the network instead.
+  manager: GameManager | null;
+  startHostGame: (players: Player[], localPlayer: Player) => void;
+  enterPlayerMode: (localPlayer: Player) => void;
+  returnToLobby: () => void;
+}
+
+const GameContext = createContext<GameContextValue | null>(null);
 
 export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [mode, setMode] = useState<AppMode>('lobby');
+  const [localPlayer, setLocalPlayer] = useState<Player | null>(null);
   const [manager, setManager] = useState<GameManager | null>(null);
+  const managerRef = useRef<GameManager | null>(null);
 
-  useEffect(() => {
-    // Initialize server and game manager only after component mounts
-    const server = new NarratorServer();
-    const newManager = new GameManager([], [], server);
-    setManager(newManager);
+  const startHostGame = useCallback((players: Player[], host: Player) => {
+    const game = new GameManager(players, lobby, true);
+    managerRef.current = game;
+    setManager(game);
+    setLocalPlayer(host);
+
+    // Player actions arrive over the lobby server and are attributed to a
+    // player id by the socket that sent them.
+    lobby.onGameMessage((playerId, message) => {
+      const current = managerRef.current;
+      if (!current) return;
+
+      if (message.type === 'NIGHT_ACTION') {
+        current.handleNightAction(
+          playerId,
+          message.payload?.action,
+          message.payload?.targetId,
+        );
+        return;
+      }
+
+      if (message.type === 'VOTE_CAST') {
+        current.handleVote(playerId, message.payload?.targetId);
+        return;
+      }
+
+      if (message.type === 'STATE_REQUEST') {
+        current.sendStateTo(playerId);
+      }
+    });
+
+    game.start();
+    setMode('narrator');
   }, []);
 
-  if (!manager) {
-    // Return null or a loading component until initialized
-    return null; 
-  }
+  const enterPlayerMode = useCallback((player: Player) => {
+    setLocalPlayer(player);
+    setMode('player');
+  }, []);
+
+  const returnToLobby = useCallback(() => {
+    const wasHost = managerRef.current !== null;
+
+    managerRef.current = null;
+    setManager(null);
+    setLocalPlayer(null);
+
+    if (wasHost) {
+      lobby.closeRoom();
+    } else {
+      lobby.disconnectClient();
+    }
+
+    setMode('lobby');
+  }, []);
 
   return (
-    <GameContext.Provider value={manager}>
+    <GameContext.Provider
+      value={{ mode, localPlayer, manager, startHostGame, enterPlayerMode, returnToLobby }}
+    >
       {children}
     </GameContext.Provider>
   );
