@@ -16,7 +16,15 @@ import {
   WerewolfRole,
   WitchRole,
   buildClassicRoleSet,
+  buildCustomRoleSet,
+  getCustomRoles,
+  setCustomRoles,
 } from '../src/engine/roleSet';
+import {
+  TRANSLATABLE_ACTIONS,
+  translateGeneratedRole,
+} from '../src/engine/generatedRole';
+import { ALLOWED_ACTIONS as VALIDATED_ACTIONS } from '../src/engine/roleGenerator';
 import { GameTransport } from '../src/engine/transport';
 import { Player } from '../src/engine/types';
 import { NetworkMessage } from '../src/network/protocol';
@@ -495,5 +503,72 @@ console.log('\n16. a tie in the lovers');
 }
 
 
-console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) failed.`);
+console.log('\n17. a generated role is translated into something playable');
+{
+  const generated = {
+    name: 'Silent Wolf',
+    team: 'Wolf',
+    description: 'Howls once a night.',
+    abilities: [
+      { trigger: 'OnPhaseStart', actions: [{ id: 'kill_action' }, { id: 'protect_action' }] },
+    ],
+  };
+
+  const accepted = translateGeneratedRole(generated);
+  check('a valid role is accepted', !!accepted.draft, accepted.error);
+  check(
+    'its actions become playable ones',
+    accepted.draft?.role.nightActions?.length === 2,
+    JSON.stringify(accepted.draft?.role.nightActions),
+  );
+  check('it is filed under its own id', accepted.draft?.role.id === 'custom-silent-wolf');
+  check('no action is reported as dropped', accepted.draft?.unsupported.length === 0);
+
+  const unknownTeam = translateGeneratedRole({ name: 'Alien', team: 'Alien', abilities: [] });
+  check('an unknown team is refused', !!unknownTeam.error, String(unknownTeam.error));
+
+  const unknownAction = translateGeneratedRole({
+    name: 'Warp',
+    team: 'Village',
+    abilities: [{ trigger: 'OnPhaseStart', actions: [{ id: 'teleport_action' }] }],
+  });
+  check('an action this game cannot run is refused', !!unknownAction.error, String(unknownAction.error));
+
+  const nothing = translateGeneratedRole({ name: 'Ghost', team: 'Village', abilities: [] });
+  check('a role with no abilities is refused or empty', !!nothing.error || nothing.draft?.role.nightActions?.length === 0);
+
+  check(
+    'every action the validator allows can be played',
+    VALIDATED_ACTIONS.every(id => !!TRANSLATABLE_ACTIONS[id]),
+    VALIDATED_ACTIONS.filter(id => !TRANSLATABLE_ACTIONS[id]).join(','),
+  );
+}
+
+console.log("\n18. a custom role takes a villager's seat");
+{
+  const before = getCustomRoles();
+  setCustomRoles([
+    {
+      id: 'custom-silent-wolf',
+      name: 'Silent Wolf',
+      team: 'Wolf',
+      description: 'Howls once a night.',
+      nightActions: [{ id: 'kill', label: 'Devour a player', kind: 'attack' }],
+    },
+  ]);
+
+  const set = buildCustomRoleSet(5);
+  check('the table keeps a wolf and a seer', set.filter(r => r.id === 'werewolf').length === 1 && set.some(r => r.id === 'seer'));
+  check('the custom role is dealt', set.some(r => r.id === 'custom-silent-wolf'));
+  check('the set still fits the table', set.length === 5, `${set.length}`);
+
+  const game = new GameManager(makePlayers(5, true), new RecordingTransport());
+  game.start(buildCustomRoleSet(5));
+  check('a game runs with it in play', game.state.currentPhase === 'Night');
+
+  setCustomRoles(before);
+}
+
+
+console.log(failures === 0 ? `\nAll checks passed.` : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

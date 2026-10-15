@@ -3,12 +3,14 @@ import { View, Text, StyleSheet, TextInput, ScrollView } from 'react-native';
 import { theme } from '../theme/colors';
 import { BaseButton } from '../components/BaseButton';
 import { GAME_PORT, HOST_PLAYER_ID, LOCAL_GUEST_ID, lobby } from '../../network/lobby';
-import { getPreset, ROLE_PRESETS } from '../../engine/roleSet';
+import { getPreset, getCustomRoles, ROLE_PRESETS, setCustomRoles } from '../../engine/roleSet';
+import { loadCustomRoles } from '../../services/customRoles';
+import { SettingsScreen } from './SettingsScreen';
 import { Player } from '../../engine/types';
 import { useGame } from '../GameContext';
 import { randomPlayerName } from '../randomName';
 
-type LobbyView = 'menu' | 'host' | 'join' | 'waiting';
+type LobbyView = 'menu' | 'host' | 'join' | 'waiting' | 'settings';
 
 const MIN_PLAYERS = 3;
 
@@ -33,12 +35,24 @@ export const LobbyScreen = () => {
   const [busy, setBusy] = useState(false);
   const [isHost, setIsHost] = useState(false);
   const [presetId, setPresetId] = useState(ROLE_PRESETS[0].id);
+  // Lets the setup picker show Custom only once there are roles to deal.
+  const [customRoleCount, setCustomRoleCount] = useState(0);
 
+  useEffect(() => {
+    loadCustomRoles().then(roles => {
+      setCustomRoles(roles);
+      setCustomRoleCount(roles.length);
+    });
+  }, []);
+
+  const availablePresets = ROLE_PRESETS.filter(
+    entry => entry.id !== 'custom' || customRoleCount > 0,
+  );
   const preset = getPreset(presetId);
   const cyclePreset = () =>
     setPresetId(current => {
-      const index = ROLE_PRESETS.findIndex(entry => entry.id === current);
-      return ROLE_PRESETS[(index + 1) % ROLE_PRESETS.length].id;
+      const index = availablePresets.findIndex(entry => entry.id === current);
+      return availablePresets[(index + 1) % availablePresets.length].id;
     });
 
   // The host owns the roster; guests receive it over the network.
@@ -211,6 +225,11 @@ export const LobbyScreen = () => {
             />
             <BaseButton title="Host a Game" onPress={() => setView('host')} />
             <BaseButton title="Join a Game" onPress={() => setView('join')} variant="secondary" />
+            <BaseButton
+              title="Settings"
+              onPress={() => setView('settings')}
+              variant="secondary"
+            />
           </View>
         );
 
@@ -308,6 +327,11 @@ export const LobbyScreen = () => {
         );
     }
   };
+
+  // Settings takes the whole screen: it has its own scrolling and header.
+  if (view === 'settings') {
+    return <SettingsScreen onBack={() => setView('menu')} />;
+  }
 
   return (
     <View style={styles.container}>

@@ -178,6 +178,35 @@ export const buildChaosRoleSet = (playerCount: number): PlayableRole[] => {
   return fill(set, playerCount);
 };
 
+// ---------------------------------------------------------------- custom roles
+
+// Roles the host generated and approved. They live in the engine rather than
+// in a screen so a preset can be built without an import cycle.
+let customRoles: PlayableRole[] = [];
+
+export const setCustomRoles = (roles: PlayableRole[]) => {
+  customRoles = roles;
+};
+
+export const getCustomRoles = (): PlayableRole[] => customRoles;
+
+// Custom roles take the villagers' seats; the wolf count is never touched, so
+// a generated role cannot unbalance the table.
+export const buildCustomRoleSet = (playerCount: number): PlayableRole[] => {
+  if (playerCount <= 0) return [];
+
+  const wolfCount = Math.max(1, Math.floor(playerCount / 4));
+  const set: PlayableRole[] = [];
+  for (let i = 0; i < wolfCount; i++) set.push(WerewolfRole);
+  if (playerCount >= 3) set.push(SeerRole);
+
+  customRoles.forEach(role => {
+    if (set.length < playerCount) set.push(role);
+  });
+
+  return fill(set, playerCount);
+};
+
 export const ROLE_PRESETS: RolePreset[] = [
   {
     id: 'simple',
@@ -196,6 +225,12 @@ export const ROLE_PRESETS: RolePreset[] = [
     name: 'Chaos',
     description: 'More wolves, every power in play.',
     build: buildChaosRoleSet,
+  },
+  {
+    id: 'custom',
+    name: 'Custom',
+    description: 'The roles you made with the AI, in place of the villagers.',
+    build: buildCustomRoleSet,
   },
 ];
 

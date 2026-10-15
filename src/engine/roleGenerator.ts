@@ -2,7 +2,7 @@ import { Role } from './roles';
 import { Action } from './types';
 
 // The whitelist of allowed actions the AI can use
-const ALLOWED_ACTIONS = ['kill_action', 'protect_action', 'apply_punishment_action', 'establish_channel_action'];
+export const ALLOWED_ACTIONS = ['kill_action', 'protect_action', 'apply_punishment_action', 'establish_channel_action'];
 
 export const validateRole = (role: any): { valid: boolean; error?: string } => {
   // 1. Structural Check
@@ -31,10 +31,14 @@ export const simulateRole = (role: Role): { valid: boolean; error?: string } => 
     return { valid: false, error: 'Role has no abilities to simulate.' };
   }
 
-  // Check for priority conflicts
-  const priorities = role.abilities.flatMap(a =>
-    Array.isArray(a?.actions) ? a.actions.map(act => act.priority) : []
-  );
+  // Check for priority conflicts. Actions without a declared priority are
+  // left alone: a generated role rarely sets one, and treating every absent
+  // value as a conflict would reject every role with two actions.
+  const priorities = role.abilities
+    .flatMap(a =>
+      Array.isArray(a?.actions) ? a.actions.map(act => act?.priority) : []
+    )
+    .filter(priority => typeof priority === 'number');
   const hasDuplicates = new Set(priorities).size !== priorities.length;
   
   if (hasDuplicates) {
