@@ -67,7 +67,8 @@ export interface VoteBallot {
   voterName: string;
   targetId: string;
   targetName: string;
-  weight: number;
+  // No weight here on purpose: the roster keeps the Mayor's double vote out of
+  // the public list, and a weight next to a named voter would give him away.
 }
 
 export interface VoteResultPayload {

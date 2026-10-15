@@ -691,6 +691,13 @@ console.log('\n20. a tie is voted again once');
     'the ballots name the voter and the target',
     !!game.lastVote?.ballots?.every(ballot => !!ballot.voterName && !!ballot.targetName),
   );
+  check(
+    'no ballot carries a vote weight, which would name the mayor',
+    (game.lastVote?.ballots ?? []).every(
+      ballot =>
+        Object.keys(ballot).sort().join(',') === 'targetId,targetName,voterId,voterName',
+    ),
+  );
 }
 
 console.log('\n21. the host clock');
@@ -771,6 +778,40 @@ console.log('\n22. the pack decides the bite');
   game.advance(); // night resolves -> Day
   check('a unanimous pack eats their target', !agreed.isAlive);
 }
+
+console.log('\n23. bots fill in the re-vote');
+{
+  const players = makePlayers(6, true);
+  const game = new GameManager(players, new RecordingTransport());
+  game.start([WerewolfRole, SeerRole, VillagerRole, VillagerRole, VillagerRole, VillagerRole]);
+
+  game.advance(); // quiet night -> Day
+  game.advance(); // Day -> Vote, where the bots vote by themselves
+
+  // Force a tie whatever the bots picked.
+  players.slice(0, 3).forEach(p => game.handleVote(p.id, players[3].id));
+  players.slice(3).forEach(p => game.handleVote(p.id, players[4].id));
+
+  game.advance(); // the tie is detected, the re-vote starts
+  check('the re-vote is open', game.getRevoteCandidates().length === 2);
+  check(
+    'the bots have already voted again',
+    game.getPendingVoters().length === 0,
+    `${game.getPendingVoters().length} pending`,
+  );
+
+  const candidates = game.getRevoteCandidates().slice();
+  game.advance();
+
+  const ballots = game.lastVote?.ballots ?? [];
+  check('the re-vote produced ballots', ballots.length === 6, `${ballots.length}`);
+  check(
+    'every re-vote ballot names a tied player',
+    ballots.every(ballot => candidates.includes(ballot.targetId)),
+    JSON.stringify(ballots.map(ballot => ballot.targetId)),
+  );
+}
+
 
 
 

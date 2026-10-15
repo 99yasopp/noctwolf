@@ -337,7 +337,6 @@ export const PlayerScreen = () => {
               {voteResult.ballots?.map(ballot => (
                 <Text key={ballot.voterId} style={styles.ballotText}>
                   {ballot.voterName} → {ballot.targetName}
-                  {ballot.weight > 1 ? ` (${ballot.weight} votes)` : ''}
                 </Text>
               ))}
             </>
@@ -356,18 +355,24 @@ export const PlayerScreen = () => {
         </View>
       )}
 
-      <ActionPanel
-        phase={phase}
-        role={ownRole}
-        selfId={localPlayer?.id ?? null}
-        targets={roster}
-        submitted={submitted}
-        gameOver={!!outcome}
-        quietNight={round === 1}
-        selfAlive={roster.find(entry => entry.id === localPlayer?.id)?.isAlive ?? true}
-        candidates={voteResult?.revote ? voteResult.candidates?.map(c => c.id) : undefined}
-        onChoose={submit}
-      />
+      {roleHidden ? (
+        // The panel names the night action, so it would give the role away just
+        // as loudly as the card did.
+        <Text style={styles.hint}>Show your role to act.</Text>
+      ) : (
+        <ActionPanel
+          phase={phase}
+          role={ownRole}
+          selfId={localPlayer?.id ?? null}
+          targets={roster}
+          submitted={submitted}
+          gameOver={!!outcome}
+          quietNight={round === 1}
+          selfAlive={roster.find(entry => entry.id === localPlayer?.id)?.isAlive ?? true}
+          candidates={voteResult?.revote ? voteResult.candidates?.map(c => c.id) : undefined}
+          onChoose={submit}
+        />
+      )}
 
       {secrets.length > 0 && (
         <View style={styles.secretCard}>

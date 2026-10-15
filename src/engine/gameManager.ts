@@ -531,7 +531,12 @@ export class GameManager {
       const alive = this.state.players.filter(p => p.isAlive);
       alive.forEach(voter => {
         if (!voter.isBot || this.votes.has(voter.id)) return;
-        const candidates = alive.filter(p => p.id !== voter.id);
+        // During a re-vote only the tied players are on the ballot, and the
+        // engine would refuse anything else.
+        const candidates =
+          this.revoteCandidates.length > 0
+            ? alive.filter(p => this.revoteCandidates.includes(p.id))
+            : alive.filter(p => p.id !== voter.id);
         if (candidates.length === 0) return;
         const target = candidates[Math.floor(Math.random() * candidates.length)];
         this.votes.set(voter.id, target.id);
@@ -775,7 +780,6 @@ export class GameManager {
           voterName: voter.name,
           targetId,
           targetName: target.name,
-          weight,
         });
       }
     });
@@ -826,6 +830,11 @@ export class GameManager {
         payload: redo,
         timestamp: Date.now(),
       });
+
+      // Test players fill in their new ballots by themselves, or a table of
+      // bots would always let the re-vote pass.
+      this.autoPlayBots();
+
       this.emit({ type: 'changed' });
       return;
     }

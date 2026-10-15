@@ -51,6 +51,12 @@ export const NarratorDashboard = () => {
     setSubmitted([]);
   }, [phase, round]);
 
+  // A re-vote happens inside the same phase, so it needs its own reset: the
+  // host's first ballot is no longer on the table and must be cast again.
+  useEffect(() => {
+    if (manager?.lastVote?.revote) setSubmitted([]);
+  }, [manager?.lastVote]);
+
   if (!manager || !localPlayer) return null;
 
   const players = manager.state.players;
@@ -102,6 +108,16 @@ export const NarratorDashboard = () => {
     })
     .filter((line): line is string => !!line);
 
+  // Whatever moves the game on goes through here. A clock that runs out at the
+  // same moment the host taps the button would otherwise advance two phases
+  // from one press, and two quick taps would skip a vote entirely.
+  const advanceLock = React.useRef(0);
+  const advanceOnce = () => {
+    if (Date.now() < advanceLock.current) return;
+    advanceLock.current = Date.now() + 900;
+    manager.advance();
+  };
+
   // One tick a second while a clock is running: it moves the countdown and,
   // when it is up, moves the game on for the host.
   useEffect(() => {
@@ -109,7 +125,7 @@ export const NarratorDashboard = () => {
 
     const handle = setInterval(() => {
       forceRender(n => n + 1);
-      if (manager.isTimerDue()) manager.advance();
+      if (manager.isTimerDue()) advanceOnce();
     }, 1000);
 
     return () => clearInterval(handle);
@@ -253,7 +269,6 @@ export const NarratorDashboard = () => {
           {manager.lastVote.ballots?.map(ballot => (
             <Text key={ballot.voterId} style={styles.ballotText}>
               {ballot.voterName} → {ballot.targetName}
-              {ballot.weight > 1 ? ` (${ballot.weight} votes)` : ''}
             </Text>
           ))}
         </View>
@@ -263,7 +278,7 @@ export const NarratorDashboard = () => {
         <BaseButton
           title={nextLabel}
           onPress={() => {
-            manager.advance();
+            advanceOnce();
             setSubmitted([]);
           }}
         />

@@ -17,26 +17,39 @@ const defaults: Preferences = { lastHost: '', presetId: 'simple' };
 // expo-secure-store has no web implementation, so the web build works from
 // memory instead of throwing.
 let memory: Preferences = { ...defaults };
+// A save can arrive before the first read has come back; merging into the
+// defaults then would wipe the host address that is already on disk.
+let loaded = false;
 
 export const loadPreferences = async (): Promise<Preferences> => {
-  if (Platform.OS === 'web') return memory;
+  if (Platform.OS === 'web') {
+    loaded = true;
+    return memory;
+  }
 
   try {
     const stored = await SecureStore.getItemAsync(STORAGE_KEY);
-    if (!stored) return { ...defaults };
+    if (!stored) {
+      loaded = true;
+      return { ...defaults };
+    }
 
     const parsed = JSON.parse(stored);
     const merged = { ...defaults, ...(parsed ?? {}) };
 
     memory = merged;
+    loaded = true;
     return merged;
   } catch (error) {
     console.error('Could not read the saved preferences', error);
+    loaded = true;
     return { ...defaults };
   }
 };
 
 export const savePreferences = async (patch: Partial<Preferences>) => {
+  if (!loaded) await loadPreferences();
+
   const merged = { ...memory, ...patch };
   memory = merged;
 
