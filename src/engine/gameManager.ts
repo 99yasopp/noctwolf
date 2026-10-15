@@ -2,7 +2,7 @@ import { GameState } from './state';
 import { ActionContext, Phase, Player, Team } from './types';
 import { Role } from './roles';
 import { GameTransport, nullTransport } from './transport';
-import { NightActionKind, PlayableRole, buildRoleSet } from './roleSet';
+import { NightActionOption, PlayableRole, buildRoleSet } from './roleSet';
 import {
   KillAction,
   ProtectAction,
@@ -51,8 +51,22 @@ export class GameManager {
   private transport: GameTransport;
   private roles: Role[] = [];
   private assignments = new Map<string, PlayableRole>();
-  private nightKill: { sourceId: string; targetId: string } | null = null;
-  private nightPeek: { sourceId: string; targetId: string } | null = null;
+
+  // Every night choice this round, keyed by player and then by action id, so
+  // a role with two actions (the witch) can use both.
+  private nightChoices = new Map<string, Map<string, string>>();
+  // Actions a player has spent for good, keyed `playerId:actionId`.
+  private spent = new Set<string>();
+  // The guard may not shield the same player twice in a row.
+  private lastProtected = new Map<string, string>();
+  // Set by Cupid on the first night.
+  private lovers: [string, string] | null = null;
+  // Whoever owes a revenge kill, and the deaths that triggered it.
+  private pendingRevenge: string | null = null;
+  private revengeChoice: { hunterId: string; targetId: string } | null = null;
+  private revengeOrigin: 'Night' | 'Vote' | null = null;
+  private revengeDeaths: Player[] = [];
+
   private votes = new Map<string, string>();
   private listeners = new Set<(event: GameEvent) => void>();
 
@@ -91,8 +105,14 @@ export class GameManager {
     const set = shuffle(roleSet && roleSet.length ? roleSet : buildRoleSet(players.length));
     this.assignments.clear();
     this.votes.clear();
-    this.nightKill = null;
-    this.nightPeek = null;
+    this.nightChoices.clear();
+    this.spent.clear();
+    this.lastProtected.clear();
+    this.lovers = null;
+    this.pendingRevenge = null;
+    this.revengeChoice = null;
+    this.revengeOrigin = null;
+    this.revengeDeaths = [];
     this.actionLog = [];
     this.lastVote = null;
     this.round = 1;
@@ -105,7 +125,7 @@ export class GameManager {
       player.team = role.team;
       player.isAlive = true;
       player.statusEffects = [];
-      player.voteWeight = 1;
+      player.voteWeight = role.voteWeight ?? 1;
     });
 
     players.forEach(player => {
@@ -127,42 +147,105 @@ export class GameManager {
   advance() {
     if (this.winner) return;
 
-    const phase = this.state.currentPhase;
-
-    if (phase === 'Night') {
-      const deaths = this.resolveNight();
-      this.setPhase('Day', { deaths: this.toRefs(deaths) });
-
-      const winner = this.checkWin();
-      if (winner) this.finish(winner);
-      return;
-    }
-
-    if (phase === 'Day') {
-      this.setPhase('Vote');
-      return;
-    }
-
-    if (phase === 'Vote') {
-      this.resolveVote();
-
-      const winner = this.checkWin();
-      if (winner) {
-        this.finish(winner);
+    switch (this.state.currentPhase) {
+      case 'Night':
+        this.enterRevengeOr('Night', this.resolveNight());
         return;
-      }
 
-      this.round += 1;
-      this.setPhase('Night');
+      case 'Revenge':
+        this.enterAfterRevenge(this.resolveRevenge());
+        return;
+
+      case 'Day':
+        this.setPhase('Vote');
+        return;
+
+      case 'Vote':
+        this.resolveVote();
+        return;
+
+      default:
+        this.setPhase('Night');
+    }
+  }
+
+  // The hunter died, so the table waits for one pick before moving on.
+  private enterRevengeOr(origin: 'Night' | 'Vote', deaths: Player[]) {
+    if (this.pendingRevenge) {
+      this.revengeOrigin = origin;
+      this.revengeDeaths = deaths;
+      this.setPhase('Revenge');
       return;
     }
 
+    if (origin === 'Night') this.enterDay(deaths);
+    else this.enterNextRound();
+  }
+
+  private enterAfterRevenge(deaths: Player[]) {
+    if (this.revengeOrigin === 'Night') this.enterDay(deaths);
+    else this.enterNextRound();
+  }
+
+  private enterDay(deaths: Player[]) {
+    this.setPhase('Day', { deaths: this.toRefs(deaths) });
+
+    const winner = this.checkWin();
+    if (winner) this.finish(winner);
+  }
+
+  private enterNextRound() {
+    const winner = this.checkWin();
+    if (winner) {
+      this.finish(winner);
+      return;
+    }
+
+    this.round += 1;
     this.setPhase('Night');
   }
 
   // ------------------------------------------------------------------ actions
 
-  handleNightAction(playerId: string, action: NightActionKind, targetId: string): boolean {
+  private choicesFor(playerId: string): Map<string, string> {
+    let choices = this.nightChoices.get(playerId);
+    if (!choices) {
+      choices = new Map<string, string>();
+      this.nightChoices.set(playerId, choices);
+    }
+    return choices;
+  }
+
+  private chargeKey(playerId: string, actionId: string): string {
+    return `${playerId}:${actionId}`;
+  }
+
+  private hasChoice(playerId: string, actionId: string): boolean {
+    return this.nightChoices.get(playerId)?.has(actionId) ?? false;
+  }
+
+  // Whether this action is on the table for this player tonight. The wolves
+  // skip the first night, the cupid only works on the first night, and a
+  // spent potion is gone for good.
+  private isOptionOffered(playerId: string, option: NightActionOption): boolean {
+    if (option.oncePerGame && this.spent.has(this.chargeKey(playerId, option.id))) return false;
+    if (option.kind === 'link' && this.round !== 1) return false;
+    if (option.kind === 'attack' && this.isQuietNight()) return false;
+    return true;
+  }
+
+  // The legal targets for one action, shared by the players and the bots.
+  private validTargets(player: Player, option: NightActionOption): Player[] {
+    return this.state.players.filter(target => {
+      if (!target.isAlive) return false;
+      if (target.id === player.id && !option.allowSelf) return false;
+      if (option.kind === 'attack' && this.assignments.get(target.id)?.team === 'Wolf') return false;
+      if (option.kind === 'protect' && this.lastProtected.get(player.id) === target.id) return false;
+      return true;
+    });
+  }
+
+  handleNightAction(playerId: string, actionId: string, targetId: string): boolean {
     if (this.winner) return false;
     if (this.state.currentPhase !== 'Night') return false;
 
@@ -170,24 +253,28 @@ export class GameManager {
     if (!actor || !actor.isAlive) return false;
 
     const role = this.assignments.get(playerId);
-    if (!role || role.nightAction !== action) return false;
+    const option = role?.nightActions?.find(candidate => candidate.id === actionId);
+    if (!role || !option) return false;
+    if (!this.isOptionOffered(playerId, option)) return false;
+    if (!this.validTargets(actor, option).some(target => target.id === targetId)) return false;
 
-    // Without this the wolf reaches parity on night one in a three player
-    // game, which hands it a win before the village ever gets to vote.
-    if (action === 'kill' && this.isQuietNight()) return false;
+    this.choicesFor(playerId).set(actionId, targetId);
+    this.emit({ type: 'changed' });
+    return true;
+  }
 
+  // The dead hunter's parting shot.
+  handleRevenge(playerId: string, targetId: string): boolean {
+    if (this.winner) return false;
+    if (this.state.currentPhase !== 'Revenge') return false;
+    if (this.pendingRevenge !== playerId) return false;
+
+    const hunter = this.state.players.find(p => p.id === playerId);
     const target = this.state.players.find(p => p.id === targetId);
-    if (!target || !target.isAlive) return false;
+    if (!hunter || !target || !target.isAlive) return false;
+    if (target.id === playerId) return false;
 
-    if (action === 'kill') {
-      // A wolf cannot devour its own pack.
-      if (this.assignments.get(targetId)?.team === 'Wolf') return false;
-      this.nightKill = { sourceId: playerId, targetId };
-    } else {
-      if (targetId === playerId) return false;
-      this.nightPeek = { sourceId: playerId, targetId };
-    }
-
+    this.revengeChoice = { hunterId: playerId, targetId };
     this.emit({ type: 'changed' });
     return true;
   }
@@ -230,10 +317,26 @@ export class GameManager {
     return this.state.players.filter(player => {
       if (!player.isAlive) return false;
       const role = this.assignments.get(player.id);
-      if (!role?.nightAction) return false;
-      if (role.nightAction === 'kill' && this.isQuietNight()) return false;
-      return role.nightAction === 'kill' ? !this.nightKill : !this.nightPeek;
+      if (!role?.nightActions) return false;
+
+      return role.nightActions.some(
+        option => this.isOptionOffered(player.id, option) && !this.hasChoice(player.id, option.id),
+      );
     });
+  }
+
+  // Who the table is waiting on to take someone down with them.
+  getPendingRevengeHunter(): Player | null {
+    if (this.state.currentPhase !== 'Revenge' || !this.pendingRevenge) return null;
+    return this.state.players.find(p => p.id === this.pendingRevenge) ?? null;
+  }
+
+  hasChosenRevenge(playerId: string): boolean {
+    return this.revengeChoice?.hunterId === playerId;
+  }
+
+  getLovers(): [string, string] | null {
+    return this.lovers;
   }
 
   // Players who have not voted yet.
@@ -244,8 +347,11 @@ export class GameManager {
 
   hasActed(playerId: string): boolean {
     const role = this.assignments.get(playerId);
-    if (!role?.nightAction) return false;
-    return role.nightAction === 'kill' ? !!this.nightKill : !!this.nightPeek;
+    if (!role?.nightActions) return false;
+
+    return role.nightActions
+      .filter(option => this.isOptionOffered(playerId, option))
+      .every(option => this.hasChoice(playerId, option.id));
   }
 
   hasVoted(playerId: string): boolean {
@@ -299,8 +405,13 @@ export class GameManager {
       team: role.team,
       description: role.description,
       allies,
-      nightAction: role.nightAction,
-      nightActionLabel: role.nightActionLabel,
+      nightActions: role.nightActions?.map(option => ({
+        id: option.id,
+        label: option.label,
+        kind: option.kind,
+      })),
+      revengeOnDeath: role.revengeOnDeath,
+      linksLovers: role.linksLovers,
     };
 
     this.transport.sendToPlayer(playerId, {
@@ -340,8 +451,7 @@ export class GameManager {
     this.state.setPhase(phase);
 
     if (phase === 'Night') {
-      this.nightKill = null;
-      this.nightPeek = null;
+      this.nightChoices.clear();
       this.votes.clear();
     }
 
@@ -365,39 +475,26 @@ export class GameManager {
 
   // Bots pick at random: good enough to exercise every branch of the loop.
   private autoPlayBots() {
-    const alive = this.state.players.filter(p => p.isAlive);
-
     if (this.state.currentPhase === 'Night') {
-      if (!this.nightKill && !this.isQuietNight()) {
-        const wolf = alive.find(
-          p => p.isBot && this.assignments.get(p.id)?.nightAction === 'kill',
-        );
-        if (wolf) {
-          const prey = alive.filter(
-            p => p.id !== wolf.id && this.assignments.get(p.id)?.team !== 'Wolf',
-          );
-          if (prey.length > 0) {
-            const target = prey[Math.floor(Math.random() * prey.length)];
-            this.nightKill = { sourceId: wolf.id, targetId: target.id };
-          }
-        }
-      }
+      this.state.players
+        .filter(player => player.isAlive && player.isBot)
+        .forEach(player => {
+          const role = this.assignments.get(player.id);
+          role?.nightActions?.forEach(option => {
+            if (!this.isOptionOffered(player.id, option)) return;
+            if (this.hasChoice(player.id, option.id)) return;
 
-      if (!this.nightPeek) {
-        const seer = alive.find(
-          p => p.isBot && this.assignments.get(p.id)?.nightAction === 'peek',
-        );
-        if (seer) {
-          const candidates = alive.filter(p => p.id !== seer.id);
-          if (candidates.length > 0) {
-            const target = candidates[Math.floor(Math.random() * candidates.length)];
-            this.nightPeek = { sourceId: seer.id, targetId: target.id };
-          }
-        }
-      }
+            const targets = this.validTargets(player, option);
+            if (targets.length === 0) return;
+
+            const target = targets[Math.floor(Math.random() * targets.length)];
+            this.handleNightAction(player.id, option.id, target.id);
+          });
+        });
     }
 
     if (this.state.currentPhase === 'Vote') {
+      const alive = this.state.players.filter(p => p.isAlive);
       alive.forEach(voter => {
         if (!voter.isBot || this.votes.has(voter.id)) return;
         const candidates = alive.filter(p => p.id !== voter.id);
@@ -406,6 +503,17 @@ export class GameManager {
         this.votes.set(voter.id, target.id);
       });
     }
+
+    if (this.state.currentPhase === 'Revenge') {
+      const hunter = this.getPendingRevengeHunter();
+      if (hunter?.isBot && !this.hasChosenRevenge(hunter.id)) {
+        const candidates = this.state.players.filter(p => p.isAlive && p.id !== hunter.id);
+        if (candidates.length > 0) {
+          const target = candidates[Math.floor(Math.random() * candidates.length)];
+          this.handleRevenge(hunter.id, target.id);
+        }
+      }
+    }
   }
 
   // --------------------------------------------------------------- resolution
@@ -413,19 +521,99 @@ export class GameManager {
   private resolveNight(): Player[] {
     const deaths: Player[] = [];
 
+    // Gather every choice made tonight, by kind of action.
+    const shielded = new Set<string>();
+    const healed = new Map<string, string>();
+    const poisoned = new Map<string, string>();
+    let attack: { sourceId: string; targetId: string } | null = null;
+    let inspect: { sourceId: string; targetId: string } | null = null;
+    let link: { sourceId: string; targetId: string } | null = null;
+
+    this.nightChoices.forEach((choices, playerId) => {
+      const actor = this.state.players.find(p => p.id === playerId);
+      const role = this.assignments.get(playerId);
+      if (!actor?.isAlive || !role) return;
+
+      choices.forEach((targetId, actionId) => {
+        const option = role.nightActions?.find(candidate => candidate.id === actionId);
+        if (!option) return;
+
+        switch (option.kind) {
+          case 'protect':
+            shielded.add(targetId);
+            this.lastProtected.set(playerId, targetId);
+            break;
+          case 'heal':
+            healed.set(targetId, playerId);
+            break;
+          case 'poison':
+            poisoned.set(targetId, playerId);
+            break;
+          case 'attack':
+            attack = { sourceId: playerId, targetId };
+            break;
+          case 'inspect':
+            inspect = { sourceId: playerId, targetId };
+            break;
+          case 'link':
+            link = { sourceId: playerId, targetId };
+            break;
+        }
+      });
+    });
+
+    // Read once into locals: the values were assigned inside a callback, which
+    // control-flow analysis cannot follow.
+    const bite = attack as { sourceId: string; targetId: string } | null;
+    const peek = inspect as { sourceId: string; targetId: string } | null;
+    const bond = link as { sourceId: string; targetId: string } | null;
+
     if (this.isQuietNight()) {
       this.actionLog.push('Night 1 was peaceful: the wolves only looked around.');
-    } else if (this.nightKill) {
-      const target = this.state.players.find(p => p.id === this.nightKill!.targetId);
-      if (target && target.isAlive && !target.statusEffects.includes('Protected')) {
-        target.isAlive = false;
-        deaths.push(target);
-        this.actionLog.push(`Night ${this.round}: ${target.name} was devoured.`);
+    } else if (bite) {
+      const target = this.state.players.find(p => p.id === bite.targetId);
+      if (target?.isAlive) {
+        if (shielded.has(target.id)) {
+          this.actionLog.push(`Night ${this.round}: the guard saved ${target.name}.`);
+        } else if (healed.has(target.id)) {
+          // Spent only when it actually saves someone.
+          const healerId = healed.get(target.id)!;
+          this.spent.add(this.chargeKey(healerId, 'heal'));
+          this.actionLog.push(`Night ${this.round}: the witch saved ${target.name}.`);
+        } else {
+          target.isAlive = false;
+          deaths.push(target);
+          this.actionLog.push(`Night ${this.round}: ${target.name} was devoured.`);
+        }
       }
     }
 
-    if (this.nightPeek) {
-      const { sourceId, targetId } = this.nightPeek;
+    // Poison is not the wolves' bite: shielding does not stop it.
+    poisoned.forEach((poisonerId, targetId) => {
+      this.spent.add(this.chargeKey(poisonerId, 'poison'));
+
+      const target = this.state.players.find(p => p.id === targetId);
+      if (target?.isAlive) {
+        target.isAlive = false;
+        deaths.push(target);
+        this.actionLog.push(`Night ${this.round}: ${target.name} was poisoned.`);
+      }
+    });
+
+    if (bond) {
+      this.lovers = [bond.sourceId, bond.targetId];
+      const cupid = this.state.players.find(p => p.id === bond.sourceId);
+      const beloved = this.state.players.find(p => p.id === bond.targetId);
+      this.actionLog.push(`Cupid tied ${cupid?.name} and ${beloved?.name} together.`);
+      this.emit({
+        type: 'secret',
+        playerId: bond.sourceId,
+        message: `You are tied to ${beloved?.name}. If either of you dies, the other dies too.`,
+      });
+    }
+
+    if (peek) {
+      const { sourceId, targetId } = peek;
       const target = this.state.players.find(p => p.id === targetId);
       if (target) {
         const isWolf = this.assignments.get(target.id)?.team === 'Wolf';
@@ -441,9 +629,65 @@ export class GameManager {
       }
     }
 
+    this.applyLoverDeaths(deaths);
+
+    // Whoever dies leaves a parting shot for the hunter.
+    this.pendingRevenge =
+      deaths.find(
+        dead =>
+          this.assignments.get(dead.id)?.revengeOnDeath &&
+          this.state.players.some(other => other.isAlive),
+      )?.id ?? null;
+
     if (deaths.length === 0) {
       this.actionLog.push(`Night ${this.round}: nobody died.`);
     }
+
+    return deaths;
+  }
+
+  // Lovers are tied together: one going takes the other along.
+  private applyLoverDeaths(deaths: Player[]) {
+    if (!this.lovers) return;
+
+    const [first, second] = this.lovers;
+    const queue = [...deaths];
+
+    while (queue.length > 0) {
+      const fallen = queue.shift()!;
+      const partnerId = fallen.id === first ? second : fallen.id === second ? first : null;
+      if (!partnerId) continue;
+
+      const partner = this.state.players.find(p => p.id === partnerId);
+      if (!partner?.isAlive) continue;
+
+      partner.isAlive = false;
+      deaths.push(partner);
+      queue.push(partner);
+      this.actionLog.push(`Night ${this.round}: ${partner.name} died of a broken heart.`);
+    }
+  }
+
+  private resolveRevenge(): Player[] {
+    const deaths = [...this.revengeDeaths];
+    const hunterId = this.pendingRevenge;
+    const hunter = hunterId ? this.state.players.find(p => p.id === hunterId) : null;
+
+    if (this.revengeChoice) {
+      const target = this.state.players.find(p => p.id === this.revengeChoice!.targetId);
+      if (target?.isAlive) {
+        target.isAlive = false;
+        deaths.push(target);
+        this.actionLog.push(`${hunter?.name ?? 'The Hunter'} took ${target.name} down.`);
+        this.applyLoverDeaths(deaths);
+      }
+    } else if (hunter) {
+      this.actionLog.push(`${hunter.name} took nobody down.`);
+    }
+
+    this.pendingRevenge = null;
+    this.revengeChoice = null;
+    this.revengeDeaths = [];
 
     return deaths;
   }
@@ -477,6 +721,7 @@ export class GameManager {
 
     let eliminatedId: string | null = null;
     let eliminatedName: string | null = null;
+    const deaths: Player[] = [];
 
     if (topId && !tie && topVotes > 0) {
       const target = this.state.players.find(p => p.id === topId);
@@ -484,7 +729,9 @@ export class GameManager {
         target.isAlive = false;
         eliminatedId = target.id;
         eliminatedName = target.name;
+        deaths.push(target);
         this.actionLog.push(`Day ${this.round}: ${target.name} was voted out.`);
+        this.applyLoverDeaths(deaths);
       }
     } else if (topVotes > 0) {
       this.actionLog.push(`Day ${this.round}: the vote was tied, nobody was eliminated.`);
@@ -511,11 +758,33 @@ export class GameManager {
       timestamp: Date.now(),
     });
 
+    this.pendingRevenge =
+      deaths.find(
+        dead =>
+          this.assignments.get(dead.id)?.revengeOnDeath &&
+          this.state.players.some(other => other.isAlive),
+      )?.id ?? null;
+
     this.emit({ type: 'changed' });
+
+    // The hunter may still owe a shot before the round can close.
+    this.enterRevengeOr('Vote', deaths);
   }
 
   private checkWin(): Team | null {
     const alive = this.state.players.filter(p => p.isAlive);
+
+    // The lovers win as a pair once everyone else is gone, whatever teams
+    // they were dealt. Checked first: with two players left the wolves would
+    // otherwise win on parity before the pair could be recognised.
+    if (
+      this.lovers &&
+      alive.length === 2 &&
+      this.lovers.every(id => alive.some(p => p.id === id))
+    ) {
+      return 'Solitary';
+    }
+
     const wolves = alive.filter(p => this.assignments.get(p.id)?.team === 'Wolf');
     const others = alive.filter(p => this.assignments.get(p.id)?.team !== 'Wolf');
 
@@ -529,7 +798,11 @@ export class GameManager {
   private finish(winner: Team) {
     this.winner = winner;
     this.actionLog.push(
-      winner === 'Wolf' ? 'The Werewolves win.' : 'The Village wins.',
+      winner === 'Wolf'
+        ? 'The Werewolves win.'
+        : winner === 'Solitary'
+        ? 'The Lovers win.'
+        : 'The Village wins.',
     );
 
     this.transport.broadcast({

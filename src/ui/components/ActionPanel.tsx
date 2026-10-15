@@ -10,8 +10,9 @@ export interface OwnRole {
   name: string;
   team: string;
   description: string;
-  nightAction?: 'kill' | 'peek';
-  nightActionLabel?: string;
+  nightActions?: { id: string; label: string; kind: string }[];
+  revengeOnDeath?: boolean;
+  linksLovers?: boolean;
   allies?: { id: string; name: string }[];
 }
 
@@ -26,12 +27,19 @@ interface Props {
   role: OwnRole | null;
   selfId: string | null;
   targets: ActionTarget[];
-  submitted: boolean;
+  // Action ids already sent this phase, so one part of a two-part role is not
+  // hidden when the other has been answered.
+  submitted: string[];
   gameOver: boolean;
   // Night 1 is peaceful, so the wolf is not asked to choose anyone.
   quietNight?: boolean;
-  onChoose: (targetId: string) => void;
+  onChoose: (actionId: string, targetId: string) => void;
 }
+
+// Only the guard's shield and the witch's potion may be aimed at yourself.
+const allowsSelf = (kind: string) => kind === 'protect' || kind === 'heal';
+// A wolf never eats its own pack.
+const excludesPack = (kind: string) => kind === 'attack';
 
 export const ActionPanel: React.FC<Props> = ({
   phase,
@@ -45,57 +53,110 @@ export const ActionPanel: React.FC<Props> = ({
 }) => {
   if (gameOver || !phase || !role || !selfId) return null;
 
-  if (phase === 'Night' && !role.nightAction) {
-    return (
-      <View style={styles.panel}>
-        <Text style={styles.heading}>Night</Text>
-        <Text style={styles.body}>You have no night action. Sleep well.</Text>
-      </View>
-    );
-  }
-
-  if (phase === 'Night' && quietNight && role.nightAction === 'kill') {
-    return (
-      <View style={styles.panel}>
-        <Text style={styles.heading}>Night 1 is peaceful</Text>
-        <Text style={styles.body}>
-          The wolves only look around tonight. Nobody will be devoured, so tomorrow's
-          vote decides everything.
-        </Text>
-      </View>
-    );
-  }
-
-  if (phase !== 'Night' && phase !== 'Vote') return null;
-
+  const alive = targets.filter(target => target.isAlive);
   const allyIds = new Set((role.allies ?? []).map(ally => ally.id));
-  const candidates = targets.filter(
-    target => target.isAlive && target.id !== selfId && !allyIds.has(target.id),
-  );
 
-  const heading = phase === 'Night' ? role.nightActionLabel ?? 'Choose a player' : 'Vote to eliminate';
+  if (phase === 'Revenge') {
+    // Only the hunter who died gets this panel.
+    if (!role.revengeOnDeath) return null;
 
-  if (submitted) {
     return (
       <View style={styles.panel}>
-        <Text style={styles.heading}>{heading}</Text>
-        <Text style={styles.body}>Submitted. Waiting for the host...</Text>
+        <Text style={styles.heading}>Take someone down with you</Text>
+        {submitted.includes('revenge') ? (
+          <Text style={styles.body}>Chosen. Waiting for the host...</Text>
+        ) : (
+          alive
+            .filter(target => target.id !== selfId)
+            .map(target => (
+              <BaseButton
+                key={target.id}
+                title={target.name}
+                onPress={() => onChoose('revenge', target.id)}
+                variant="secondary"
+              />
+            ))
+        )}
+      </View>
+    );
+  }
+
+  if (phase === 'Vote') {
+    const voted = submitted.includes('vote');
+
+    return (
+      <View style={styles.panel}>
+        <Text style={styles.heading}>Vote to eliminate</Text>
+        {voted ? (
+          <Text style={styles.body}>Submitted. Waiting for the host...</Text>
+        ) : (
+          alive
+            .filter(target => target.id !== selfId)
+            .map(target => (
+              <BaseButton
+                key={target.id}
+                title={target.name}
+                onPress={() => onChoose('vote', target.id)}
+                variant="secondary"
+              />
+            ))
+        )}
+      </View>
+    );
+  }
+
+  if (phase !== 'Night') return null;
+
+  const declared = role.nightActions ?? [];
+  // The wolves look around on the first night instead of feeding.
+  const offered = declared.filter(option => !(quietNight && option.kind === 'attack'));
+
+  if (offered.length === 0) {
+    const peaceful = quietNight && declared.some(option => option.kind === 'attack');
+
+    return (
+      <View style={styles.panel}>
+        <Text style={styles.heading}>
+          {peaceful ? 'Night 1 is peaceful' : 'Night'}
+        </Text>
+        <Text style={styles.body}>
+          {peaceful
+            ? "The wolves only look around tonight. Nobody will be devoured, so tomorrow's vote decides everything."
+            : 'You have no night action. Sleep well.'}
+        </Text>
       </View>
     );
   }
 
   return (
     <View style={styles.panel}>
-      <Text style={styles.heading}>{heading}</Text>
-      {candidates.map(target => (
-        <BaseButton
-          key={target.id}
-          title={target.name}
-          onPress={() => onChoose(target.id)}
-          variant="secondary"
-        />
-      ))}
-      {candidates.length === 0 && <Text style={styles.body}>No valid targets.</Text>}
+      {offered.map(option => {
+        const candidates = alive.filter(target => {
+          if (target.id === selfId && !allowsSelf(option.kind)) return false;
+          if (excludesPack(option.kind) && allyIds.has(target.id)) return false;
+          return true;
+        });
+
+        return (
+          <View key={option.id}>
+            <Text style={styles.heading}>{option.label}</Text>
+            {submitted.includes(option.id) ? (
+              <Text style={styles.body}>Submitted.</Text>
+            ) : candidates.length === 0 ? (
+              <Text style={styles.body}>No valid targets.</Text>
+            ) : (
+              candidates.map(target => (
+                <BaseButton
+                  key={target.id}
+                  title={target.name}
+                  onPress={() => onChoose(option.id, target.id)}
+                  variant="secondary"
+                />
+              ))
+            )}
+          </View>
+        );
+      })}
     </View>
   );
 };

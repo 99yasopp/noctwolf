@@ -25,8 +25,12 @@ export const PlayerScreen = () => {
   const [secrets, setSecrets] = useState<string[]>([]);
   const [voteResult, setVoteResult] = useState<VoteResultPayload | null>(null);
   const [outcome, setOutcome] = useState<GameOverPayload | null>(null);
-  const [submitted, setSubmitted] = useState(false);
+  const [submitted, setSubmitted] = useState<string[]>([]);
   const [status, setStatus] = useState('Connecting to host...');
+  const [disconnected, setDisconnected] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
+  // Bumped to re-attach the handlers to the new socket after a reconnect.
+  const [linkVersion, setLinkVersion] = useState(0);
 
   useEffect(() => {
     const client = lobby.client;
@@ -48,12 +52,19 @@ export const PlayerScreen = () => {
           setRound(payload.round);
           setRoster(payload.players ?? []);
           setDeaths(payload.deaths ?? []);
-          setSubmitted(false);
+          setSubmitted([]);
           break;
         }
 
         case 'ROLE_ASSIGN':
+          // A rematch re-deals into the seat we already hold, so everything
+          // from the previous game has to go with the new role.
           setRole(message.payload as RoleAssignPayload);
+          setSecrets([]);
+          setVoteResult(null);
+          setOutcome(null);
+          setDeaths([]);
+          setSubmitted([]);
           break;
 
         case 'SECRET_INFO':
@@ -67,53 +78,102 @@ export const PlayerScreen = () => {
         case 'GAME_OVER':
           setOutcome(message.payload as GameOverPayload);
           break;
+
+        case 'KICK':
+          // Either the host took this seat away, or the game was already
+          // running when this device joined.
+          setStatus(
+            message.payload?.reason === 'game-running'
+              ? 'A game is already running on this host.'
+              : 'The host removed you from the table.',
+          );
+          break;
       }
     });
+
+    client.onClose(() => setDisconnected(true));
 
     // The game may have started before this screen mounted, so ask the host
     // to repeat what is private to us.
     client.sendMessage({ type: 'STATE_REQUEST', payload: {}, timestamp: Date.now() });
 
     return () => client.offMessage();
-  }, []);
+  }, [linkVersion]);
+
+  const reconnect = async () => {
+    if (!localPlayer) return;
+
+    setReconnecting(true);
+    const reconnected = await lobby.reconnect(localPlayer);
+    setReconnecting(false);
+
+    if (!reconnected) {
+      setStatus('Could not reach the host again.');
+      return;
+    }
+
+    setDisconnected(false);
+    // lobby.reconnect swapped in a fresh client, so re-attach to it.
+    setLinkVersion(version => version + 1);
+  };
 
   const ownRole: OwnRole | null = role
     ? {
         name: role.roleName,
         team: role.team,
         description: role.description,
-        nightAction: role.nightAction,
-        nightActionLabel: role.nightActionLabel,
+        nightActions: role.nightActions,
+        revengeOnDeath: role.revengeOnDeath,
+        linksLovers: role.linksLovers,
         allies: role.allies ?? [],
       }
     : null;
 
-  const submit = (targetId: string) => {
+  const submit = (actionId: string, targetId: string) => {
     const client = lobby.client;
-    if (!client || !localPlayer || !role) return;
+    if (!client || !localPlayer) return;
 
-    if (phase === 'Night' && role.nightAction) {
-      client.sendMessage({
-        type: 'NIGHT_ACTION',
-        payload: { action: role.nightAction, targetId },
-        senderId: localPlayer.id,
-        timestamp: Date.now(),
-      });
-    } else if (phase === 'Vote') {
+    if (actionId === 'vote') {
       client.sendMessage({
         type: 'VOTE_CAST',
         payload: { targetId },
         senderId: localPlayer.id,
         timestamp: Date.now(),
       });
+    } else if (actionId === 'revenge') {
+      client.sendMessage({
+        type: 'REVENGE',
+        payload: { targetId },
+        senderId: localPlayer.id,
+        timestamp: Date.now(),
+      });
+    } else {
+      client.sendMessage({
+        type: 'NIGHT_ACTION',
+        payload: { action: actionId, targetId },
+        senderId: localPlayer.id,
+        timestamp: Date.now(),
+      });
     }
 
-    setSubmitted(true);
+    setSubmitted(prev => [...prev, actionId]);
   };
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.header}>Werewolf</Text>
+
+      {disconnected && (
+        <View style={styles.alertCard}>
+          <Text style={styles.alertText}>
+            Lost connection to the host. Your seat is held.
+          </Text>
+          <BaseButton
+            title={reconnecting ? 'Reconnecting...' : 'Reconnect'}
+            onPress={reconnect}
+          />
+        </View>
+      )}
 
       <View style={styles.roleCard}>
         <Text style={styles.roleLabel}>Your Role</Text>
@@ -226,6 +286,17 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     fontWeight: 'bold',
     marginBottom: theme.spacing.medium,
+  },
+  alertCard: {
+    backgroundColor: '#3A1E24',
+    padding: theme.spacing.medium,
+    borderRadius: theme.borderRadius,
+    marginBottom: theme.spacing.medium,
+  },
+  alertText: {
+    color: theme.colors.text,
+    fontSize: 15,
+    marginBottom: theme.spacing.small,
   },
   roleCard: {
     backgroundColor: theme.colors.primary,

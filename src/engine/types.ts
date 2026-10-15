@@ -1,4 +1,4 @@
-export type Phase = 'Night' | 'Day' | 'Vote' | 'Debate' | 'Election';
+export type Phase = 'Night' | 'Day' | 'Vote' | 'Revenge' | 'Debate' | 'Election';
 
 export type Team = 'Village' | 'Wolf' | 'Solitary';
 

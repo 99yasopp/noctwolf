@@ -8,6 +8,7 @@ export class PlayerClient {
   private messageHandler: ((message: NetworkMessage) => void) | null = null;
   private connectHandler: (() => void) | null = null;
   private errorHandler: ((error: any) => void) | null = null;
+  private closeHandler: (() => void) | null = null;
   private connected = false;
 
   constructor(host: string, port: number = 12345) {
@@ -26,6 +27,13 @@ export class PlayerClient {
     this.socket.on('error', (error: any) => {
       console.error('Client socket error', error);
       this.errorHandler?.(error);
+    });
+
+    // The host closing the room, or the phone sleeping, ends the connection
+    // without an error. Without this the client screen just freezes.
+    this.socket.on('close', () => {
+      this.connected = false;
+      this.closeHandler?.();
     });
 
     // A single 'data' listener dispatches to the registered callback, so
@@ -58,6 +66,14 @@ export class PlayerClient {
     this.errorHandler = callback;
   }
 
+  onClose(callback: () => void) {
+    this.closeHandler = callback;
+  }
+
+  offClose() {
+    this.closeHandler = null;
+  }
+
   onMessage(callback: (message: NetworkMessage) => void) {
     this.messageHandler = callback;
   }
@@ -75,6 +91,7 @@ export class PlayerClient {
     this.messageHandler = null;
     this.connectHandler = null;
     this.errorHandler = null;
+    this.closeHandler = null;
     this.connected = false;
   }
 }

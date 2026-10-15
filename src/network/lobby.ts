@@ -18,6 +18,11 @@ const JOIN_TIMEOUT_MS = 15000;
 // anything addressed to it is handled locally by the UI instead.
 export const HOST_PLAYER_ID = 'host-1';
 
+// Stable for the life of the app run. The host keys a seat by player id, so a
+// guest that reconnects has to send the id it used the first time to reclaim
+// its seat instead of appearing as a second player.
+export const LOCAL_GUEST_ID = `g-${Math.random().toString(36).substring(2, 10)}`;
+
 // Discovery is best-effort. If the native module is missing or fails to load
 // we simply disable it and let players join by IP.
 let zeroconf: ZeroconfLike | null = null;
@@ -40,6 +45,26 @@ export class LobbyManager implements GameTransport {
 
   private discoveredHosts: any[] = [];
   private foundListenerAttached = false;
+
+  // The last address this device joined, so a dropped guest can come back to
+  // the same host without retyping it.
+  private lastHost: string | null = null;
+  private lastPort: number = GAME_PORT;
+
+  // The roster is owned here but rendered elsewhere; screens subscribe so a
+  // player joining, leaving or being removed shows up without polling.
+  private rosterListeners = new Set<() => void>();
+
+  onRosterChanged(listener: () => void): () => void {
+    this.rosterListeners.add(listener);
+    return () => {
+      this.rosterListeners.delete(listener);
+    };
+  }
+
+  private notifyRoster() {
+    this.rosterListeners.forEach(listener => listener());
+  }
 
   private getZeroconf(): ZeroconfLike | null {
     if (zeroconfUnavailable) return null;
@@ -91,9 +116,36 @@ export class LobbyManager implements GameTransport {
           const player = msg.payload?.player;
           if (!player?.id) return;
 
-          this.addPlayer(player);
+          const gameRunning = this.gameMessageHandler !== null;
+          const knownSeat = this.players.some(p => p.id === player.id);
+
+          // Mid-game the roster is frozen: a stranger joining now would have
+          // no role and would swing the win conditions.
+          if (gameRunning && !knownSeat) {
+            this.server?.sendToPlayer(socket, {
+              type: 'KICK',
+              payload: { reason: 'game-running' },
+              timestamp: Date.now(),
+            });
+            return;
+          }
+
+          // Only overwrite the seat before the game starts. During a game the
+          // reconnect must not revive a dead player or blank their role.
+          if (!gameRunning) this.addPlayer(player);
+
           this.registerSocket(player.id, socket);
           this.broadcastPlayerList();
+
+          // A reconnecting player missed whatever happened while they were
+          // away, so replay what is private to them.
+          if (gameRunning) {
+            this.gameMessageHandler?.(player.id, {
+              type: 'STATE_REQUEST',
+              payload: {},
+              timestamp: Date.now(),
+            });
+          }
           return;
         }
 
@@ -121,10 +173,14 @@ export class LobbyManager implements GameTransport {
         // Mid-game the player keeps their seat so they can reconnect; before
         // the game starts they are simply removed.
         const gameRunning = this.gameMessageHandler !== null;
-        if (gameRunning) return;
+        if (gameRunning) {
+          // Keep the seat, but the screen has to be able to say so.
+          this.notifyRoster();
+          return;
+        }
 
         const before = this.players.length;
-        this.players = this.players.filter(p => p.id !== playerId);
+        this.removePlayerById(playerId);
         if (this.players.length !== before) this.broadcastPlayerList();
       });
     }
@@ -171,6 +227,70 @@ export class LobbyManager implements GameTransport {
     this.gameMessageHandler = null;
     this.players = [];
     this.roomCode = '';
+    this.notifyRoster();
+  }
+
+  // ---------------------------------------------------------------- roster ops
+
+  // Remove a player from the table: a guest that is stuck, idle, or simply not
+  // wanted. The host can keep the game moving without restarting the room.
+  removePlayer(playerId: string) {
+    const socket = this.sockets.get(playerId);
+
+    if (socket) {
+      this.sendToPlayer(playerId, {
+        type: 'KICK',
+        payload: {},
+        timestamp: Date.now(),
+      });
+      this.sockets.delete(playerId);
+      this.socketOwners.delete(socket);
+    }
+
+    const before = this.players.length;
+    this.removePlayerById(playerId);
+    if (this.players.length === before) return;
+
+    this.broadcastPlayerList();
+    this.notifyRoster();
+  }
+
+  // Removed in place: the running game holds a reference to this same array,
+  // so replacing it would leave the departed player on the board.
+  private removePlayerById(playerId: string): boolean {
+    const index = this.players.findIndex(p => p.id === playerId);
+    if (index < 0) return false;
+
+    this.players.splice(index, 1);
+    return true;
+  }
+
+  // Put every player back on their feet for a rematch. Roles are cleared here
+  // and re-dealt by GameManager.start(); the sockets are deliberately kept so
+  // nobody has to rejoin.
+  resetRoster() {
+    this.players.forEach(player => {
+      player.isAlive = true;
+      player.role = 'Unknown';
+      player.team = 'Village';
+      player.statusEffects = [];
+      player.voteWeight = 1;
+    });
+
+    this.broadcastPlayerList();
+    this.notifyRoster();
+  }
+
+  // Seats that should have a socket but do not: a guest whose link dropped.
+  // The host and the test players are local and never have one.
+  disconnectedPlayers(): Player[] {
+    return this.players.filter(
+      p => p.id !== HOST_PLAYER_ID && !p.isBot && !this.sockets.has(p.id),
+    );
+  }
+
+  isHosting(): boolean {
+    return !!this.server?.isStarted();
   }
 
   // Join a host found over mDNS/Bonjour. Kept for the room-code flow.
@@ -224,6 +344,8 @@ export class LobbyManager implements GameTransport {
     this.disconnectClient();
     const client = new PlayerClient(host, port);
     this.client = client;
+    this.lastHost = host;
+    this.lastPort = port;
 
     return new Promise(resolve => {
       let settled = false;
@@ -262,6 +384,18 @@ export class LobbyManager implements GameTransport {
   disconnectClient() {
     this.client?.disconnect();
     this.client = undefined;
+  }
+
+  // Where this device last joined, or null when it never has.
+  lastHostAddress(): string | null {
+    return this.lastHost;
+  }
+
+  // Join the same host again with the same player id. The host maps the id to
+  // the new socket and keeps the seat, so the game can continue.
+  reconnect(player: Player): Promise<boolean> {
+    if (!this.lastHost) return Promise.resolve(false);
+    return this.connect(this.lastHost, player, this.lastPort);
   }
 
   // ------------------------------------------------------------- game traffic
@@ -310,6 +444,7 @@ export class LobbyManager implements GameTransport {
       payload: { players: this.publicPlayers() },
       timestamp: Date.now(),
     });
+    this.notifyRoster();
   }
 
   // Upserts by id so re-hosting (or a reconnecting player) cannot create
@@ -318,9 +453,11 @@ export class LobbyManager implements GameTransport {
     const existingIndex = this.players.findIndex(p => p.id === player.id);
     if (existingIndex >= 0) {
       this.players[existingIndex] = player;
+      this.notifyRoster();
       return;
     }
     this.players.push(player);
+    this.notifyRoster();
   }
 
   getPlayers(): Player[] {

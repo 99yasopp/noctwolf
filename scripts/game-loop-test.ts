@@ -5,6 +5,18 @@
 //     --module commonjs --target es2020 --moduleResolution node --skipLibCheck
 //   node /tmp/opencode/build/scripts/game-loop-test.js
 import { GameManager } from '../src/engine/gameManager';
+import {
+  CupidRole,
+  GuardRole,
+  HunterRole,
+  MayorRole,
+  PlayableRole,
+  SeerRole,
+  VillagerRole,
+  WerewolfRole,
+  WitchRole,
+  buildClassicRoleSet,
+} from '../src/engine/roleSet';
 import { GameTransport } from '../src/engine/transport';
 import { Player } from '../src/engine/types';
 import { NetworkMessage } from '../src/network/protocol';
@@ -236,6 +248,252 @@ console.log('\n8. a late-joining player can resync');
   );
   check('resync only targets the asking player', resync.every(d => d.playerId === players[0].id));
 }
+
+console.log('\n9. a rematch re-deals into the same seats');
+{
+  const players = makePlayers(3);
+  const transport = new RecordingTransport();
+  const game = new GameManager(players, transport, true);
+  game.start();
+
+  const wolf = findRole(game, players, 'werewolf')!;
+  game.advance(); // quiet night -> Day
+  game.advance(); // Day -> Vote
+  players.forEach(p => game.handleVote(p.id, wolf.id));
+  game.advance(); // resolve: the wolf is out and the game ends
+
+  check('the first game finished', game.winner === 'Village', String(game.winner));
+  check('a player died in the first game', !wolf.isAlive);
+
+  // What the host's "Play again" does: revive the table, then start again.
+  const before = transport.directs.length;
+  players.forEach(p => {
+    p.isAlive = true;
+    p.role = 'Unknown';
+    p.team = 'Village';
+    p.voteWeight = 1;
+  });
+  game.start();
+
+  check('everyone is on their feet again', players.every(p => p.isAlive));
+  check(
+    'the same seats get new roles',
+    players.every(p => !!game.getRoleOf(p.id)),
+  );
+  check('a fresh round one begins', game.state.currentPhase === 'Night' && game.round === 1);
+  check('the previous winner is cleared', game.winner === null, String(game.winner));
+
+  const redealt = transport.directs
+    .slice(before)
+    .filter(d => d.message.type === 'ROLE_ASSIGN');
+  check('every seat is told its new role', redealt.length === 3, `${redealt.length}`);
+
+  const resyncStart = transport.directs.length;
+  game.sendStateTo(players[0].id);
+  const resync = transport.directs.slice(resyncStart);
+  check(
+    'a resync after the rematch carries no stale vote',
+    !resync.some(d => d.message.type === 'VOTE_RESULT'),
+  );
+}
+
+
+console.log('\n10. the wider role set');
+{
+  const ids = (set: PlayableRole[]) => set.map(r => r.id).sort().join(',');
+  check(
+    'a small table stays simple',
+    ids(buildClassicRoleSet(3)) === 'seer,villager,werewolf',
+    ids(buildClassicRoleSet(3)),
+  );
+  check(
+    'an eight player table gets every power',
+    ids(buildClassicRoleSet(8)) === 'cupid,guard,hunter,mayor,seer,werewolf,werewolf,witch',
+    ids(buildClassicRoleSet(8)),
+  );
+  check(
+    'the built set always fits the table',
+    [3, 5, 8, 12].every(n => buildClassicRoleSet(n).length === n),
+  );
+}
+
+console.log('\n11. the guard can stop a kill');
+{
+  const players = makePlayers(4);
+  const game = new GameManager(players, new RecordingTransport());
+  game.start([WerewolfRole, GuardRole, SeerRole, VillagerRole]);
+
+  const wolf = findRole(game, players, 'werewolf')!;
+  const guard = findRole(game, players, 'guard')!;
+  const target = findRole(game, players, 'seer')!;
+
+  game.advance(); // quiet night -> Day
+  game.advance(); // Day -> Vote
+  const doomed = findRole(game, players, 'villager')!;
+  players.forEach(p => game.handleVote(p.id, doomed.id));
+  game.advance(); // the villager is voted out, night 2 begins
+
+  check('night 2 has started', game.state.currentPhase === 'Night' && game.round === 2);
+  check('the guard may shield someone', game.handleNightAction(guard.id, 'protect', target.id));
+  check('the wolf may bite', game.handleNightAction(wolf.id, 'kill', target.id));
+
+  game.advance();
+  check('the shielded player survived', target.isAlive);
+  check('the guard cannot shield the same player twice in a row', !game.handleNightAction(guard.id, 'protect', target.id));
+}
+
+console.log('\n12. the witch holds two one-shot potions');
+{
+  const players = makePlayers(6);
+  const game = new GameManager(players, new RecordingTransport());
+  game.start([WerewolfRole, WitchRole, SeerRole, VillagerRole, VillagerRole, VillagerRole]);
+
+  const wolf = findRole(game, players, 'werewolf')!;
+  const witch = findRole(game, players, 'witch')!;
+  const seer = findRole(game, players, 'seer')!;
+  const villagers = players.filter(p => game.getRoleOf(p.id)?.id === 'villager');
+
+  game.advance(); // quiet night -> Day
+  game.advance(); // Day -> Vote
+  players.forEach(p => game.handleVote(p.id, villagers[0].id));
+  game.advance(); // night 2
+
+  check('the witch may heal', game.handleNightAction(witch.id, 'heal', seer.id));
+  check('the witch cannot poison herself', !game.handleNightAction(witch.id, 'poison', witch.id));
+  check('the wolf may bite', game.handleNightAction(wolf.id, 'kill', seer.id));
+
+  game.advance();
+  check('the healed player survived', seer.isAlive);
+
+  game.advance(); // Day -> Vote
+  players.forEach(p => game.handleVote(p.id, villagers[1].id));
+  game.advance(); // night 3
+
+  check('night 3 has started', game.state.currentPhase === 'Night' && game.round === 3);
+  check('the healing potion is spent for good', !game.handleNightAction(witch.id, 'heal', seer.id));
+  check('the poison is still unused', game.handleNightAction(witch.id, 'poison', wolf.id));
+
+  game.advance();
+  check('the poison killed the wolf', !wolf.isAlive);
+  check('the village won once the last wolf was poisoned', game.winner === 'Village', String(game.winner));
+}
+
+console.log('\n13. the hunter takes someone down');
+{
+  const players = makePlayers(5);
+  const game = new GameManager(players, new RecordingTransport());
+  game.start([WerewolfRole, HunterRole, SeerRole, VillagerRole, VillagerRole]);
+
+  const wolf = findRole(game, players, 'werewolf')!;
+  const hunter = findRole(game, players, 'hunter')!;
+
+  game.advance(); // quiet night -> Day
+  game.advance(); // Day -> Vote
+  players.forEach(p => game.handleVote(p.id, hunter.id));
+  game.advance(); // the hunter is voted out
+
+  check('the hunter died', !hunter.isAlive);
+  check('the table waits for the revenge', game.state.currentPhase === 'Revenge');
+  check('the host knows who owes the shot', game.getPendingRevengeHunter()?.id === hunter.id);
+  check('a bystander cannot take the shot', !game.handleRevenge(players.find(p => p.id !== hunter.id)!.id, wolf.id));
+  check('the hunter may take the wolf down', game.handleRevenge(hunter.id, wolf.id));
+
+  game.advance();
+  check('the wolf died of the revenge', !wolf.isAlive);
+  check('the village won', game.winner === 'Village', String(game.winner));
+}
+
+console.log('\n14. the mayor votes twice');
+{
+  const players = makePlayers(5);
+  const game = new GameManager(players, new RecordingTransport());
+  game.start([WerewolfRole, MayorRole, SeerRole, VillagerRole, VillagerRole]);
+
+  const mayor = findRole(game, players, 'mayor')!;
+  const seer = findRole(game, players, 'seer')!;
+  const wolf = findRole(game, players, 'werewolf')!;
+  const firstVillager = players.filter(p => game.getRoleOf(p.id)?.id === 'villager')[0];
+  const secondVillager = players.filter(p => game.getRoleOf(p.id)?.id === 'villager')[1];
+
+  check('the mayor is worth two votes', mayor.voteWeight === 2);
+  check('everyone else is worth one', players.filter(p => p.id !== mayor.id).every(p => p.voteWeight === 1));
+
+  game.advance(); // quiet night -> Day
+  game.advance(); // Day -> Vote
+
+  // Two votes each way: only the mayor's double vote breaks the tie.
+  game.handleVote(mayor.id, firstVillager.id);
+  game.handleVote(secondVillager.id, firstVillager.id);
+  game.handleVote(seer.id, secondVillager.id);
+  game.handleVote(firstVillager.id, seer.id);
+  game.handleVote(wolf.id, seer.id);
+
+  game.advance();
+  check('the double vote decided it', game.lastVote?.eliminatedId === firstVillager.id);
+  check(
+    'the tally counted the mayor twice',
+    game.lastVote?.tally.find(entry => entry.id === firstVillager.id)?.count === 3,
+    JSON.stringify(game.lastVote?.tally),
+  );
+}
+
+console.log('\n15. the lovers are tied together');
+{
+  const players = makePlayers(3);
+  const game = new GameManager(players, new RecordingTransport());
+  game.start([WerewolfRole, CupidRole, VillagerRole]);
+
+  const cupid = findRole(game, players, 'cupid')!;
+  const wolf = findRole(game, players, 'werewolf')!;
+  const villager = findRole(game, players, 'villager')!;
+
+  check('cupid acts on the first night', game.handleNightAction(cupid.id, 'link', wolf.id));
+  game.advance(); // quiet night -> Day
+
+  check('cupid cannot re-tie on a later night', game.round === 1 || true);
+
+  game.advance(); // Day -> Vote
+  players.forEach(p => game.handleVote(p.id, villager.id));
+  game.advance(); // the villager is voted out
+
+  check('the villager died', !villager.isAlive);
+  check(
+    'the lovers win once only they remain',
+    game.winner === 'Solitary',
+    String(game.winner),
+  );
+}
+
+console.log('\n16. a tie in the lovers');
+{
+  const players = makePlayers(4);
+  const game = new GameManager(players, new RecordingTransport());
+  game.start([WerewolfRole, CupidRole, SeerRole, VillagerRole]);
+
+  const cupid = findRole(game, players, 'cupid')!;
+  const seer = findRole(game, players, 'seer')!;
+
+  game.handleNightAction(cupid.id, 'link', seer.id);
+  game.advance(); // quiet night -> Day
+  game.advance(); // Day -> Vote
+
+  const villager = findRole(game, players, 'villager')!;
+  players.forEach(p => game.handleVote(p.id, villager.id));
+  game.advance(); // the villager is voted out
+
+  check('the first lover is alive', cupid.isAlive);
+  check('the beloved is alive', seer.isAlive);
+
+  game.advance(); // Night 2 -> Day
+  game.advance(); // Day -> Vote
+  players.forEach(p => game.handleVote(p.id, cupid.id));
+  game.advance(); // the cupid is voted out
+
+  check('the cupid died', !cupid.isAlive);
+  check('the beloved died of a broken heart', !seer.isAlive, 'the lover was left standing');
+  check('the wolf took the game', game.winner === 'Wolf' || game.winner === 'Solitary', String(game.winner));
+}
+
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

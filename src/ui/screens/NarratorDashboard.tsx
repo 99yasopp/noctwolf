@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { theme } from '../theme/colors';
 import { BaseButton } from '../components/BaseButton';
 import { ActionPanel, OwnRole } from '../components/ActionPanel';
@@ -7,10 +7,10 @@ import { useGame } from '../GameContext';
 import { lobby } from '../../network/lobby';
 
 export const NarratorDashboard = () => {
-  const { manager, localPlayer, returnToLobby } = useGame();
+  const { manager, localPlayer, returnToLobby, rematch } = useGame();
   const [, forceRender] = useState(0);
   const [secrets, setSecrets] = useState<string[]>([]);
-  const [submitted, setSubmitted] = useState(false);
+  const [submitted, setSubmitted] = useState<string[]>([]);
 
   useEffect(() => {
     if (!manager || !localPlayer) return;
@@ -26,12 +26,22 @@ export const NarratorDashboard = () => {
     });
   }, [manager, localPlayer]);
 
+  // Roster changes (a guest joining, dropping or being removed) are not game
+  // events, so they need their own subscription to show up.
+  useEffect(
+    () =>
+      lobby.onRosterChanged(() => {
+        forceRender(n => n + 1);
+      }),
+    [],
+  );
+
   const phase = manager?.state.currentPhase ?? null;
   const round = manager?.round ?? 1;
 
   // Each new phase asks for a fresh action.
   useEffect(() => {
-    setSubmitted(false);
+    setSubmitted([]);
   }, [phase, round]);
 
   if (!manager || !localPlayer) return null;
@@ -44,8 +54,13 @@ export const NarratorDashboard = () => {
         name: role.name,
         team: role.team,
         description: role.description,
-        nightAction: role.nightAction,
-        nightActionLabel: role.nightActionLabel,
+        nightActions: role.nightActions?.map(option => ({
+          id: option.id,
+          label: option.label,
+          kind: option.kind,
+        })),
+        revengeOnDeath: role.revengeOnDeath,
+        linksLovers: role.linksLovers,
         allies:
           role.team === 'Wolf'
             ? players
@@ -56,8 +71,11 @@ export const NarratorDashboard = () => {
     : null;
 
   const aliveCount = players.filter(p => p.isAlive).length;
+  const guests = players.filter(p => p.id !== localPlayer.id && !p.isBot);
+  const droppedGuests = lobby.disconnectedPlayers().length;
   const pendingActors = manager.getPendingNightActors();
   const pendingVoters = manager.getPendingVoters();
+  const pendingHunter = manager.getPendingRevengeHunter();
 
   const nextLabel = manager.winner
     ? null
@@ -67,15 +85,19 @@ export const NarratorDashboard = () => {
     ? 'Start the vote'
     : phase === 'Vote'
     ? 'Resolve the vote → Night'
+    : phase === 'Revenge'
+    ? 'Carry out the revenge'
     : 'Start the night';
 
-  const submitLocalAction = (message: any) => {
+  const submitLocalAction = (actionId: string, targetId: string) => {
     const ok =
-      message.type === 'NIGHT_ACTION'
-        ? manager.handleNightAction(localPlayer.id, message.payload.action, message.payload.targetId)
-        : manager.handleVote(localPlayer.id, message.payload.targetId);
+      actionId === 'vote'
+        ? manager.handleVote(localPlayer.id, targetId)
+        : actionId === 'revenge'
+        ? manager.handleRevenge(localPlayer.id, targetId)
+        : manager.handleNightAction(localPlayer.id, actionId, targetId);
 
-    if (ok) setSubmitted(true);
+    if (ok) setSubmitted(prev => [...prev, actionId]);
   };
 
   return (
@@ -115,6 +137,11 @@ export const NarratorDashboard = () => {
             Waiting on votes: {pendingVoters.map(p => p.name).join(', ')}
           </Text>
         )}
+        {pendingHunter && (
+          <Text style={styles.pending}>
+            {pendingHunter.name} is choosing who to take down.
+          </Text>
+        )}
       </View>
 
       {manager.winner && (
@@ -122,6 +149,10 @@ export const NarratorDashboard = () => {
           <Text style={styles.winnerText}>
             {manager.winner === 'Wolf' ? 'Werewolves win!' : 'Village wins!'}
           </Text>
+          <Text style={styles.winnerSub}>
+            Everyone keeps their seat. Playing again deals new roles to the same table.
+          </Text>
+          <BaseButton title="Play again" onPress={rematch} />
         </View>
       )}
 
@@ -150,7 +181,7 @@ export const NarratorDashboard = () => {
           title={nextLabel}
           onPress={() => {
             manager.advance();
-            setSubmitted(false);
+            setSubmitted([]);
           }}
         />
       )}
@@ -163,15 +194,7 @@ export const NarratorDashboard = () => {
         submitted={submitted}
         gameOver={!!manager.winner}
         quietNight={manager.isQuietNight()}
-        onChoose={targetId =>
-          submitLocalAction({
-            type: manager.state.currentPhase === 'Night' ? 'NIGHT_ACTION' : 'VOTE_CAST',
-            payload:
-              manager.state.currentPhase === 'Night'
-                ? { action: ownRole?.nightAction, targetId }
-                : { targetId },
-          })
-        }
+        onChoose={submitLocalAction}
       />
 
       {secrets.length > 0 && (
@@ -186,22 +209,39 @@ export const NarratorDashboard = () => {
       )}
 
       <Text style={styles.subHeader}>Players</Text>
-      {players.map(player => (
-        <View key={player.id} style={styles.playerRow}>
-          <Text style={[styles.playerName, !player.isAlive && styles.dead]}>
-            {player.name}
-            {player.id === localPlayer.id ? ' (you)' : ''}
-            {player.isBot ? ' [bot]' : ''}
-          </Text>
-          <Text style={styles.playerRole}>
-            {manager.getRoleOf(player.id)?.name ?? 'unknown'}
-            {player.isAlive ? '' : ' — dead'}
-            {manager.state.currentPhase === 'Vote' && player.isAlive && manager.hasVoted(player.id)
-              ? ' — voted'
-              : ''}
-          </Text>
-        </View>
-      ))}
+      {players.map(player => {
+        const dropped = lobby.disconnectedPlayers().some(p => p.id === player.id);
+
+        return (
+          <View key={player.id} style={styles.playerRow}>
+            <View style={styles.playerInfo}>
+              <Text style={[styles.playerName, !player.isAlive && styles.dead]}>
+                {player.name}
+                {player.id === localPlayer.id ? ' (you)' : ''}
+                {player.isBot ? ' [bot]' : ''}
+              </Text>
+              <Text style={styles.playerRole}>
+                {manager.getRoleOf(player.id)?.name ?? 'unknown'}
+                {player.isAlive ? '' : ' — dead'}
+                {dropped ? ' — no connection' : ''}
+                {manager.state.currentPhase === 'Vote' && player.isAlive && manager.hasVoted(player.id)
+                  ? ' — voted'
+                  : ''}
+              </Text>
+            </View>
+
+            {player.id !== localPlayer.id && (
+              <TouchableOpacity
+                style={styles.removeButton}
+                onPress={() => lobby.removePlayer(player.id)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.removeText}>Remove</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        );
+      })}
 
       <Text style={styles.subHeader}>Log</Text>
       {manager.actionLog.map((entry, index) => (
@@ -211,7 +251,8 @@ export const NarratorDashboard = () => {
       ))}
 
       <Text style={styles.hint}>
-        Guests connected: {lobby.getPlayers().filter(p => p.id !== localPlayer.id && !p.isBot).length}
+        Guests connected: {guests.length - droppedGuests} / {guests.length}
+        {droppedGuests > 0 ? ' — a dropped guest keeps their seat and can rejoin' : ''}
       </Text>
 
       <BaseButton title="Back to Lobby" onPress={returnToLobby} variant="danger" />
@@ -318,6 +359,30 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.small,
   },
   playerRow: {
+    marginBottom: theme.spacing.small,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  playerInfo: {
+    flexShrink: 1,
+  },
+  removeButton: {
+    paddingHorizontal: theme.spacing.small,
+    paddingVertical: 4,
+    borderRadius: theme.borderRadius,
+    borderWidth: 1,
+    borderColor: theme.colors.danger,
+    marginLeft: theme.spacing.small,
+  },
+  removeText: {
+    color: theme.colors.danger,
+    fontSize: 13,
+  },
+  winnerSub: {
+    color: theme.colors.background,
+    fontSize: 13,
+    textAlign: 'center',
     marginBottom: theme.spacing.small,
   },
   playerName: {

@@ -12,6 +12,8 @@ export type MessageType =
   | 'SECRET_INFO'
   | 'STATE_REQUEST'
   | 'GAME_OVER'
+  | 'KICK'
+  | 'REVENGE'
   | 'TIME_SYNC';
 
 export interface NetworkMessage {
@@ -45,12 +47,13 @@ export interface RoleAssignPayload {
   team: Team;
   description: string;
   allies: PlayerRef[];
-  nightAction?: 'kill' | 'peek';
-  nightActionLabel?: string;
+  nightActions?: { id: string; label: string; kind: string }[];
+  revengeOnDeath?: boolean;
+  linksLovers?: boolean;
 }
 
 export interface NightActionPayload {
-  action: 'kill' | 'peek';
+  action: string;
   targetId: string;
 }
 

@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, ScrollView } from 'react-native';
 import { theme } from '../theme/colors';
 import { BaseButton } from '../components/BaseButton';
-import { GAME_PORT, HOST_PLAYER_ID, lobby } from '../../network/lobby';
+import { GAME_PORT, HOST_PLAYER_ID, LOCAL_GUEST_ID, lobby } from '../../network/lobby';
+import { getPreset, ROLE_PRESETS } from '../../engine/roleSet';
 import { Player } from '../../engine/types';
 import { useGame } from '../GameContext';
 import { randomPlayerName } from '../randomName';
@@ -31,6 +32,14 @@ export const LobbyScreen = () => {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [isHost, setIsHost] = useState(false);
+  const [presetId, setPresetId] = useState(ROLE_PRESETS[0].id);
+
+  const preset = getPreset(presetId);
+  const cyclePreset = () =>
+    setPresetId(current => {
+      const index = ROLE_PRESETS.findIndex(entry => entry.id === current);
+      return ROLE_PRESETS[(index + 1) % ROLE_PRESETS.length].id;
+    });
 
   // The host owns the roster; guests receive it over the network.
   useEffect(() => {
@@ -60,6 +69,15 @@ export const LobbyScreen = () => {
         return;
       }
 
+      if (message?.type === 'KICK') {
+        setError(
+          message.payload?.reason === 'game-running'
+            ? 'A game is already running on this host.'
+            : 'The host removed you from the table.',
+        );
+        return;
+      }
+
       if (
         message?.type === 'ROLE_ASSIGN' ||
         message?.type === 'PHASE_UPDATE' ||
@@ -72,6 +90,7 @@ export const LobbyScreen = () => {
     };
 
     client.onMessage(handler);
+    client.onClose(() => setError('Lost connection to the host.'));
     return () => {
       if (!handedOff) client.offMessage();
     };
@@ -82,7 +101,7 @@ export const LobbyScreen = () => {
     const name = playerName.trim() || initialPlayerName;
 
     if (!guestRef.current) {
-      guestRef.current = guest(Math.random().toString(36).substring(2, 10), name);
+      guestRef.current = guest(LOCAL_GUEST_ID, name);
     }
     guestRef.current.name = name;
     return guestRef.current;
@@ -145,7 +164,7 @@ export const LobbyScreen = () => {
     }
 
     setError('');
-    startHostGame(roster, host);
+    startHostGame(roster, host, presetId);
   };
 
   // Lets the host exercise a full game without extra devices. Bots act and
@@ -252,6 +271,20 @@ export const LobbyScreen = () => {
                 {p.isBot ? ' [bot]' : ''}
               </Text>
             ))}
+
+            {isHost && (
+              <BaseButton
+                title={`Setup: ${preset.name}`}
+                onPress={cyclePreset}
+                variant="secondary"
+              />
+            )}
+            {isHost && <Text style={styles.hint}>{preset.description}</Text>}
+            {isHost && (
+              <Text style={styles.hint}>
+                This table: {preset.build(Math.max(players.length, 1)).map(r => r.name).join(', ')}
+              </Text>
+            )}
 
             {isHost && (
               <BaseButton title="Add Test Player" onPress={addTestPlayer} variant="secondary" />
