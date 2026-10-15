@@ -87,6 +87,8 @@ export const LobbyScreen = () => {
         setError(
           message.payload?.reason === 'game-running'
             ? 'A game is already running on this host.'
+            : message.payload?.reason === 'seat-taken'
+            ? 'That name is already taken by another device at this table.'
             : 'The host removed you from the table.',
         );
         return;
@@ -330,7 +332,16 @@ export const LobbyScreen = () => {
 
   // Settings takes the whole screen: it has its own scrolling and header.
   if (view === 'settings') {
-    return <SettingsScreen onBack={() => setView('menu')} />;
+    return (
+      <SettingsScreen
+        onBack={() => {
+          setView('menu');
+          // Roles made in the workshop have to show up in the setup picker
+          // straight away, without restarting the app.
+          loadCustomRoles().then(roles => setCustomRoleCount(roles.length));
+        }}
+      />
+    );
   }
 
   return (

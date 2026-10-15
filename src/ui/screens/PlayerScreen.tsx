@@ -85,6 +85,8 @@ export const PlayerScreen = () => {
           setStatus(
             message.payload?.reason === 'game-running'
               ? 'A game is already running on this host.'
+              : message.payload?.reason === 'seat-taken'
+              ? 'That name is already taken by another device at this table.'
               : 'The host removed you from the table.',
           );
           break;
@@ -191,7 +193,11 @@ export const PlayerScreen = () => {
       {outcome && (
         <View style={styles.winnerCard}>
           <Text style={styles.winnerText}>
-            {outcome.winner === 'Wolf' ? 'Werewolves win!' : 'Village wins!'}
+            {outcome.winner === 'Wolf'
+              ? 'Werewolves win!'
+              : outcome.winner === 'Solitary'
+              ? 'The Lovers win!'
+              : 'Village wins!'}
           </Text>
           {outcome.reveal.map(entry => (
             <Text key={entry.id} style={styles.revealText}>

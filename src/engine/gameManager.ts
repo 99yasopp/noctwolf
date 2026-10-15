@@ -523,8 +523,10 @@ export class GameManager {
 
     // Gather every choice made tonight, by kind of action.
     const shielded = new Set<string>();
-    const healed = new Map<string, string>();
-    const poisoned = new Map<string, string>();
+    // Charged actions remember which action id spent them, so a role whose
+    // potion is not literally called "heal" still spends exactly once.
+    const healed = new Map<string, { playerId: string; actionId: string }>();
+    const poisoned = new Map<string, { playerId: string; actionId: string }>();
     let attack: { sourceId: string; targetId: string } | null = null;
     let inspect: { sourceId: string; targetId: string } | null = null;
     let link: { sourceId: string; targetId: string } | null = null;
@@ -544,10 +546,10 @@ export class GameManager {
             this.lastProtected.set(playerId, targetId);
             break;
           case 'heal':
-            healed.set(targetId, playerId);
+            healed.set(targetId, { playerId, actionId });
             break;
           case 'poison':
-            poisoned.set(targetId, playerId);
+            poisoned.set(targetId, { playerId, actionId });
             break;
           case 'attack':
             attack = { sourceId: playerId, targetId };
@@ -577,8 +579,8 @@ export class GameManager {
           this.actionLog.push(`Night ${this.round}: the guard saved ${target.name}.`);
         } else if (healed.has(target.id)) {
           // Spent only when it actually saves someone.
-          const healerId = healed.get(target.id)!;
-          this.spent.add(this.chargeKey(healerId, 'heal'));
+          const mender = healed.get(target.id)!;
+          this.spent.add(this.chargeKey(mender.playerId, mender.actionId));
           this.actionLog.push(`Night ${this.round}: the witch saved ${target.name}.`);
         } else {
           target.isAlive = false;
@@ -589,8 +591,8 @@ export class GameManager {
     }
 
     // Poison is not the wolves' bite: shielding does not stop it.
-    poisoned.forEach((poisonerId, targetId) => {
-      this.spent.add(this.chargeKey(poisonerId, 'poison'));
+    poisoned.forEach((spentBy, targetId) => {
+      this.spent.add(this.chargeKey(spentBy.playerId, spentBy.actionId));
 
       const target = this.state.players.find(p => p.id === targetId);
       if (target?.isAlive) {

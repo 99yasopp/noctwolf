@@ -549,24 +549,89 @@ console.log("\n18. a custom role takes a villager's seat");
   const before = getCustomRoles();
   setCustomRoles([
     {
-      id: 'custom-silent-wolf',
-      name: 'Silent Wolf',
-      team: 'Wolf',
-      description: 'Howls once a night.',
-      nightActions: [{ id: 'kill', label: 'Devour a player', kind: 'attack' }],
+      id: 'custom-cook',
+      name: 'Cook',
+      team: 'Village',
+      description: 'Keeps the village fed.',
+      nightActions: [{ id: 'protect', label: 'Shield a player', kind: 'protect', allowSelf: true }],
     },
   ]);
 
   const set = buildCustomRoleSet(5);
   check('the table keeps a wolf and a seer', set.filter(r => r.id === 'werewolf').length === 1 && set.some(r => r.id === 'seer'));
-  check('the custom role is dealt', set.some(r => r.id === 'custom-silent-wolf'));
+  check('the custom role is dealt', set.some(r => r.id === 'custom-cook'));
   check('the set still fits the table', set.length === 5, `${set.length}`);
 
   const game = new GameManager(makePlayers(5, true), new RecordingTransport());
   game.start(buildCustomRoleSet(5));
   check('a game runs with it in play', game.state.currentPhase === 'Night');
 
+  // A generated wolf must take the wolf budget, not add to it.
+  setCustomRoles([
+    {
+      id: 'custom-alpha',
+      name: 'Alpha',
+      team: 'Wolf',
+      description: 'A wolf of your own.',
+      nightActions: [{ id: 'kill', label: 'Devour a player', kind: 'attack' }],
+    },
+  ]);
+
+  const wolfSet = buildCustomRoleSet(4);
+  check(
+    'a generated wolf replaces the plain wolf',
+    wolfSet.filter(role => role.team === 'Wolf').length === 1,
+    wolfSet.map(role => role.id).join(','),
+  );
+  check('the generated wolf is seated', wolfSet.some(role => role.id === 'custom-alpha'));
+
   setCustomRoles(before);
+}
+
+console.log('\n19. a charged action is spent under its own name');
+{
+  const players = makePlayers(6);
+  const game = new GameManager(players, new RecordingTransport());
+  const brewer: PlayableRole = {
+    id: 'custom-brewer',
+    name: 'Brewer',
+    team: 'Village',
+    description: 'One poison, whatever the action is called.',
+    nightActions: [{ id: 'punish', label: 'Use the poison', kind: 'poison', oncePerGame: true }],
+  };
+
+  game.start([
+    WerewolfRole,
+    brewer,
+    SeerRole,
+    VillagerRole,
+    VillagerRole,
+    VillagerRole,
+  ]);
+
+  const wolf = findRole(game, players, 'werewolf')!;
+  const poisoner = findRole(game, players, 'custom-brewer')!;
+  const villagers = players.filter(p => game.getRoleOf(p.id)?.id === 'villager');
+
+  game.advance(); // quiet night -> Day
+  game.advance(); // Day -> Vote
+  players.forEach(p => game.handleVote(p.id, villagers[0].id));
+  game.advance(); // night 2
+
+  check('the renamed potion can be used', game.handleNightAction(poisoner.id, 'punish', villagers[1].id));
+  game.advance();
+  check('the poison killed its target', !villagers[1].isAlive);
+
+  game.advance(); // Day -> Vote
+  players.forEach(p => game.handleVote(p.id, villagers[2].id));
+  game.advance(); // night 3
+
+  check('night 3 has started', game.state.currentPhase === 'Night' && game.round === 3);
+  check('the same action cannot be used twice', !game.handleNightAction(poisoner.id, 'punish', wolf.id));
+  check(
+    'and it is not offered again',
+    !game.getPendingNightActors().some(p => p.id === poisoner.id),
+  );
 }
 
 

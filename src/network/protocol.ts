@@ -13,6 +13,7 @@ export type MessageType =
   | 'STATE_REQUEST'
   | 'GAME_OVER'
   | 'KICK'
+  | 'SEAT_TOKEN'
   | 'REVENGE'
   | 'TIME_SYNC';
 

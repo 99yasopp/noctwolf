@@ -40,6 +40,16 @@ export class PlayerClient {
     // calling onMessage() repeatedly cannot stack duplicate listeners.
     this.socket.on('data', (data: any) => {
       for (const message of this.decoder.push(data.toString())) {
+        // The seat token belongs to the connection, not to a screen, so it is
+        // taken here. It arrives right after the join, before any screen has
+        // registered its handler.
+        if (message.type === 'SEAT_TOKEN') {
+          const token = message.payload?.token ?? null;
+          this.seatToken = token;
+          this.seatTokenHandler?.(token);
+          continue;
+        }
+
         this.messageHandler?.(message);
       }
     });
@@ -80,6 +90,15 @@ export class PlayerClient {
 
   offMessage() {
     this.messageHandler = null;
+  }
+
+  // The token the host handed this seat. Sent back with every join so a
+  // stranger cannot claim a seat by guessing a player id.
+  seatToken: string | null = null;
+  private seatTokenHandler: ((token: string | null) => void) | null = null;
+
+  onSeatToken(callback: (token: string | null) => void) {
+    this.seatTokenHandler = callback;
   }
 
   disconnect() {

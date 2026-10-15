@@ -190,17 +190,22 @@ export const setCustomRoles = (roles: PlayableRole[]) => {
 
 export const getCustomRoles = (): PlayableRole[] => customRoles;
 
-// Custom roles take the villagers' seats; the wolf count is never touched, so
-// a generated role cannot unbalance the table.
+// Custom roles take the villagers' seats. A generated wolf counts against the
+// wolf budget rather than adding to it, or a three player game would start
+// with two wolves and end on the first day.
 export const buildCustomRoleSet = (playerCount: number): PlayableRole[] => {
   if (playerCount <= 0) return [];
 
   const wolfCount = Math.max(1, Math.floor(playerCount / 4));
-  const set: PlayableRole[] = [];
-  for (let i = 0; i < wolfCount; i++) set.push(WerewolfRole);
+  const customWolves = customRoles.filter(role => role.team === 'Wolf');
+  const customOthers = customRoles.filter(role => role.team !== 'Wolf');
+
+  const set: PlayableRole[] = customWolves.slice(0, wolfCount);
+  while (set.length < wolfCount) set.push(WerewolfRole);
+
   if (playerCount >= 3) set.push(SeerRole);
 
-  customRoles.forEach(role => {
+  customOthers.forEach(role => {
     if (set.length < playerCount) set.push(role);
   });
 

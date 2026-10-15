@@ -17,6 +17,9 @@ interface GameContextValue {
   returnToLobby: () => void;
   // Deal a fresh game to the players already at the table.
   rematch: () => void;
+  // Bumped for every fresh deal, so the screens can drop the notes they kept
+  // about the previous game.
+  gameId: number;
 }
 
 const GameContext = createContext<GameContextValue | null>(null);
@@ -25,6 +28,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [mode, setMode] = useState<AppMode>('lobby');
   const [localPlayer, setLocalPlayer] = useState<Player | null>(null);
   const [manager, setManager] = useState<GameManager | null>(null);
+  const [gameId, setGameId] = useState(0);
   const managerRef = useRef<GameManager | null>(null);
   // The setup the host picked; a rematch re-deals from the same one.
   const presetRef = useRef<string>('simple');
@@ -67,6 +71,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
     game.start(getPreset(presetId).build(players.length));
+    setGameId(id => id + 1);
     setMode('narrator');
   }, []);
 
@@ -85,6 +90,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     lobby.resetRoster();
     current.start(getPreset(presetRef.current).build(lobby.getPlayers().length));
+    setGameId(id => id + 1);
     setMode('narrator');
   }, []);
 
@@ -106,7 +112,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   return (
     <GameContext.Provider
-      value={{ mode, localPlayer, manager, startHostGame, enterPlayerMode, returnToLobby, rematch }}
+      value={{ mode, localPlayer, manager, startHostGame, enterPlayerMode, returnToLobby, rematch, gameId }}
     >
       {children}
     </GameContext.Provider>

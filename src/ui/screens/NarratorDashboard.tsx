@@ -7,7 +7,7 @@ import { useGame } from '../GameContext';
 import { lobby } from '../../network/lobby';
 
 export const NarratorDashboard = () => {
-  const { manager, localPlayer, returnToLobby, rematch } = useGame();
+  const { manager, localPlayer, returnToLobby, rematch, gameId } = useGame();
   const [, forceRender] = useState(0);
   const [secrets, setSecrets] = useState<string[]>([]);
   const [submitted, setSubmitted] = useState<string[]>([]);
@@ -25,6 +25,12 @@ export const NarratorDashboard = () => {
       forceRender(n => n + 1);
     });
   }, [manager, localPlayer]);
+
+  // What the host was told privately belongs to one game only: a rematch
+  // would otherwise open with the notes from the game before.
+  useEffect(() => {
+    setSecrets([]);
+  }, [gameId]);
 
   // Roster changes (a guest joining, dropping or being removed) are not game
   // events, so they need their own subscription to show up.
@@ -147,7 +153,11 @@ export const NarratorDashboard = () => {
       {manager.winner && (
         <View style={styles.winnerCard}>
           <Text style={styles.winnerText}>
-            {manager.winner === 'Wolf' ? 'Werewolves win!' : 'Village wins!'}
+            {manager.winner === 'Wolf'
+              ? 'Werewolves win!'
+              : manager.winner === 'Solitary'
+              ? 'The Lovers win!'
+              : 'Village wins!'}
           </Text>
           <Text style={styles.winnerSub}>
             Everyone keeps their seat. Playing again deals new roles to the same table.

@@ -51,6 +51,14 @@ export class LobbyManager implements GameTransport {
   private lastHost: string | null = null;
   private lastPort: number = GAME_PORT;
 
+  // The token this device was given for its seat, kept here so a reconnect
+  // can present it again.
+  private seatToken: string | null = null;
+
+  // Seats already handed out, by player id. Player ids travel in the roster,
+  // so they are not a secret: the token is what proves a device owns a seat.
+  private seatTokens = new Map<string, string>();
+
   // The roster is owned here but rendered elsewhere; screens subscribe so a
   // player joining, leaving or being removed shows up without polling.
   private rosterListeners = new Set<() => void>();
@@ -130,6 +138,32 @@ export class LobbyManager implements GameTransport {
             return;
           }
 
+          // A player id is public: it is broadcast with the roster. Only a
+          // device holding the token issued for that seat may take it over,
+          // which stops a guest from claiming someone else's seat and being
+          // sent that player's role.
+          const expected = this.seatTokens.get(player.id);
+          const claimed = player.id === HOST_PLAYER_ID || (knownSeat && expected !== msg.payload?.token);
+
+          if (claimed) {
+            this.server?.sendToPlayer(socket, {
+              type: 'KICK',
+              payload: { reason: 'seat-taken' },
+              timestamp: Date.now(),
+            });
+            return;
+          }
+
+          if (!knownSeat) {
+            const token = `${Math.random().toString(36).substring(2)}${Date.now().toString(36)}`;
+            this.seatTokens.set(player.id, token);
+            this.server?.sendToPlayer(socket, {
+              type: 'SEAT_TOKEN',
+              payload: { token },
+              timestamp: Date.now(),
+            });
+          }
+
           // Only overwrite the seat before the game starts. During a game the
           // reconnect must not revive a dead player or blank their role.
           if (!gameRunning) this.addPlayer(player);
@@ -181,7 +215,10 @@ export class LobbyManager implements GameTransport {
 
         const before = this.players.length;
         this.removePlayerById(playerId);
-        if (this.players.length !== before) this.broadcastPlayerList();
+        if (this.players.length !== before) {
+          this.seatTokens.delete(playerId);
+          this.broadcastPlayerList();
+        }
       });
     }
 
@@ -240,12 +277,18 @@ export class LobbyManager implements GameTransport {
     if (socket) {
       this.sendToPlayer(playerId, {
         type: 'KICK',
-        payload: {},
+        payload: { reason: 'removed' },
         timestamp: Date.now(),
       });
       this.sockets.delete(playerId);
       this.socketOwners.delete(socket);
+      // Send the kick before hanging up, then close: a removed player must not
+      // keep a live link into the room. The delay lets the write flush first,
+      // so the guest is told why instead of just losing the connection.
+      setTimeout(() => socket.destroy?.(), 250);
     }
+
+    this.seatTokens.delete(playerId);
 
     const before = this.players.length;
     this.removePlayerById(playerId);
@@ -347,6 +390,12 @@ export class LobbyManager implements GameTransport {
     this.lastHost = host;
     this.lastPort = port;
 
+    // Carry the seat token across reconnects, which build a new client.
+    client.seatToken = this.seatToken;
+    client.onSeatToken(token => {
+      this.seatToken = token;
+    });
+
     return new Promise(resolve => {
       let settled = false;
 
@@ -366,7 +415,7 @@ export class LobbyManager implements GameTransport {
 
         client.sendMessage({
           type: 'PLAYER_JOIN',
-          payload: { player },
+          payload: { player, token: this.seatToken },
           senderId: player.id,
           timestamp: Date.now(),
         });
@@ -434,7 +483,8 @@ export class LobbyManager implements GameTransport {
       team: 'Village' as const,
       isAlive: p.isAlive,
       statusEffects: [...p.statusEffects],
-      voteWeight: p.voteWeight,
+      // Always one: the real weight would tell every guest who the Mayor is.
+      voteWeight: 1,
     }));
   }
 
