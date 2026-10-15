@@ -8,6 +8,7 @@ import { lobby } from '../../network/lobby';
 import { Phase } from '../../engine/types';
 import {
   GameOverPayload,
+  NightStagePayload,
   PhaseUpdatePayload,
   PlayerRef,
   RoleAssignPayload,
@@ -27,6 +28,9 @@ export const PlayerScreen = () => {
   const [voteResult, setVoteResult] = useState<VoteResultPayload | null>(null);
   const [outcome, setOutcome] = useState<GameOverPayload | null>(null);
   const [submitted, setSubmitted] = useState<string[]>([]);
+  // Which half of the night it is, and who the wolves took (the witch alone).
+  const [nightStage, setNightStage] = useState<1 | 2>(1);
+  const [victim, setVictim] = useState<{ id: string; name: string } | null>(null);
   // Whether the role card is covered, for when phones are handed around.
   const [roleHidden, setRoleHidden] = useState(false);
   // The public story of the game, built from what the host already tells us.
@@ -70,6 +74,8 @@ export const PlayerScreen = () => {
           setSubmitted([]);
           // The phase changed, so the phase clock is gone until a new sync.
           setClock(null);
+          setNightStage(1);
+          setVictim(null);
 
           // Deaths are announced when the morning comes, not at nightfall.
           if (payload.phase === 'Day') {
@@ -95,6 +101,8 @@ export const PlayerScreen = () => {
           setLog([]);
           setRoleHidden(false);
           setClock(null);
+          setNightStage(1);
+          setVictim(null);
           break;
 
         case 'TIME_SYNC': {
@@ -104,6 +112,14 @@ export const PlayerScreen = () => {
               ? { remainingMs, receivedAt: Date.now() }
               : null,
           );
+          break;
+        }
+
+        case 'NIGHT_STAGE': {
+          const payload = message.payload as NightStagePayload;
+          setNightStage(payload.stage === 2 ? 2 : 1);
+          // Only the witch is sent the victim; everyone else gets the stage.
+          if (payload.victim !== undefined) setVictim(payload.victim ?? null);
           break;
         }
 
@@ -370,6 +386,8 @@ export const PlayerScreen = () => {
           quietNight={round === 1}
           selfAlive={roster.find(entry => entry.id === localPlayer?.id)?.isAlive ?? true}
           candidates={voteResult?.revote ? voteResult.candidates?.map(c => c.id) : undefined}
+          nightStage={nightStage}
+          victim={victim}
           onChoose={submit}
         />
       )}

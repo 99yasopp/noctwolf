@@ -350,10 +350,11 @@ console.log('\n11. the guard can stop a kill');
   check('the guard cannot shield the same player twice in a row', !game.handleNightAction(guard.id, 'protect', target.id));
 }
 
-console.log('\n12. the witch holds two one-shot potions');
+console.log('\n12. the witch wakes after the wolves');
 {
   const players = makePlayers(6);
-  const game = new GameManager(players, new RecordingTransport());
+  const transport = new RecordingTransport();
+  const game = new GameManager(players, transport);
   game.start([WerewolfRole, WitchRole, SeerRole, VillagerRole, VillagerRole, VillagerRole]);
 
   const wolf = findRole(game, players, 'werewolf')!;
@@ -361,17 +362,53 @@ console.log('\n12. the witch holds two one-shot potions');
   const seer = findRole(game, players, 'seer')!;
   const villagers = players.filter(p => game.getRoleOf(p.id)?.id === 'villager');
 
-  game.advance(); // quiet night -> Day
+  check('a table with a witch needs two presses', game.isWakingTheWitchNext());
+
+  game.advance(); // night 1: the witch is woken for her poison
+  game.advance(); // night 1 resolves -> Day
   game.advance(); // Day -> Vote
   players.forEach(p => game.handleVote(p.id, villagers[0].id));
   game.advance(); // night 2
 
-  check('the witch may heal', game.handleNightAction(witch.id, 'heal', seer.id));
-  check('the witch cannot poison herself', !game.handleNightAction(witch.id, 'poison', witch.id));
+  check('night 2 opens in its first stage', game.getNightStage() === 1);
+  check('the witch cannot heal before the wolves pick', !game.handleNightAction(witch.id, 'heal', seer.id));
+  check('the witch cannot poison before the wolves pick', !game.handleNightAction(witch.id, 'poison', wolf.id));
   check('the wolf may bite', game.handleNightAction(wolf.id, 'kill', seer.id));
 
-  game.advance();
+  game.advance(); // the wolves are done: the witch wakes
+  check('the witch is woken second', game.getNightStage() === 2);
+  check('she is shown the victim', game.getNightVictim()?.id === seer.id);
+  const stageBroadcast = transport.broadcasts.filter(m => m.type === 'NIGHT_STAGE');
+  check(
+    'the stage is broadcast without the victim in it',
+    stageBroadcast.length >= 2 &&
+      stageBroadcast.some(m => m.payload.stage === 2) &&
+      stageBroadcast.every(m => m.payload.victim === undefined && m.payload.healTargets === undefined),
+    JSON.stringify(stageBroadcast.map(m => m.payload)),
+  );
+  const witchStage = transport.directs.filter(
+    d => d.message.type === 'NIGHT_STAGE' && d.playerId === witch.id,
+  );
+  check(
+    'the witch is sent the victim privately',
+    witchStage.length === 2 &&
+      witchStage[0].message.payload.victim === null &&
+      witchStage[1].message.payload.victim?.id === seer.id,
+    JSON.stringify(witchStage.map(d => d.message.payload)),
+  );
+  const otherStage = transport.directs.filter(
+    d => d.message.type === 'NIGHT_STAGE' && d.playerId !== witch.id,
+  );
+  check(
+    'nobody else is told the victim',
+    otherStage.every(d => d.message.payload.victim === null),
+  );
+  check('she cannot save someone who was not attacked', !game.handleNightAction(witch.id, 'heal', villagers[2].id));
+  check('she can save the victim', game.handleNightAction(witch.id, 'heal', seer.id));
+
+  game.advance(); // the night resolves
   check('the healed player survived', seer.isAlive);
+  check('the potion is spent', !game.handleNightAction(witch.id, 'heal', seer.id));
 
   game.advance(); // Day -> Vote
   players.forEach(p => game.handleVote(p.id, villagers[1].id));
@@ -379,11 +416,55 @@ console.log('\n12. the witch holds two one-shot potions');
 
   check('night 3 has started', game.state.currentPhase === 'Night' && game.round === 3);
   check('the healing potion is spent for good', !game.handleNightAction(witch.id, 'heal', seer.id));
+  check('the wolf may bite again', game.handleNightAction(wolf.id, 'kill', seer.id));
+
+  game.advance(); // wakes the witch a second time
+  check('the witch wakes again for the poison', game.getNightStage() === 2);
   check('the poison is still unused', game.handleNightAction(witch.id, 'poison', wolf.id));
 
   game.advance();
   check('the poison killed the wolf', !wolf.isAlive);
   check('the village won once the last wolf was poisoned', game.winner === 'Village', String(game.winner));
+}
+
+console.log('\n12b. the potion is not offered when it would be wasted');
+{
+  const players = makePlayers(5);
+  const game = new GameManager(players, new RecordingTransport());
+  game.start([WerewolfRole, GuardRole, WitchRole, VillagerRole, VillagerRole]);
+
+  const wolf = findRole(game, players, 'werewolf')!;
+  const guard = findRole(game, players, 'guard')!;
+  const witch = findRole(game, players, 'witch')!;
+  const villager = findRole(game, players, 'villager')!;
+
+  game.advance(); // night 1: the witch is woken for her poison
+  game.advance(); // night 1 resolves -> Day
+  game.advance(); // Day -> Vote
+  const doomed = players.find(p => game.getRoleOf(p.id)?.id === 'villager' && p.id !== villager.id)!;
+  players.forEach(p => game.handleVote(p.id, doomed.id));
+  game.advance(); // night 2
+
+  check('the guard shields the victim', game.handleNightAction(guard.id, 'protect', villager.id));
+  check('the wolves bite the shielded player', game.handleNightAction(wolf.id, 'kill', villager.id));
+
+  game.advance(); // wake the witch
+  check('nothing is offered to the witch', game.getHealTarget() === null);
+  check('the potion cannot be wasted on a saved player', !game.handleNightAction(witch.id, 'heal', villager.id));
+
+  game.advance(); // resolve
+  check('the shielded player survived', villager.isAlive);
+  check('the healing potion was not spent', game.hasChargeLeft(witch.id, 'heal'));
+}
+
+console.log('\n12c. a table with no witch resolves in one press');
+{
+  const players = makePlayers(5);
+  const game = new GameManager(players, new RecordingTransport());
+  game.start([WerewolfRole, SeerRole, VillagerRole, VillagerRole, VillagerRole]);
+
+  game.advance();
+  check('the night resolved without a second press', game.state.currentPhase === 'Day');
 }
 
 console.log('\n13. the hunter takes someone down');
@@ -613,12 +694,21 @@ console.log('\n19. a charged action is spent under its own name');
   const poisoner = findRole(game, players, 'custom-brewer')!;
   const villagers = players.filter(p => game.getRoleOf(p.id)?.id === 'villager');
 
-  game.advance(); // quiet night -> Day
+  game.advance(); // night 1: the poisoner is woken
+  game.advance(); // night 1 resolves -> Day
   game.advance(); // Day -> Vote
   players.forEach(p => game.handleVote(p.id, villagers[0].id));
   game.advance(); // night 2
 
+  check(
+    'the second-half actor is not asked yet',
+    !game.handleNightAction(poisoner.id, 'punish', villagers[1].id),
+  );
+  check('the host is told the night has a second half', game.isWakingTheWitchNext());
+
+  game.advance(); // the wolves are done: the second half opens
   check('the renamed potion can be used', game.handleNightAction(poisoner.id, 'punish', villagers[1].id));
+
   game.advance();
   check('the poison killed its target', !villagers[1].isAlive);
 
@@ -632,6 +722,7 @@ console.log('\n19. a charged action is spent under its own name');
     'and it is not offered again',
     !game.getPendingNightActors().some(p => p.id === poisoner.id),
   );
+  check('a spent potion no longer holds the night open', !game.isWakingTheWitchNext());
 }
 
 
@@ -785,12 +876,17 @@ console.log('\n23. bots fill in the re-vote');
   const game = new GameManager(players, new RecordingTransport());
   game.start([WerewolfRole, SeerRole, VillagerRole, VillagerRole, VillagerRole, VillagerRole]);
 
-  game.advance(); // quiet night -> Day
+  game.advance(); // night 1: the bot wolves hunt, so one player is already down
   game.advance(); // Day -> Vote, where the bots vote by themselves
 
-  // Force a tie whatever the bots picked.
-  players.slice(0, 3).forEach(p => game.handleVote(p.id, players[3].id));
-  players.slice(3).forEach(p => game.handleVote(p.id, players[4].id));
+  // Force a tie whatever the bots picked: two votes, two votes, one stray.
+  const alive = game.getAlivePlayers();
+  const [first, second, third] = alive;
+  game.handleVote(alive[0].id, first.id);
+  game.handleVote(alive[1].id, first.id);
+  game.handleVote(alive[2].id, second.id);
+  game.handleVote(alive[3].id, second.id);
+  game.handleVote(alive[4].id, third.id);
 
   game.advance(); // the tie is detected, the re-vote starts
   check('the re-vote is open', game.getRevoteCandidates().length === 2);
@@ -804,7 +900,7 @@ console.log('\n23. bots fill in the re-vote');
   game.advance();
 
   const ballots = game.lastVote?.ballots ?? [];
-  check('the re-vote produced ballots', ballots.length === 6, `${ballots.length}`);
+  check('the re-vote produced ballots', ballots.length === alive.length, `${ballots.length}`);
   check(
     'every re-vote ballot names a tied player',
     ballots.every(ballot => candidates.includes(ballot.targetId)),
@@ -814,6 +910,45 @@ console.log('\n23. bots fill in the re-vote');
 
 
 
+
+console.log('\n24. the first night is deadly from four players up');
+{
+  const players = makePlayers(6, true);
+  const game = new GameManager(players, new RecordingTransport());
+  game.start([WerewolfRole, SeerRole, VillagerRole, VillagerRole, VillagerRole, VillagerRole]);
+
+  game.advance(); // no witch at this table: one press resolves the night
+  check('somebody was devoured on night 1', players.some(p => !p.isAlive));
+
+  const three = makePlayers(3, true);
+  const small = new GameManager(three, new RecordingTransport());
+  small.start();
+  small.advance();
+  check('a three player table still opens peacefully', three.every(p => p.isAlive));
+}
+
+console.log('\n25. a full table with a witch always finishes');
+{
+  let stuck = 0;
+  let witchNights = 0;
+
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const players = makePlayers(8, true);
+    const game = new GameManager(players, new RecordingTransport());
+    game.start(buildClassicRoleSet(8));
+
+    let guard = 0;
+    while (!game.winner && guard++ < 120) {
+      if (game.isWakingTheWitchNext()) witchNights++;
+      game.advance();
+    }
+
+    if (!game.winner) stuck++;
+  }
+
+  check('no eight player game got stuck', stuck === 0, `${stuck} stuck`);
+  check('the witch was woken in practice', witchNights > 0, `${witchNights} wakes`);
+}
 
 console.log(failures === 0 ? `\nAll checks passed.` : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

@@ -15,6 +15,7 @@ export type MessageType =
   | 'KICK'
   | 'SEAT_TOKEN'
   | 'REVENGE'
+  | 'NIGHT_STAGE'
   | 'TIME_SYNC';
 
 export interface NetworkMessage {
@@ -88,6 +89,16 @@ export interface TimeSyncPayload {
   // still shows the right countdown.
   remainingMs: number | null;
   totalMs?: number;
+}
+
+// The night runs in two stages: everyone acts first, then the witch wakes and
+// is shown who the wolves took. The victim travels only to her, never in the
+// broadcast copy of this message.
+export interface NightStagePayload {
+  stage: 1 | 2;
+  victim?: PlayerRef | null;
+  // The only player her healing potion may be pointed at, if any.
+  healTargets?: string[];
 }
 
 export interface SecretInfoPayload {

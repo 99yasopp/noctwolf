@@ -37,6 +37,10 @@ interface Props {
   selfAlive?: boolean;
   // During a re-vote only these players are on the ballot.
   candidates?: string[];
+  // Which half of the night this is: the wolves first, the witch second.
+  nightStage?: number;
+  // Who the wolves took, as told to the witch alone.
+  victim?: { id: string; name: string } | null;
   onChoose: (actionId: string, targetId: string) => void;
 }
 
@@ -44,6 +48,11 @@ interface Props {
 const allowsSelf = (kind: string) => kind === 'protect' || kind === 'heal';
 // A wolf never eats its own pack.
 const excludesPack = (kind: string) => kind === 'attack';
+
+// The same split the engine uses: the night actors first, the witch second,
+// because she decides with the wolves' victim in front of her.
+const STAGE_TWO_KINDS = ['heal', 'poison'];
+const stageOfKind = (kind: string) => (STAGE_TWO_KINDS.includes(kind) ? 2 : 1);
 
 export const ActionPanel: React.FC<Props> = ({
   phase,
@@ -55,6 +64,8 @@ export const ActionPanel: React.FC<Props> = ({
   quietNight = false,
   selfAlive = true,
   candidates,
+  nightStage = 1,
+  victim = null,
   onChoose,
 }) => {
   if (gameOver || !phase || !role || !selfId) return null;
@@ -131,20 +142,31 @@ export const ActionPanel: React.FC<Props> = ({
   if (phase !== 'Night') return null;
 
   const declared = role.nightActions ?? [];
-  // The wolves look around on the first night instead of feeding.
-  const offered = declared.filter(option => !(quietNight && option.kind === 'attack'));
+  // The wolves look around on the first night instead of feeding, and the
+  // witch is not woken until the wolves have chosen.
+  const offered = declared.filter(option => {
+    if (stageOfKind(option.kind) !== nightStage) return false;
+    if (quietNight && option.kind === 'attack') return false;
+    return true;
+  });
 
   if (offered.length === 0) {
     const peaceful = quietNight && declared.some(option => option.kind === 'attack');
+    // The witch holds a potion but the night has not reached her yet.
+    const stillToCome = declared.some(
+      option => stageOfKind(option.kind) === 2 && nightStage === 1,
+    );
 
     return (
       <View style={styles.panel}>
         <Text style={styles.heading}>
-          {peaceful ? 'Night 1 is peaceful' : 'Night'}
+          {peaceful ? 'Night 1 is peaceful' : stillToCome ? 'Not yet' : 'Night'}
         </Text>
         <Text style={styles.body}>
           {peaceful
             ? "The wolves only look around tonight. Nobody will be devoured, so tomorrow's vote decides everything."
+            : stillToCome
+            ? 'The wolves are out. You will be woken once they have chosen.'
             : 'You have no night action. Sleep well.'}
         </Text>
       </View>
@@ -154,11 +176,16 @@ export const ActionPanel: React.FC<Props> = ({
   return (
     <View style={styles.panel}>
       {offered.map(option => {
-        const candidates = alive.filter(target => {
-          if (target.id === selfId && !allowsSelf(option.kind)) return false;
-          if (excludesPack(option.kind) && allyIds.has(target.id)) return false;
-          return true;
-        });
+        const candidates =
+          option.kind === 'heal'
+            ? victim
+              ? alive.filter(target => target.id === victim.id)
+              : []
+            : alive.filter(target => {
+                if (target.id === selfId && !allowsSelf(option.kind)) return false;
+                if (excludesPack(option.kind) && allyIds.has(target.id)) return false;
+                return true;
+              });
 
         return (
           <View key={option.id}>
@@ -166,12 +193,18 @@ export const ActionPanel: React.FC<Props> = ({
             {submitted.includes(option.id) ? (
               <Text style={styles.body}>Submitted.</Text>
             ) : candidates.length === 0 ? (
-              <Text style={styles.body}>No valid targets.</Text>
+              <Text style={styles.body}>
+                {option.kind === 'heal'
+                  ? 'Nobody was attacked tonight, so the potion stays where it is.'
+                  : 'No valid targets.'}
+              </Text>
             ) : (
               candidates.map(target => (
                 <BaseButton
                   key={target.id}
-                  title={target.name}
+                  title={
+                    option.kind === 'heal' ? `Save ${target.name}` : target.name
+                  }
                   onPress={() => onChoose(option.id, target.id)}
                   variant="secondary"
                 />
@@ -180,6 +213,11 @@ export const ActionPanel: React.FC<Props> = ({
           </View>
         );
       })}
+      {nightStage === 2 && (
+        <Text style={styles.body}>
+          Keeping a potion is a choice too: the host moves on when you say so.
+        </Text>
+      )}
     </View>
   );
 };

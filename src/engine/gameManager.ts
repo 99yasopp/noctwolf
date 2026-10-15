@@ -2,7 +2,7 @@ import { GameState } from './state';
 import { ActionContext, Phase, Player, Team } from './types';
 import { Role } from './roles';
 import { GameTransport, nullTransport } from './transport';
-import { NightActionOption, PlayableRole, buildRoleSet } from './roleSet';
+import { ActionKind, NightActionOption, PlayableRole, buildRoleSet } from './roleSet';
 import {
   KillAction,
   ProtectAction,
@@ -12,6 +12,7 @@ import {
 import {
   GameOverPayload,
   NightActionPayload,
+  NightStagePayload,
   PhaseUpdatePayload,
   PlayerRef,
   RoleAssignPayload,
@@ -20,6 +21,18 @@ import {
   VoteBallot,
   VoteResultPayload,
 } from '../network/protocol';
+
+// The night runs in two stages. The wolves and the other night actors work
+// first; the witch wakes second, with the victim in front of her, because
+// healing someone she never saw attacked is not the rule.
+const STAGE_TWO_KINDS: ActionKind[] = ['heal', 'poison'];
+
+const stageOfKind = (kind: ActionKind): 1 | 2 =>
+  STAGE_TWO_KINDS.includes(kind) ? 2 : 1;
+
+// A settled decision to do nothing, so a bot that keeps its potion is not
+// reported as still owing an action.
+const PASSED = '__passed__';
 
 // Registry of every action a role is allowed to trigger.
 const ACTION_REGISTRY = {
@@ -57,6 +70,8 @@ export class GameManager {
   // Every night choice this round, keyed by player and then by action id, so
   // a role with two actions (the witch) can use both.
   private nightChoices = new Map<string, Map<string, string>>();
+  // 1 while the wolves and the other actors choose, 2 once the witch is up.
+  private nightStage: 1 | 2 = 1;
   // Actions a player has spent for good, keyed `playerId:actionId`.
   private spent = new Set<string>();
   // The guard may not shield the same player twice in a row.
@@ -121,6 +136,7 @@ export class GameManager {
     this.revengeDeaths = [];
     this.revoteCandidates = [];
     this.timer = null;
+    this.nightStage = 1;
     this.actionLog = [];
     this.lastVote = null;
     this.round = 1;
@@ -157,6 +173,12 @@ export class GameManager {
 
     switch (this.state.currentPhase) {
       case 'Night':
+        // First press: the wolves are done, so the witch wakes. Second press:
+        // the night resolves. A table with no witch skips straight through.
+        if (this.nightStage === 1 && this.hasStageTwoActors()) {
+          this.wakeTheWitch();
+          return;
+        }
         this.enterRevengeOr('Night', this.resolveNight());
         return;
 
@@ -233,19 +255,87 @@ export class GameManager {
   }
 
   // Whether this action is on the table for this player tonight. The wolves
-  // skip the first night, the cupid only works on the first night, and a
-  // spent potion is gone for good.
-  private isOptionOffered(playerId: string, option: NightActionOption): boolean {
+  // skip the first night, the cupid only works on the first night, a spent
+  // potion is gone for good, and each kind belongs to one half of the night.
+  // `ignoreStage` asks the same question about the other half, which is how the
+  // engine knows whether a witch is still waiting to be woken.
+  private isOptionOffered(
+    playerId: string,
+    option: NightActionOption,
+    ignoreStage = false,
+  ): boolean {
+    if (!ignoreStage && stageOfKind(option.kind) !== this.nightStage) return false;
     if (option.oncePerGame && this.spent.has(this.chargeKey(playerId, option.id))) return false;
     if (option.kind === 'link' && this.round !== 1) return false;
     if (option.kind === 'attack' && this.isQuietNight()) return false;
+    // Nothing to save means no potion to offer.
+    if (option.kind === 'heal' && !this.healTarget()) return false;
     return true;
+  }
+
+  // Who the wolves took tonight, as far as the choice alone says. Null when
+  // they have not picked, or picked nobody.
+  private victimOfNight(): Player | null {
+    const votes = new Map<string, number>();
+
+    this.nightChoices.forEach((choices, playerId) => {
+      const actor = this.state.players.find(p => p.id === playerId);
+      const role = this.assignments.get(playerId);
+      if (!actor?.isAlive || !role) return;
+
+      choices.forEach((targetId, actionId) => {
+        const option = role.nightActions?.find(candidate => candidate.id === actionId);
+        if (option?.kind !== 'attack' || targetId === PASSED) return;
+        votes.set(targetId, (votes.get(targetId) ?? 0) + 1);
+      });
+    });
+
+    const targetId = this.pickMostVoted(votes);
+    return this.state.players.find(p => p.id === targetId) ?? null;
+  }
+
+  private isShieldedBySomeone(targetId: string): boolean {
+    let shielded = false;
+
+    this.nightChoices.forEach((choices, playerId) => {
+      const role = this.assignments.get(playerId);
+      choices.forEach((chosenTarget, actionId) => {
+        const option = role?.nightActions?.find(candidate => candidate.id === actionId);
+        if (option?.kind === 'protect' && chosenTarget === targetId) shielded = true;
+      });
+    });
+
+    return shielded;
+  }
+
+  // The one player the healing potion may be pointed at, if any.
+  private healTarget(): Player | null {
+    const victim = this.victimOfNight();
+    if (!victim?.isAlive) return null;
+    if (this.isShieldedBySomeone(victim.id)) return null;
+    return victim;
+  }
+
+  // Whether anyone is still waiting for the second half of the night.
+  private hasStageTwoActors(): boolean {
+    return this.state.players.some(player => {
+      if (!player.isAlive) return false;
+      const role = this.assignments.get(player.id);
+
+      return !!role?.nightActions?.some(
+        option => stageOfKind(option.kind) === 2 && this.isOptionOffered(player.id, option, true),
+      );
+    });
   }
 
   // The legal targets for one action, shared by the players and the bots.
   private validTargets(player: Player, option: NightActionOption): Player[] {
+    const victim = option.kind === 'heal' ? this.healTarget() : null;
+
     return this.state.players.filter(target => {
       if (!target.isAlive) return false;
+      // The healing potion saves the wolves' victim, nobody else.
+      if (option.kind === 'heal') return !!victim && victim.id === target.id;
       if (target.id === player.id && !option.allowSelf) return false;
       if (option.kind === 'attack' && this.assignments.get(target.id)?.team === 'Wolf') return false;
       if (option.kind === 'protect' && this.lastProtected.get(player.id) === target.id) return false;
@@ -267,6 +357,24 @@ export class GameManager {
     if (!this.validTargets(actor, option).some(target => target.id === targetId)) return false;
 
     this.choicesFor(playerId).set(actionId, targetId);
+    this.emit({ type: 'changed' });
+    return true;
+  }
+
+  // Keeping a potion is a decision too, and it has to be visible as one or the
+  // host waits on a player who has already made up his mind.
+  passNightAction(playerId: string, actionId: string): boolean {
+    if (this.winner) return false;
+    if (this.state.currentPhase !== 'Night') return false;
+
+    const actor = this.state.players.find(p => p.id === playerId);
+    if (!actor || !actor.isAlive) return false;
+
+    const role = this.assignments.get(playerId);
+    const option = role?.nightActions?.find(candidate => candidate.id === actionId);
+    if (!option) return false;
+
+    this.choicesFor(playerId).set(actionId, PASSED);
     this.emit({ type: 'changed' });
     return true;
   }
@@ -318,14 +426,55 @@ export class GameManager {
   }
 
   // What a player has already picked for one of tonight's actions, if anything.
+  // A deliberate pass reads as nothing chosen.
   getNightChoice(playerId: string, actionId: string): string | null {
-    return this.nightChoices.get(playerId)?.get(actionId) ?? null;
+    const choice = this.nightChoices.get(playerId)?.get(actionId) ?? null;
+    return choice === PASSED ? null : choice;
   }
 
-  // The opening night is peaceful: the seer still gets a read, but nobody is
-  // devoured, so the first day vote actually decides the game.
+  // 1 while the wolves and the other actors choose, 2 once the witch is up.
+  getNightStage(): 1 | 2 {
+    return this.nightStage;
+  }
+
+  // True when the host's next press only wakes the witch rather than resolving
+  // the night, so the button can say so.
+  isWakingTheWitchNext(): boolean {
+    return (
+      !this.winner &&
+      this.state.currentPhase === 'Night' &&
+      this.nightStage === 1 &&
+      this.hasStageTwoActors()
+    );
+  }
+
+  // Who the wolves took, once their picks are in. Only the witch is sent this
+  // before the morning announcement.
+  getNightVictim(): PlayerRef | null {
+    if (this.state.currentPhase !== 'Night') return null;
+
+    const victim = this.victimOfNight();
+    return victim ? { id: victim.id, name: victim.name, isAlive: victim.isAlive } : null;
+  }
+
+  // The one player the healing potion could still save tonight: null once the
+  // wolves have picked nobody, or once the guard is already saving them.
+  getHealTarget(): PlayerRef | null {
+    if (this.state.currentPhase !== 'Night') return null;
+
+    const victim = this.healTarget();
+    return victim ? { id: victim.id, name: victim.name, isAlive: victim.isAlive } : null;
+  }
+
+  // Whether a once-per-game action is still available to this player.
+  hasChargeLeft(playerId: string, actionId: string): boolean {
+    return !this.spent.has(this.chargeKey(playerId, actionId));
+  }
+
+  // The opening night is peaceful at the smallest table only: with three
+  // players a kill would hand the wolves parity before anyone has spoken.
   isQuietNight(): boolean {
-    return this.round === 1;
+    return this.round === 1 && this.state.players.length <= 3;
   }
 
   // Players who still owe a night action this round.
@@ -389,6 +538,10 @@ export class GameManager {
       payload: this.buildPhasePayload(),
       timestamp: Date.now(),
     });
+
+    // A player who joins mid-night needs the stage, and the witch needs the
+    // victim she may save.
+    if (this.state.currentPhase === 'Night') this.sendNightStageTo(playerId);
 
     if (this.lastVote) {
       this.transport.sendToPlayer(playerId, {
@@ -477,6 +630,58 @@ export class GameManager {
     return players.map(p => ({ id: p.id, name: p.name, isAlive: p.isAlive }));
   }
 
+  // ------------------------------------------------------------ the night half
+
+  // The wolves are done, so the witch wakes and is shown who was attacked.
+  // Without her the night has no second half and advance() resolves it.
+  private wakeTheWitch() {
+    this.nightStage = 2;
+    this.broadcastNightStage();
+
+    this.state.players.forEach(player => {
+      if (player.isAlive && this.hearsTheVictim(player.id)) this.sendNightStageTo(player.id);
+    });
+
+    this.autoPlayBots();
+    this.emit({ type: 'changed' });
+  }
+
+  // Stage only: the victim never travels in a broadcast. Announcing an attack
+  // the guard then cancels would give the save away.
+  private broadcastNightStage() {
+    const payload: NightStagePayload = { stage: this.nightStage };
+
+    this.transport.broadcast({
+      type: 'NIGHT_STAGE',
+      payload,
+      timestamp: Date.now(),
+    });
+  }
+
+  private sendNightStageTo(playerId: string) {
+    this.transport.sendToPlayer(playerId, {
+      type: 'NIGHT_STAGE',
+      payload: this.nightStagePayloadFor(playerId),
+      timestamp: Date.now(),
+    });
+  }
+
+  // Only the witch learns the victim before the morning.
+  private hearsTheVictim(playerId: string): boolean {
+    const role = this.assignments.get(playerId);
+    return !!role?.nightActions?.some(option => option.kind === 'heal');
+  }
+
+  private nightStagePayloadFor(playerId: string): NightStagePayload {
+    const victim = this.hearsTheVictim(playerId) ? this.healTarget() : null;
+
+    return {
+      stage: this.nightStage,
+      victim: victim ? { id: victim.id, name: victim.name, isAlive: victim.isAlive } : null,
+      healTargets: victim ? [victim.id] : [],
+    };
+  }
+
   private setPhase(phase: Phase, extra: Partial<PhaseUpdatePayload> = {}) {
     this.state.setPhase(phase);
 
@@ -484,6 +689,7 @@ export class GameManager {
       this.nightChoices.clear();
       this.votes.clear();
       this.revoteCandidates = [];
+      this.nightStage = 1;
     }
 
     if (phase === 'Vote') {
@@ -499,6 +705,9 @@ export class GameManager {
       payload: this.buildPhasePayload(extra),
       timestamp: Date.now(),
     });
+
+    // Night falls in the first stage; the witch is woken from advance().
+    if (phase === 'Night') this.broadcastNightStage();
 
     // Test players act by themselves so a host can verify the loop without
     // three devices.
@@ -520,6 +729,13 @@ export class GameManager {
 
             const targets = this.validTargets(player, option);
             if (targets.length === 0) return;
+
+            // A potion is a choice, not a reflex: a bot witch sometimes keeps
+            // hers, and says so, or the host would wait on her forever.
+            if (option.kind === 'heal' && Math.random() < 0.4) {
+              this.passNightAction(player.id, option.id);
+              return;
+            }
 
             const target = targets[Math.floor(Math.random() * targets.length)];
             this.handleNightAction(player.id, option.id, target.id);
@@ -597,6 +813,7 @@ export class GameManager {
       choices.forEach((targetId, actionId) => {
         const option = role.nightActions?.find(candidate => candidate.id === actionId);
         if (!option) return;
+        if (targetId === PASSED) return;
 
         switch (option.kind) {
           case 'protect':

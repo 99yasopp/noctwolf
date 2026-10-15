@@ -135,7 +135,9 @@ export const NarratorDashboard = () => {
   const nextLabel = manager.winner
     ? null
     : phase === 'Night'
-    ? `Resolve night ${round} → Day`
+    ? manager.isWakingTheWitchNext()
+      ? 'Wake the witch'
+      : `Resolve night ${round} → Day`
     : phase === 'Day'
     ? 'Start the vote'
     : phase === 'Vote'
@@ -293,6 +295,8 @@ export const NarratorDashboard = () => {
         gameOver={!!manager.winner}
         quietNight={manager.isQuietNight()}
         selfAlive={localPlayer.isAlive}
+        nightStage={manager.getNightStage()}
+        victim={manager.getHealTarget()}
         candidates={
           revoteCandidates.length > 0 ? revoteCandidates : undefined
         }
