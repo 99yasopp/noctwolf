@@ -1,28 +1,31 @@
 import { EventEmitter } from 'events';
 import { NetworkMessage } from './protocol';
 import { encodeMessage, MessageDecoder } from './framing';
+import { loadTcpSocket } from './nativeModules';
 import { Platform } from 'react-native';
-
-// Lazy load the native module only on mobile
-let TcpSocket: any;
-if (Platform.OS !== 'web') {
-  TcpSocket = require('react-native-tcp-socket').default;
-}
 
 export class NarratorServer extends EventEmitter {
   private clients: any[] = [];
   private decoders = new Map<any, MessageDecoder>();
-  private server: any;
+  private server: any = null;
   private port: number;
   private isListening = false;
 
   constructor(port: number = 12345) {
     super();
     this.port = port;
+  }
 
-    if (Platform.OS === 'web') {
-      console.warn('TCP Server not supported on Web');
-      return;
+  // The native server is created on first use, never in the constructor:
+  // simply constructing a NarratorServer (which GameProvider does on app
+  // start) must not touch the native module or bind a port.
+  private createServer(): any {
+    if (this.server) return this.server;
+
+    const TcpSocket = loadTcpSocket();
+    if (!TcpSocket || typeof TcpSocket.createServer !== 'function') {
+      console.error('TCP server unavailable: react-native-tcp-socket could not be loaded');
+      return null;
     }
 
     this.server = TcpSocket.createServer((socket: any) => {
@@ -54,14 +57,19 @@ export class NarratorServer extends EventEmitter {
       console.error(`TCP Server error on port ${this.port}`, error);
       this.emit('server-error', error);
     });
+
+    return this.server;
   }
 
-  // Bind the listener. Safe to call more than once.
+  // Bind the listener. Idempotent: returns true when the server is listening
+  // (including when it already was) and false when it cannot be started.
   start(): boolean {
-    if (Platform.OS === 'web') return false;
-    if (!this.server || this.isListening) return false;
+    if (this.isListening) return true;
 
-    this.server.listen({ port: this.port, host: '0.0.0.0' });
+    const server = this.createServer();
+    if (!server) return false;
+
+    server.listen({ port: this.port, host: '0.0.0.0' });
     this.isListening = true;
     console.log(`TCP Server started on port ${this.port}`);
     return true;

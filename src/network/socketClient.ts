@@ -1,12 +1,6 @@
-import { Platform } from 'react-native';
 import { NetworkMessage } from './protocol';
 import { encodeMessage, MessageDecoder } from './framing';
-
-// Lazy load the native module only on mobile (keeps the web bundle native-free)
-let TcpSocket: any;
-if (Platform.OS !== 'web') {
-  TcpSocket = require('react-native-tcp-socket').default;
-}
+import { loadTcpSocket } from './nativeModules';
 
 export class PlayerClient {
   private socket: any;
@@ -14,8 +8,9 @@ export class PlayerClient {
   private messageHandler: ((message: NetworkMessage) => void) | null = null;
 
   constructor(host: string, port: number = 12345) {
-    if (Platform.OS === 'web') {
-      console.warn('TCP Client not supported on Web');
+    const TcpSocket = loadTcpSocket();
+    if (!TcpSocket || typeof TcpSocket.connect !== 'function') {
+      console.error('TCP client unavailable: react-native-tcp-socket could not be loaded');
       return;
     }
 
@@ -34,6 +29,10 @@ export class PlayerClient {
         this.messageHandler?.(message);
       }
     });
+  }
+
+  isConnected(): boolean {
+    return !!this.socket;
   }
 
   sendMessage(message: NetworkMessage) {

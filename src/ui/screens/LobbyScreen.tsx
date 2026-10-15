@@ -24,6 +24,11 @@ export const LobbyScreen = ({ navigation }: { navigation?: any }) => {
 
   const hostGame = () => {
     const code = lobby.generateRoomCode();
+    if (!code) {
+      alert('Could not start hosting on this device.');
+      return;
+    }
+
     // Host adds themselves
     lobby.addPlayer({
       id: 'host-1',

@@ -1,15 +1,15 @@
 import { Player } from '../engine/types';
 import { NarratorServer } from './socketServer';
 import { PlayerClient } from './socketClient';
+import { createZeroconf } from './nativeModules';
 import { Platform } from 'react-native';
 
 type ZeroconfLike = any;
 
-// The native Zeroconf module is loaded lazily and defensively: if it is
-// missing or fails to initialise, the lobby degrades to code-only joining
-// instead of crashing the screen at import time.
+// Discovery is best-effort. If the native module is missing or fails to load
+// we simply disable it and let players join by room code.
 let zeroconf: ZeroconfLike | null = null;
-let zeroconfFailed = false;
+let zeroconfUnavailable = false;
 
 export class LobbyManager {
   private roomCode: string = '';
@@ -20,36 +20,38 @@ export class LobbyManager {
   private foundListenerAttached = false;
 
   private getZeroconf(): ZeroconfLike | null {
-    if (Platform.OS === 'web' || zeroconfFailed) return null;
+    if (zeroconfUnavailable) return null;
 
     if (!zeroconf) {
-      try {
-        const Zeroconf = require('react-native-zeroconf').default;
-        zeroconf = new Zeroconf();
-      } catch (error) {
-        console.error('Zeroconf unavailable, local discovery is disabled', error);
-        zeroconfFailed = true;
+      zeroconf = createZeroconf();
+      if (!zeroconf) {
+        zeroconfUnavailable = true;
         return null;
       }
     }
 
     if (!this.foundListenerAttached) {
-      zeroconf.on('found', (service: any) => {
-        this.discoveredHosts.push(service);
-        console.log('Found service:', service);
-      });
-      this.foundListenerAttached = true;
+      try {
+        zeroconf.on('found', (service: any) => {
+          this.discoveredHosts.push(service);
+          console.log('Found service:', service);
+        });
+        this.foundListenerAttached = true;
+      } catch (error) {
+        console.error('Failed to attach the discovery listener', error);
+        zeroconfUnavailable = true;
+        return null;
+      }
     }
 
     return zeroconf;
   }
 
-  generateRoomCode(): string {
-    this.roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
-
+  // Returns the room code, or null when hosting could not be started.
+  generateRoomCode(): string | null {
     if (Platform.OS === 'web') {
       console.warn("Networking not supported on web");
-      return this.roomCode;
+      return null;
     }
 
     // Reuse one server instance so hosting twice cannot bind the port twice.
@@ -57,7 +59,7 @@ export class LobbyManager {
       this.server = new NarratorServer(12345);
       this.server.on('message', (msg: any) => {
         if (msg.type === 'PLAYER_JOIN') {
-          this.players.push(msg.payload.player);
+          this.addPlayer(msg.payload.player);
         }
       });
       this.server.on('server-error', (error: any) => {
@@ -66,10 +68,23 @@ export class LobbyManager {
     }
 
     // Binding is explicit now, so players that never host never open a port.
-    this.server.start();
+    if (!this.server.start()) {
+      console.error('Failed to start the lobby server; hosting is unavailable');
+      return null;
+    }
 
-    // Advertising is best-effort: joining by code still works without it.
-    this.getZeroconf()?.publishService('http', 'tcp', 'local.', 'WerewolfServer', 12345, { roomCode: this.roomCode });
+    this.roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
+
+    // Advertising is best-effort: joining by code still works without it, and
+    // a discovery failure must never break hosting.
+    const zc = this.getZeroconf();
+    if (zc) {
+      try {
+        zc.publishService('http', 'tcp', 'local.', 'WerewolfServer', 12345, { roomCode: this.roomCode });
+      } catch (error) {
+        console.error('Failed to advertise the room; players can still join by code', error);
+      }
+    }
 
     return this.roomCode;
   }
@@ -96,7 +111,12 @@ export class LobbyManager {
       return Promise.resolve(false);
     }
 
-    zc.scan('http', 'tcp', 'local.');
+    try {
+      zc.scan('http', 'tcp', 'local.');
+    } catch (error) {
+      console.error('Failed to start the discovery scan', error);
+      return Promise.resolve(false);
+    }
 
     return new Promise((resolve) => {
       setTimeout(() => {
@@ -124,7 +144,14 @@ export class LobbyManager {
     });
   }
 
+  // Upserts by id so re-hosting (or a reconnecting player) cannot create
+  // duplicate entries, which would also break React's list keys.
   addPlayer(player: Player) {
+    const existingIndex = this.players.findIndex(p => p.id === player.id);
+    if (existingIndex >= 0) {
+      this.players[existingIndex] = player;
+      return;
+    }
     this.players.push(player);
   }
 
