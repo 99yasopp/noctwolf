@@ -5,10 +5,15 @@ import { BaseButton } from '../components/BaseButton';
 import { GAME_PORT, HOST_PLAYER_ID, lobby } from '../../network/lobby';
 import { Player } from '../../engine/types';
 import { useGame } from '../GameContext';
+import { randomPlayerName } from '../randomName';
 
 type LobbyView = 'menu' | 'host' | 'join' | 'waiting';
 
 const MIN_PLAYERS = 3;
+
+// Randomised so two devices left on the default do not look alike, and stable
+// for the life of the app run so leaving a game does not rename the player.
+const initialPlayerName = randomPlayerName();
 
 export const LobbyScreen = () => {
   const { startHostGame, enterPlayerMode } = useGame();
@@ -21,7 +26,7 @@ export const LobbyScreen = () => {
   const [roomCode, setRoomCode] = useState('');
   const [inputCode, setInputCode] = useState('');
   const [inputIp, setInputIp] = useState('');
-  const [playerName, setPlayerName] = useState('Player');
+  const [playerName, setPlayerName] = useState(initialPlayerName);
   const [players, setPlayers] = useState<Player[]>([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -73,13 +78,13 @@ export const LobbyScreen = () => {
   }, [view, isHost, enterPlayerMode]);
 
   const buildGuest = (): Player => {
+    // Clearing the name field must not put us back on a shared default.
+    const name = playerName.trim() || initialPlayerName;
+
     if (!guestRef.current) {
-      guestRef.current = guest(
-        Math.random().toString(36).substring(2, 10),
-        playerName,
-      );
+      guestRef.current = guest(Math.random().toString(36).substring(2, 10), name);
     }
-    guestRef.current.name = playerName.trim() || 'Guest';
+    guestRef.current.name = name;
     return guestRef.current;
   };
 
@@ -94,7 +99,7 @@ export const LobbyScreen = () => {
 
     lobby.addPlayer({
       id: HOST_PLAYER_ID,
-      name: playerName.trim() || 'Host',
+      name: playerName.trim() || initialPlayerName,
       role: 'Unknown',
       team: 'Village',
       isAlive: true,
@@ -282,7 +287,7 @@ export const LobbyScreen = () => {
 
 const guest = (id: string, name: string): Player => ({
   id,
-  name: name.trim() || 'Guest',
+  name: name.trim() || initialPlayerName,
   role: 'Unknown',
   team: 'Village',
   isAlive: true,

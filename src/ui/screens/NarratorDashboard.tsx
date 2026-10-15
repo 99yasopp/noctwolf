@@ -82,6 +82,20 @@ export const NarratorDashboard = () => {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.header}>Narrator Dashboard</Text>
 
+      {/* The host plays too, so his own role must be as visible to him as a
+          guest's role card is to a guest. */}
+      <View style={styles.roleCard}>
+        <Text style={styles.roleLabel}>Your Role</Text>
+        <Text style={styles.roleName}>{role?.name ?? 'unassigned'}</Text>
+        <Text style={styles.roleTeam}>{role ? `${role.team} team` : ''}</Text>
+        {role && <Text style={styles.roleDescription}>{role.description}</Text>}
+        {ownRole && ownRole.allies && ownRole.allies.length > 0 && (
+          <Text style={styles.roleDescription}>
+            Your pack: {ownRole.allies.map(ally => ally.name).join(', ')}
+          </Text>
+        )}
+      </View>
+
       <View style={styles.statusCard}>
         <Text style={styles.statusText}>
           Phase: {manager.state.currentPhase} (round {round})
@@ -89,7 +103,7 @@ export const NarratorDashboard = () => {
         <Text style={styles.statusText}>
           Alive: {aliveCount} / {players.length}
         </Text>
-        <Text style={styles.statusText}>You are: {localPlayer.name} ({role?.name ?? 'unassigned'})</Text>
+        <Text style={styles.statusText}>You are: {localPlayer.name}</Text>
 
         {pendingActors.length > 0 && (
           <Text style={styles.pending}>
@@ -225,6 +239,33 @@ const styles = StyleSheet.create({
     padding: theme.spacing.medium,
     borderRadius: theme.borderRadius,
     marginBottom: theme.spacing.medium,
+  },
+  roleCard: {
+    backgroundColor: theme.colors.primary,
+    padding: theme.spacing.large,
+    borderRadius: theme.borderRadius,
+    alignItems: 'center',
+    marginBottom: theme.spacing.medium,
+  },
+  roleLabel: {
+    color: theme.colors.background,
+    fontSize: 14,
+  },
+  roleName: {
+    color: theme.colors.background,
+    fontSize: 28,
+    fontWeight: 'bold',
+  },
+  roleTeam: {
+    color: theme.colors.background,
+    fontSize: 14,
+    marginTop: 4,
+  },
+  roleDescription: {
+    color: theme.colors.background,
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: theme.spacing.small,
   },
   statusText: {
     color: theme.colors.text,
