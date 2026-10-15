@@ -16,6 +16,10 @@ export type MessageType =
   | 'SEAT_TOKEN'
   | 'REVENGE'
   | 'NIGHT_STAGE'
+  | 'MAYOR_VOLUNTEER'
+  | 'MAYOR_VOTE'
+  | 'SUCCESSION'
+  | 'MAYOR_ELECTED'
   | 'TIME_SYNC';
 
 export interface NetworkMessage {
@@ -41,6 +45,14 @@ export interface PhaseUpdatePayload {
   round: number;
   players: PlayerRef[];
   deaths?: PlayerRef[];
+  // The mayor is elected before the first night and holds no card, so the
+  // candidates, the stage of the election and the title all travel with the
+  // phase everyone already receives.
+  electionStage?: 'nominate' | 'vote';
+  mayorCandidates?: PlayerRef[];
+  mayorId?: string | null;
+  // Set while the table waits for the dying mayor to name a successor.
+  successionMayorId?: string | null;
 }
 
 export interface RoleAssignPayload {
@@ -99,6 +111,11 @@ export interface NightStagePayload {
   victim?: PlayerRef | null;
   // The only player her healing potion may be pointed at, if any.
   healTargets?: string[];
+}
+
+export interface MayorElectedPayload {
+  playerId: string;
+  playerName: string;
 }
 
 export interface SecretInfoPayload {

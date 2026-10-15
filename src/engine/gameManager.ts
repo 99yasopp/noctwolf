@@ -87,6 +87,18 @@ export class GameManager {
   private votes = new Map<string, string>();
   // Set while the day's vote is being re-run between tied players.
   private revoteCandidates: string[] = [];
+  // The mayor is elected, not dealt: a title any player can wear. The
+  // PresidentManager holds the title and the double vote that rides with it.
+  private mayorVolunteers: string[] = [];
+  private electionStage: 'nominate' | 'vote' = 'nominate';
+  private electionRevote = false;
+  // Who is still on the ballot when the seat goes to a re-vote.
+  private mayorRevoteLeaders: string[] = [];
+  // A mayor who dies hands the title on, so the table waits for his word.
+  private pendingSuccession: string | null = null;
+  private successionChoice: { mayorId: string; targetId: string } | null = null;
+  private successionOrigin: 'Night' | 'Vote' = 'Night';
+  private successionDeaths: Player[] = [];
   // The host's clock for the current phase, if one was set.
   private timer: { endsAt: number; totalMs: number } | null = null;
   private listeners = new Set<(event: GameEvent) => void>();
@@ -137,6 +149,14 @@ export class GameManager {
     this.revoteCandidates = [];
     this.timer = null;
     this.nightStage = 1;
+    this.mayorVolunteers = [];
+    this.electionStage = 'nominate';
+    this.electionRevote = false;
+    this.mayorRevoteLeaders = [];
+    this.pendingSuccession = null;
+    this.successionChoice = null;
+    this.successionDeaths = [];
+    this.state.presidentManager.reset(this.state.players);
     this.actionLog = [];
     this.lastVote = null;
     this.round = 1;
@@ -158,7 +178,9 @@ export class GameManager {
     });
 
     this.actionLog.push(`${players.length} players were dealt their roles.`);
-    this.setPhase('Night');
+    // The mayor is chosen before the first night, and a wolf may win the seat.
+    this.actionLog.push('The table elects a mayor before the first night.');
+    this.setPhase('Election');
   }
 
   // { phase: 'Night' } opens a fresh night, { phase: 'Day' } announces the
@@ -179,11 +201,11 @@ export class GameManager {
           this.wakeTheWitch();
           return;
         }
-        this.enterRevengeOr('Night', this.resolveNight());
+        this.enterAfterDeaths('Night', this.resolveNight());
         return;
 
       case 'Revenge':
-        this.enterAfterRevenge(this.resolveRevenge());
+        this.enterAfterDeaths(this.revengeOrigin ?? 'Vote', this.resolveRevenge());
         return;
 
       case 'Day':
@@ -194,13 +216,49 @@ export class GameManager {
         this.resolveVote();
         return;
 
+      case 'Election':
+        // First press closes the nominations, the host then runs the debate,
+        // and the last press counts the ballots.
+        if (this.electionStage === 'nominate') this.closeNominations();
+        else this.resolveMayorVote();
+        return;
+
+      case 'Debate':
+        this.electionStage = 'vote';
+        this.votes.clear();
+        this.setPhase('Election');
+        return;
+
+      case 'Succession':
+        this.resolveSuccession();
+        return;
+
       default:
         this.setPhase('Night');
     }
   }
 
-  // The hunter died, so the table waits for one pick before moving on.
-  private enterRevengeOr(origin: 'Night' | 'Vote', deaths: Player[]) {
+  // Deaths hand the game to whoever is still owed an action: the dying mayor
+  // names a successor first, then the hunter fires, and only then does the
+  // phase close.
+  private enterAfterDeaths(origin: 'Night' | 'Vote', deaths: Player[]) {
+    const mayorId = this.state.presidentManager.getPresidentId();
+
+    if (
+      mayorId &&
+      deaths.some(dead => dead.id === mayorId) &&
+      this.state.players.some(player => player.isAlive)
+    ) {
+      this.pendingSuccession = mayorId;
+    }
+
+    if (this.pendingSuccession) {
+      this.successionOrigin = origin;
+      this.successionDeaths = deaths;
+      this.setPhase('Succession');
+      return;
+    }
+
     if (this.pendingRevenge) {
       this.revengeOrigin = origin;
       this.revengeDeaths = deaths;
@@ -208,12 +266,11 @@ export class GameManager {
       return;
     }
 
-    if (origin === 'Night') this.enterDay(deaths);
-    else this.enterNextRound();
+    this.endPhase(origin, deaths);
   }
 
-  private enterAfterRevenge(deaths: Player[]) {
-    if (this.revengeOrigin === 'Night') this.enterDay(deaths);
+  private endPhase(origin: 'Night' | 'Vote', deaths: Player[]) {
+    if (origin === 'Night') this.enterDay(deaths);
     else this.enterNextRound();
   }
 
@@ -395,6 +452,61 @@ export class GameManager {
     return true;
   }
 
+  // The dying mayor hands the double vote on. He is dead, so unlike the
+  // hunter he is not required to be alive to make the call.
+  handleSuccession(playerId: string, targetId: string): boolean {
+    if (this.winner) return false;
+    if (this.state.currentPhase !== 'Succession') return false;
+    if (this.pendingSuccession !== playerId) return false;
+
+    const mayor = this.state.players.find(p => p.id === playerId);
+    const target = this.state.players.find(p => p.id === targetId);
+    if (!mayor || !target?.isAlive) return false;
+    if (target.id === playerId) return false;
+
+    this.successionChoice = { mayorId: playerId, targetId };
+    this.emit({ type: 'changed' });
+    return true;
+  }
+
+  private resolveSuccession() {
+    const dyingMayorId = this.pendingSuccession;
+    const choice = this.successionChoice;
+
+    this.pendingSuccession = null;
+    this.successionChoice = null;
+
+    if (dyingMayorId && choice?.mayorId === dyingMayorId) {
+      const successor = this.state.players.find(p => p.id === choice.targetId);
+
+      if (successor?.isAlive) {
+        this.state.presidentManager.handleSuccession(
+          dyingMayorId,
+          successor.id,
+          this.state.players,
+        );
+        this.actionLog.push(`${successor.name} takes the mayor's seat.`);
+
+        this.transport.broadcast({
+          type: 'MAYOR_ELECTED',
+          payload: { playerId: successor.id, playerName: successor.name },
+          timestamp: Date.now(),
+        });
+      }
+    } else if (dyingMayorId) {
+      // The seat goes unfilled, and the dead mayor's double vote goes with it.
+      const mayor = this.state.players.find(p => p.id === dyingMayorId);
+      if (mayor) mayor.voteWeight = 1;
+
+      this.actionLog.push('The mayor died without naming anyone: the seat stays empty.');
+      // No successor means nobody wears the double vote until a new election.
+      this.state.presidentManager.clearPresident(this.state.players);
+    }
+
+    this.emit({ type: 'changed' });
+    this.enterAfterDeaths(this.successionOrigin, this.successionDeaths);
+  }
+
   handleVote(voterId: string, targetId: string): boolean {
     if (this.winner) return false;
     if (this.state.currentPhase !== 'Vote') return false;
@@ -496,6 +608,16 @@ export class GameManager {
   getPendingRevengeHunter(): Player | null {
     if (this.state.currentPhase !== 'Revenge' || !this.pendingRevenge) return null;
     return this.state.players.find(p => p.id === this.pendingRevenge) ?? null;
+  }
+
+  // The mayor who died and still owes the table a successor.
+  getPendingSuccessionMayor(): Player | null {
+    if (this.state.currentPhase !== 'Succession' || !this.pendingSuccession) return null;
+    return this.state.players.find(p => p.id === this.pendingSuccession) ?? null;
+  }
+
+  hasChosenSuccession(playerId: string): boolean {
+    return this.successionChoice?.mayorId === playerId;
   }
 
   hasChosenRevenge(playerId: string): boolean {
@@ -605,10 +727,23 @@ export class GameManager {
   }
 
   private buildPhasePayload(extra: Partial<PhaseUpdatePayload> = {}): PhaseUpdatePayload {
+    const phase = this.state.currentPhase;
+
     return {
-      phase: this.state.currentPhase,
+      phase,
       round: this.round,
       players: this.toRefs(this.state.players),
+      // The election is public: who stands, who may be voted for, and who won.
+      ...(phase === 'Election' || phase === 'Debate'
+        ? {
+            electionStage: this.electionStage,
+            // While the list is open there is nobody to vote for yet, so the
+            // list means "who is standing".
+            mayorCandidates: this.getElectionList(),
+            mayorId: this.state.presidentManager.getPresidentId(),
+          }
+        : { mayorId: this.state.presidentManager.getPresidentId() }),
+      ...(phase === 'Succession' ? { successionMayorId: this.pendingSuccession } : {}),
       ...extra,
     };
   }
@@ -767,6 +902,42 @@ export class GameManager {
           const target = candidates[Math.floor(Math.random() * candidates.length)];
           this.handleRevenge(hunter.id, target.id);
         }
+      }
+    }
+
+    if (this.state.currentPhase === 'Succession') {
+      const mayor = this.getPendingSuccessionMayor();
+      if (mayor?.isBot && !this.hasChosenSuccession(mayor.id)) {
+        const candidates = this.state.players.filter(p => p.isAlive && p.id !== mayor.id);
+        if (candidates.length > 0) {
+          const target = candidates[Math.floor(Math.random() * candidates.length)];
+          this.handleSuccession(mayor.id, target.id);
+        }
+      }
+    }
+
+    if (this.state.currentPhase === 'Election') {
+      if (this.electionStage === 'vote') {
+        const candidates = this.getElectionList().map(candidate => candidate.id);
+
+        this.state.players
+          .filter(player => player.isAlive && player.isBot && !this.votes.has(player.id))
+          .forEach(voter => {
+            // A bot does not vote for itself unless it is the only candidate.
+            const preferred = candidates.filter(id => id !== voter.id);
+            const pool = preferred.length > 0 ? preferred : candidates;
+            if (pool.length === 0) return;
+
+            this.votes.set(voter.id, pool[Math.floor(Math.random() * pool.length)]);
+          });
+      } else {
+        // Some bots stand, so a table of test players still has a contest.
+        this.state.players
+          .filter(player => player.isAlive && player.isBot && !this.mayorVolunteers.includes(player.id))
+          .forEach(player => {
+            if (this.mayorVolunteers.length >= 3) return;
+            if (Math.random() < 0.35) this.volunteerForMayor(player.id);
+          });
       }
     }
   }
@@ -969,6 +1140,203 @@ export class GameManager {
     return deaths;
   }
 
+  // ------------------------------------------------------ the mayoral election
+
+  // Any player may stand: the seat is a title, so a wolf can wear it.
+  volunteerForMayor(playerId: string): boolean {
+    if (this.winner) return false;
+    if (this.state.currentPhase !== 'Election' || this.electionStage !== 'nominate') return false;
+
+    const actor = this.state.players.find(p => p.id === playerId);
+    if (!actor?.isAlive) return false;
+    if (this.mayorVolunteers.includes(playerId)) return false;
+    if (this.mayorVolunteers.length >= 3) return false;
+
+    this.mayorVolunteers.push(playerId);
+    this.emit({ type: 'changed' });
+    return true;
+  }
+
+  hasVolunteered(playerId: string): boolean {
+    return this.mayorVolunteers.includes(playerId);
+  }
+
+  // The nominated candidates, once the nominations are closed.
+  getMayorCandidates(): PlayerRef[] {
+    return this.state.presidentManager
+      .getCandidates()
+      .map(id => this.state.players.find(p => p.id === id))
+      .filter((player): player is Player => !!player)
+      .map(player => ({ id: player.id, name: player.name, isAlive: player.isAlive }));
+  }
+
+  // One list for the whole table, because the election is public: who is
+  // standing while the list is open, who may be voted for once it closes, and
+  // only the tied players if the seat goes to a re-vote.
+  getElectionList(): PlayerRef[] {
+    if (this.electionStage === 'nominate') {
+      return this.toRefs(
+        this.state.players.filter(player => this.mayorVolunteers.includes(player.id)),
+      );
+    }
+
+    if (this.electionRevote && this.mayorRevoteLeaders.length > 0) {
+      return this.toRefs(
+        this.state.players.filter(player => this.mayorRevoteLeaders.includes(player.id)),
+      );
+    }
+
+    return this.getMayorCandidates();
+  }
+
+  getMayor(): PlayerRef | null {
+    const mayorId = this.state.presidentManager.getPresidentId();
+    if (!mayorId) return null;
+
+    const mayor = this.state.players.find(p => p.id === mayorId);
+    return mayor ? { id: mayor.id, name: mayor.name, isAlive: mayor.isAlive } : null;
+  }
+
+  getElectionStage(): 'nominate' | 'vote' {
+    return this.electionStage;
+  }
+
+  // One player, one vote for the seat. There is no mayor yet, so no ballot
+  // weighs more than another.
+  handleMayorVote(voterId: string, targetId: string): boolean {
+    if (this.winner) return false;
+    if (this.state.currentPhase !== 'Election' || this.electionStage !== 'vote') return false;
+
+    const voter = this.state.players.find(p => p.id === voterId);
+    if (!voter?.isAlive) return false;
+    // Only the players actually on the ballot: on a re-vote that is the tied
+    // few, not the whole list.
+    if (!this.getElectionList().some(candidate => candidate.id === targetId)) return false;
+
+    this.votes.set(voterId, targetId);
+    this.emit({ type: 'changed' });
+    return true;
+  }
+
+  private closeNominations() {
+    const alive = this.getAlivePlayers();
+
+    // Nobody stood? Three are drawn, or the table would start the night with
+    // no one to vote for.
+    const standing =
+      this.mayorVolunteers.length > 0
+        ? this.mayorVolunteers
+        : alive.map(player => player.id);
+
+    this.state.presidentManager.startElection(this.state.players, 3, standing);
+
+    this.actionLog.push(
+      `The candidates are ${this.getMayorCandidates().map(candidate => candidate.name).join(', ')}.`,
+    );
+
+    this.electionStage = 'vote';
+    this.electionRevote = false;
+    this.mayorRevoteLeaders = [];
+    this.votes.clear();
+    this.setPhase('Debate');
+  }
+
+  private resolveMayorVote() {
+    const candidates = this.getElectionList().map(candidate => candidate.id);
+    const tally = new Map<string, number>();
+    const ballots: VoteBallot[] = [];
+
+    this.votes.forEach((targetId, voterId) => {
+      const voter = this.state.players.find(p => p.id === voterId);
+      if (!voter?.isAlive) return;
+      if (!candidates.includes(targetId)) return;
+
+      tally.set(targetId, (tally.get(targetId) ?? 0) + (voter.voteWeight || 1));
+
+      const target = this.state.players.find(p => p.id === targetId);
+      if (target) {
+        ballots.push({
+          voterId,
+          voterName: voter.name,
+          targetId,
+          targetName: target.name,
+        });
+      }
+    });
+
+    let topVotes = 0;
+    tally.forEach(count => {
+      if (count > topVotes) topVotes = count;
+    });
+
+    const leaders = candidates.filter(id => (tally.get(id) ?? 0) === topVotes && topVotes > 0);
+    const tie = leaders.length > 1;
+    const nameOf = (id: string) => this.state.players.find(p => p.id === id)?.name ?? id;
+    const rows = candidates.map(id => ({ id, name: nameOf(id), count: tally.get(id) ?? 0 }));
+
+    // A tied seat is voted again once; a second tie leaves the table without a
+    // mayor rather than stalling the evening.
+    if (tie && !this.electionRevote) {
+      this.electionRevote = true;
+      this.mayorRevoteLeaders = leaders;
+      this.votes.clear();
+
+      const redo: VoteResultPayload = {
+        eliminatedId: null,
+        eliminatedName: null,
+        tie: true,
+        tally: rows,
+        ballots,
+        revote: true,
+        candidates: leaders.map(id => ({ id, name: nameOf(id) })),
+      };
+
+      this.lastVote = redo;
+      this.actionLog.push(
+        `The mayor vote is tied between ${leaders.map(nameOf).join(' and ')}. They vote again.`,
+      );
+
+      this.transport.broadcast({ type: 'VOTE_RESULT', payload: redo, timestamp: Date.now() });
+      this.autoPlayBots();
+      this.emit({ type: 'changed' });
+      return;
+    }
+
+    const winnerId = tie ? null : leaders[0] ?? (candidates.length === 1 ? candidates[0] : null);
+
+    const result: VoteResultPayload = {
+      eliminatedId: null,
+      eliminatedName: null,
+      tie,
+      tally: rows,
+      ballots,
+    };
+
+    this.lastVote = result;
+    this.transport.broadcast({ type: 'VOTE_RESULT', payload: result, timestamp: Date.now() });
+
+    if (winnerId) {
+      this.state.presidentManager.setPresident(winnerId, this.state.players);
+
+      const mayor = this.state.players.find(p => p.id === winnerId);
+      this.actionLog.push(`${mayor?.name} was elected mayor.`);
+
+      this.transport.broadcast({
+        type: 'MAYOR_ELECTED',
+        payload: { playerId: winnerId, playerName: mayor?.name ?? winnerId },
+        timestamp: Date.now(),
+      });
+    } else {
+      this.actionLog.push('The table could not agree on a mayor. The night begins without one.');
+    }
+
+    this.emit({ type: 'changed' });
+
+    // Straight into the first night: the election is what opens the game.
+    this.round = 1;
+    this.setPhase('Night');
+  }
+
   private resolveVote() {
     // The vote is being counted, so whatever clock was running for it is over.
     // Without this a re-vote would inherit a clock that is already past due
@@ -1104,7 +1472,7 @@ export class GameManager {
     this.emit({ type: 'changed' });
 
     // The hunter may still owe a shot before the round can close.
-    this.enterRevengeOr('Vote', deaths);
+    this.enterAfterDeaths('Vote', deaths);
   }
 
   // The players the current re-vote is limited to, or an empty list.
@@ -1119,7 +1487,10 @@ export class GameManager {
   // runnable in plain Node, with no timers of its own.
   startTimer(seconds: number): boolean {
     if (this.winner) return false;
-    if (this.state.currentPhase !== 'Day' && this.state.currentPhase !== 'Vote') return false;
+    // The clock runs the talking phases: the day, the vote, and the election
+    // debate are all "decide now or the host moves on".
+    const timed: Phase[] = ['Day', 'Vote', 'Debate', 'Election'];
+    if (!timed.includes(this.state.currentPhase)) return false;
     if (!(seconds > 0)) return false;
 
     this.timer = { endsAt: Date.now() + seconds * 1000, totalMs: seconds * 1000 };

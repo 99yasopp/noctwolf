@@ -8,6 +8,7 @@ import { lobby } from '../../network/lobby';
 import { Phase } from '../../engine/types';
 import {
   GameOverPayload,
+  MayorElectedPayload,
   NightStagePayload,
   PhaseUpdatePayload,
   PlayerRef,
@@ -31,6 +32,11 @@ export const PlayerScreen = () => {
   // Which half of the night it is, and who the wolves took (the witch alone).
   const [nightStage, setNightStage] = useState<1 | 2>(1);
   const [victim, setVictim] = useState<{ id: string; name: string } | null>(null);
+  // The election is public, so every phone gets the same list.
+  const [electionStage, setElectionStage] = useState<'nominate' | 'vote'>('nominate');
+  const [mayorCandidates, setMayorCandidates] = useState<{ id: string; name: string }[]>([]);
+  const [mayorId, setMayorId] = useState<string | null>(null);
+  const [successionMayorId, setSuccessionMayorId] = useState<string | null>(null);
   // Whether the role card is covered, for when phones are handed around.
   const [roleHidden, setRoleHidden] = useState(false);
   // The public story of the game, built from what the host already tells us.
@@ -71,7 +77,19 @@ export const PlayerScreen = () => {
           roundRef.current = payload.round;
           setRoster(payload.players ?? []);
           setDeaths(payload.deaths ?? []);
+          setMayorCandidates(payload.mayorCandidates ?? []);
+          setMayorId(payload.mayorId ?? null);
+          setSuccessionMayorId(payload.successionMayorId ?? null);
+          if (payload.electionStage) setElectionStage(payload.electionStage);
           setSubmitted([]);
+          if (payload.phase === 'Debate') {
+            setLog(prev => [
+              `The candidates for mayor: ${(payload.mayorCandidates ?? [])
+                .map(candidate => candidate.name)
+                .join(', ')}.`,
+              ...prev,
+            ]);
+          }
           // The phase changed, so the phase clock is gone until a new sync.
           setClock(null);
           setNightStage(1);
@@ -150,6 +168,13 @@ export const PlayerScreen = () => {
               ...prev,
             ]);
           }
+          break;
+        }
+
+        case 'MAYOR_ELECTED': {
+          const payload = message.payload as MayorElectedPayload;
+          setMayorId(payload.playerId);
+          setLog(prev => [`${payload.playerName} is the mayor.`, ...prev]);
           break;
         }
 
@@ -234,6 +259,27 @@ export const PlayerScreen = () => {
     if (actionId === 'vote') {
       client.sendMessage({
         type: 'VOTE_CAST',
+        payload: { targetId },
+        senderId: localPlayer.id,
+        timestamp: Date.now(),
+      });
+    } else if (actionId === 'mayor-vote') {
+      client.sendMessage({
+        type: 'MAYOR_VOTE',
+        payload: { targetId },
+        senderId: localPlayer.id,
+        timestamp: Date.now(),
+      });
+    } else if (actionId === 'volunteer') {
+      client.sendMessage({
+        type: 'MAYOR_VOLUNTEER',
+        payload: {},
+        senderId: localPlayer.id,
+        timestamp: Date.now(),
+      });
+    } else if (actionId === 'succession') {
+      client.sendMessage({
+        type: 'SUCCESSION',
         payload: { targetId },
         senderId: localPlayer.id,
         timestamp: Date.now(),
@@ -388,6 +434,9 @@ export const PlayerScreen = () => {
           candidates={voteResult?.revote ? voteResult.candidates?.map(c => c.id) : undefined}
           nightStage={nightStage}
           victim={victim}
+          electionStage={electionStage}
+          mayorCandidates={mayorCandidates}
+          successionMayorId={successionMayorId}
           onChoose={submit}
         />
       )}

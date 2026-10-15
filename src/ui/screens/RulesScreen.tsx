@@ -12,19 +12,28 @@ interface Props {
 const HOW_TO_PLAY = [
   'The host plays too: the phone that hosts is the narrator and one of the players.',
   'Everyone else joins with the host address shown in the lobby.',
-  'The first night is peaceful: the wolves only look around, so the first day vote decides who leaves.',
-  'Night: wolves choose a victim, the seer looks at one player, the guard and the witch act.',
+  'The game opens with the mayoral election, then the first night falls.',
+  'At a three-player table the first night is peaceful: the wolves only look around, so the first day vote decides who leaves.',
+  'Night: the wolves and the other roles act first, then the witch wakes and sees who was attacked.',
   'Day: talk. Vote: whoever has the most votes is out. A tie is voted again once.',
   'The village wins when every wolf is gone. The wolves win when they are at least half of the survivors.',
 ];
 
 const NIGHT_ORDER = [
   'Guard shields a player (never the same one twice in a row).',
-  'Witch may heal the wolves\u2019 victim, and may poison anyone.',
   'Wolves devour one player. Shielding or healing stops it, poison does not.',
   'Seer inspects one player and is told if that player is a wolf.',
   'Cupid ties two players together on the first night only.',
-  'Deaths are announced in the morning. The Hunter takes someone down when he dies.',
+  'Witch wakes last: she may heal the player the wolves took, and may poison anyone.',
+  'Deaths are announced in the morning. The Hunter takes someone down when he dies, and a dying mayor names his successor.',
+];
+
+const MAYOR_RULES = [
+  'The mayor is not a card: the table elects one before the first night.',
+  'The first three players to stand are the candidates; nobody standing means three are drawn at random.',
+  'The candidates speak, then the table votes. A tie is voted again once; a second tie leaves the seat empty.',
+  'The mayor\u2019s vote counts twice, and a wolf may win the seat.',
+  'If the mayor dies, he names the player who takes the title. If he names nobody, the seat stays empty.',
 ];
 
 export const RulesScreen = ({ onBack }: Props) => {
@@ -45,6 +54,13 @@ export const RulesScreen = ({ onBack }: Props) => {
       {NIGHT_ORDER.map((line, index) => (
         <Text key={index} style={styles.text}>
           {index + 1}. {line}
+        </Text>
+      ))}
+
+      <Text style={styles.subHeader}>The mayor</Text>
+      {MAYOR_RULES.map((line, index) => (
+        <Text key={index} style={styles.text}>
+          • {line}
         </Text>
       ))}
 

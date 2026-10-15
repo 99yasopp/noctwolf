@@ -84,13 +84,6 @@ export const HunterRole: PlayableRole = {
   revengeOnDeath: true,
 };
 
-export const MayorRole: PlayableRole = {
-  id: 'mayor',
-  name: 'Mayor',
-  team: 'Village',
-  description: 'You have no night action, but your vote counts twice.',
-  voteWeight: 2,
-};
 
 export const CupidRole: PlayableRole = {
   id: 'cupid',
@@ -108,7 +101,6 @@ export const ALL_ROLES: PlayableRole[] = [
   GuardRole,
   WitchRole,
   HunterRole,
-  MayorRole,
   CupidRole,
 ];
 
@@ -157,7 +149,6 @@ export const buildClassicRoleSet = (playerCount: number): PlayableRole[] => {
   if (playerCount >= 5) set.push(GuardRole);
   if (playerCount >= 6) set.push(WitchRole);
   if (playerCount >= 7) set.push(HunterRole);
-  if (playerCount >= 7) set.push(MayorRole);
   if (playerCount >= 8) set.push(CupidRole);
 
   return fill(set, playerCount);
@@ -171,7 +162,7 @@ export const buildChaosRoleSet = (playerCount: number): PlayableRole[] => {
   const set: PlayableRole[] = [];
   for (let i = 0; i < wolfCount; i++) set.push(WerewolfRole);
 
-  [SeerRole, GuardRole, WitchRole, HunterRole, MayorRole, CupidRole].forEach(role => {
+  [SeerRole, GuardRole, WitchRole, HunterRole, CupidRole].forEach(role => {
     if (set.length < playerCount) set.push(role);
   });
 

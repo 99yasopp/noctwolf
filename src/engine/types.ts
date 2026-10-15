@@ -1,4 +1,12 @@
-export type Phase = 'Night' | 'Day' | 'Vote' | 'Revenge' | 'Debate' | 'Election';
+export type Phase =
+  | 'Night'
+  | 'Day'
+  | 'Vote'
+  | 'Revenge'
+  | 'Debate'
+  | 'Election'
+  // The dying mayor names the player who takes the double vote.
+  | 'Succession';
 
 export type Team = 'Village' | 'Wolf' | 'Solitary';
 

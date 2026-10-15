@@ -65,6 +65,21 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
+      if (message.type === 'MAYOR_VOLUNTEER') {
+        current.volunteerForMayor(playerId);
+        return;
+      }
+
+      if (message.type === 'MAYOR_VOTE') {
+        current.handleMayorVote(playerId, message.payload?.targetId);
+        return;
+      }
+
+      if (message.type === 'SUCCESSION') {
+        current.handleSuccession(playerId, message.payload?.targetId);
+        return;
+      }
+
       if (message.type === 'STATE_REQUEST') {
         current.sendStateTo(playerId);
       }

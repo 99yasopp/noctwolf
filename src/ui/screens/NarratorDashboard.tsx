@@ -134,6 +134,14 @@ export const NarratorDashboard = () => {
 
   const nextLabel = manager.winner
     ? null
+    : phase === 'Election'
+    ? manager.getElectionStage() === 'nominate'
+      ? 'Close the nominations → the candidates speak'
+      : 'Announce the mayor → night 1'
+    : phase === 'Debate'
+    ? 'Start the vote for mayor'
+    : phase === 'Succession'
+    ? 'Carry out the succession'
     : phase === 'Night'
     ? manager.isWakingTheWitchNext()
       ? 'Wake the witch'
@@ -150,6 +158,12 @@ export const NarratorDashboard = () => {
     const ok =
       actionId === 'vote'
         ? manager.handleVote(localPlayer.id, targetId)
+        : actionId === 'mayor-vote'
+        ? manager.handleMayorVote(localPlayer.id, targetId)
+        : actionId === 'volunteer'
+        ? manager.volunteerForMayor(localPlayer.id)
+        : actionId === 'succession'
+        ? manager.handleSuccession(localPlayer.id, targetId)
         : actionId === 'revenge'
         ? manager.handleRevenge(localPlayer.id, targetId)
         : manager.handleNightAction(localPlayer.id, actionId, targetId);
@@ -182,6 +196,12 @@ export const NarratorDashboard = () => {
         <Text style={styles.statusText}>
           Alive: {aliveCount} / {players.length}
         </Text>
+        {manager.getMayor() && (
+          <Text style={styles.statusText}>
+            Mayor: {manager.getMayor()?.name}
+            {manager.getMayor()?.id === localPlayer.id ? ' (you, two votes)' : ''}
+          </Text>
+        )}
         <Text style={styles.statusText}>You are: {localPlayer.name}</Text>
 
         {pendingActors.length > 0 && (
@@ -212,7 +232,8 @@ export const NarratorDashboard = () => {
         )}
 
         {/* The clock is the host's: a party game dies when the day never ends. */}
-        {(phase === 'Day' || phase === 'Vote') && !manager.winner && (
+        {(phase === 'Day' || phase === 'Vote' || phase === 'Debate' || phase === 'Election') &&
+          !manager.winner && (
           <View style={styles.timerRow}>
             {remaining !== null ? (
               <>
@@ -297,6 +318,9 @@ export const NarratorDashboard = () => {
         selfAlive={localPlayer.isAlive}
         nightStage={manager.getNightStage()}
         victim={manager.getHealTarget()}
+        electionStage={manager.getElectionStage()}
+        mayorCandidates={manager.getElectionList()}
+        successionMayorId={manager.getPendingSuccessionMayor()?.id ?? null}
         candidates={
           revoteCandidates.length > 0 ? revoteCandidates : undefined
         }

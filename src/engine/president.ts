@@ -1,5 +1,8 @@
 import { Player } from './types';
 
+// The mayor is a title, not a card: anybody the table elects holds it, and a
+// wolf can wear it. This class only keeps the title and the double vote with
+// it; the election itself is driven by the game manager's phase machine.
 export class PresidentManager {
   private presidentId: string | null = null;
   private timeBank: number = 0; // In seconds
@@ -47,6 +50,35 @@ export class PresidentManager {
       console.log(`President ${deceasedId} died. Transferring power to ${successorId}`);
       this.setPresident(successorId, players);
     }
+  }
+
+  // A rematch deals the whole table again, and the old mayor's double vote
+  // must not survive into it.
+  reset(players: Player[]) {
+    this.presidentId = null;
+    this.candidates = [];
+    this.timeBank = 0;
+    players.forEach(p => p.voteWeight = 1);
+  }
+
+  // The mayor died without naming a successor: the seat is empty, and so is
+  // the double vote that went with it.
+  clearPresident(players: Player[]) {
+    if (this.presidentId) {
+      const old = players.find(p => p.id === this.presidentId);
+      if (old) old.voteWeight = 1;
+    }
+
+    this.presidentId = null;
+    this.candidates = [];
+  }
+
+  getPresidentId(): string | null {
+    return this.presidentId;
+  }
+
+  getCandidates(): string[] {
+    return [...this.candidates];
   }
 
   consumeTime(seconds: number): boolean {

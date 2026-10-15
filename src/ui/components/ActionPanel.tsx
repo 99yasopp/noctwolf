@@ -41,6 +41,11 @@ interface Props {
   nightStage?: number;
   // Who the wolves took, as told to the witch alone.
   victim?: { id: string; name: string } | null;
+  // The mayoral election: who is standing, and which half of it is running.
+  electionStage?: 'nominate' | 'vote';
+  mayorCandidates?: { id: string; name: string }[];
+  // The mayor who died and still owes the table a successor.
+  successionMayorId?: string | null;
   onChoose: (actionId: string, targetId: string) => void;
 }
 
@@ -66,6 +71,9 @@ export const ActionPanel: React.FC<Props> = ({
   candidates,
   nightStage = 1,
   victim = null,
+  electionStage = 'nominate',
+  mayorCandidates = [],
+  successionMayorId = null,
   onChoose,
 }) => {
   if (gameOver || !phase || !role || !selfId) return null;
@@ -94,6 +102,107 @@ export const ActionPanel: React.FC<Props> = ({
                 variant="secondary"
               />
             ))
+        )}
+      </View>
+    );
+  }
+
+  // The dying mayor names his successor, so this also comes before the
+  // "you are out" note: he is dead and still has a call to make.
+  if (phase === 'Succession') {
+    const isTheMayor = !!successionMayorId && successionMayorId === selfId;
+
+    return (
+      <View style={styles.panel}>
+        <Text style={styles.heading}>The mayor has died</Text>
+        {isTheMayor ? (
+          submitted.includes('succession') ? (
+            <Text style={styles.body}>Chosen. Waiting for the host...</Text>
+          ) : (
+            <>
+              <Text style={styles.body}>
+                Name the player who takes your double vote.
+              </Text>
+              {alive
+                .filter(target => target.id !== selfId)
+                .map(target => (
+                  <BaseButton
+                    key={target.id}
+                    title={target.name}
+                    onPress={() => onChoose('succession', target.id)}
+                    variant="secondary"
+                  />
+                ))}
+            </>
+          )
+        ) : (
+          <Text style={styles.body}>
+            The mayor is naming the player who takes his double vote.
+          </Text>
+        )}
+      </View>
+    );
+  }
+
+  if (phase === 'Election' || phase === 'Debate') {
+    const iAmStanding = mayorCandidates.some(candidate => candidate.id === selfId);
+    const list = mayorCandidates.map(candidate => candidate.name).join(', ');
+
+    if (phase === 'Debate') {
+      return (
+        <View style={styles.panel}>
+          <Text style={styles.heading}>The candidates speak</Text>
+          <Text style={styles.body}>
+            {list || 'Nobody is standing.'} — then the table votes for one of them.
+          </Text>
+        </View>
+      );
+    }
+
+    if (electionStage === 'nominate') {
+      return (
+        <View style={styles.panel}>
+          <Text style={styles.heading}>Run for mayor</Text>
+          {iAmStanding ? (
+            <Text style={styles.body}>
+              You are standing. The table will vote once the host closes the list.
+            </Text>
+          ) : mayorCandidates.length >= 3 ? (
+            <Text style={styles.body}>Three candidates are in: {list}.</Text>
+          ) : (
+            <>
+              <Text style={styles.body}>
+                The first three players to stand are voted on. The winner's vote
+                counts twice.
+              </Text>
+              <BaseButton
+                title="I stand for mayor"
+                onPress={() => onChoose('volunteer', selfId)}
+                variant="secondary"
+              />
+            </>
+          )}
+          {mayorCandidates.length > 0 && (
+            <Text style={styles.body}>Standing: {list}.</Text>
+          )}
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.panel}>
+        <Text style={styles.heading}>Vote for the mayor</Text>
+        {submitted.includes('mayor-vote') ? (
+          <Text style={styles.body}>Submitted. Waiting for the host...</Text>
+        ) : (
+          mayorCandidates.map(candidate => (
+            <BaseButton
+              key={candidate.id}
+              title={candidate.id === selfId ? `${candidate.name} (yourself)` : candidate.name}
+              onPress={() => onChoose('mayor-vote', candidate.id)}
+              variant="secondary"
+            />
+          ))
         )}
       </View>
     );
