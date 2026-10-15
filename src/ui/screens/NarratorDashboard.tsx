@@ -71,6 +71,7 @@ export const NarratorDashboard = () => {
           id: option.id,
           label: option.label,
           kind: option.kind,
+          chargesLeft: manager.getChargesLeft(localPlayer.id, option.id) ?? undefined,
         })),
         revengeOnDeath: role.revengeOnDeath,
         linksLovers: role.linksLovers,

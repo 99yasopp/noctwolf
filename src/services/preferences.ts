@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
+import { RoleSetup } from '../engine/setup';
 
 // Small conveniences that should survive a restart: the address of the last
 // host, and the setup this host likes. Kept in one record so a single read
@@ -8,11 +9,13 @@ import * as SecureStore from 'expo-secure-store';
 export interface Preferences {
   lastHost: string;
   presetId: string;
+  // The composition the host built by hand, so the next evening opens on it.
+  setup: RoleSetup | null;
 }
 
 const STORAGE_KEY = 'preferences';
 
-const defaults: Preferences = { lastHost: '', presetId: 'simple' };
+const defaults: Preferences = { lastHost: '', presetId: 'simple', setup: null };
 
 // expo-secure-store has no web implementation, so the web build works from
 // memory instead of throwing.

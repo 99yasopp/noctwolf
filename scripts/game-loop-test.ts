@@ -23,6 +23,13 @@ import {
   TRANSLATABLE_ACTIONS,
   translateGeneratedRole,
 } from '../src/engine/generatedRole';
+import {
+  buildSetupRoles,
+  fillWithVillagers,
+  setupFromRoles,
+  setupProblem,
+  setupSeatsUsed,
+} from '../src/engine/setup';
 import { ALLOWED_ACTIONS as VALIDATED_ACTIONS } from '../src/engine/roleGenerator';
 import { GameTransport } from '../src/engine/transport';
 import { Player } from '../src/engine/types';
@@ -1267,6 +1274,223 @@ console.log('\n25. a full table with a witch always finishes');
 
   check('no eight player game got stuck', stuck === 0, `${stuck} stuck`);
   check('the witch was woken in practice', witchNights > 0, `${witchNights} wakes`);
+}
+
+// Pushes a game from the morning through the vote into the next night, taking
+// the player the votes point at.
+const voteOut = (game: GameManager, targetId: string) => {
+  game.advance(); // Day -> Vote
+  settleSuccession(game);
+  game.getAlivePlayers().forEach(p => game.handleVote(p.id, targetId));
+  game.advance(); // the vote resolves
+  settleSuccession(game);
+};
+
+console.log('\n26. the host builds the table');
+{
+  const seeded = setupFromRoles(buildClassicRoleSet(8));
+  check('the starter fills every seat', setupSeatsUsed(seeded) === 8, JSON.stringify(seeded.counts));
+  check('the counts name the roles', seeded.counts.werewolf === 2 && seeded.counts.witch === 1);
+  check('the villagers take the last seat', seeded.counts.villager === 1);
+  check('the starter is a table that can be dealt', setupProblem(seeded, 8) === null);
+
+  const roles = buildSetupRoles(seeded, 8);
+  check('the deal follows the counts', roles.length === 8, String(roles.length));
+  check(
+    'the wolves, the witch and the villagers are all in it',
+    roles.filter(role => role.id === 'werewolf').length === 2 &&
+      roles.filter(role => role.id === 'witch').length === 1 &&
+      roles.filter(role => role.id === 'villager').length === 1,
+  );
+
+  // The table grew, so the seats no longer add up.
+  const short = setupProblem(seeded, 10);
+  check('a short table is flagged', !!short && short.includes('Fill the rest'), String(short));
+
+  const filled = fillWithVillagers(seeded, 10);
+  check(
+    'the shortcut fills the free seats with villagers',
+    setupSeatsUsed(filled) === 10 && filled.counts.villager === 3,
+    JSON.stringify(filled.counts),
+  );
+  check('and then the table is ready', setupProblem(filled, 10) === null);
+
+  const tooMany = { ...seeded, counts: { ...seeded.counts, werewolf: 5 } };
+  check('too many roles are flagged', !!setupProblem(tooMany, 8));
+
+  const noWolf = { ...seeded, counts: { ...seeded.counts, werewolf: 0, villager: 3 } };
+  check('a table without a wolf is flagged', !!setupProblem(noWolf, 8));
+}
+
+console.log('\n26b. the host decides how many potions the witch holds');
+{
+  const players = makePlayers(6);
+  const transport = new RecordingTransport();
+  const game = new GameManager(players, transport);
+
+  // Two healing potions and no poison: the host's choice, not the role's.
+  const witch = {
+    ...WitchRole,
+    nightActions: WitchRole.nightActions!.map(option =>
+      option.id === 'heal' ? { ...option, charges: 2 } : { ...option, charges: 0 },
+    ),
+  };
+
+  game.start(
+    [WerewolfRole, witch, SeerRole, VillagerRole, VillagerRole, VillagerRole],
+    { peacefulFirstNight: false, guardNoRepeat: true },
+  );
+
+  const wolf = findRole(game, players, 'werewolf')!;
+  const witchPlayer = findRole(game, players, 'witch')!;
+  const villagers = players.filter(p => game.getRoleOf(p.id)?.id === 'villager');
+
+  passElection(game, witchPlayer.id);
+
+  check('the witch starts with two potions', game.getChargesLeft(witchPlayer.id, 'heal') === 2);
+  check('the poison is out of play', game.getChargesLeft(witchPlayer.id, 'poison') === 0);
+
+  check('the wolf may bite', game.handleNightAction(wolf.id, 'kill', villagers[0].id));
+  check('the night waits for the witch', game.isWakingTheWitchNext());
+  game.advance(); // the witch is woken
+  check('she is shown the victim', game.getHealTarget()?.id === villagers[0].id);
+  check('she saves him', game.handleNightAction(witchPlayer.id, 'heal', villagers[0].id));
+  game.advance();
+
+  check('the victim survived', villagers[0].isAlive);
+  check('one potion was spent', game.getChargesLeft(witchPlayer.id, 'heal') === 1);
+  check(
+    'the witch is told what is left',
+    transport.directs.some(
+      d =>
+        d.playerId === witchPlayer.id &&
+        d.message.type === 'ROLE_ASSIGN' &&
+        d.message.payload.nightActions?.some(
+          (option: { id: string; chargesLeft?: number }) =>
+            option.id === 'heal' && option.chargesLeft === 1,
+        ),
+    ),
+  );
+
+  // A day passes, then night two: the second potion is still hers to spend.
+  voteOut(game, villagers[1].id);
+  check('night two has started', game.state.currentPhase === 'Night' && game.round === 2);
+
+  check('the wolf bites again', game.handleNightAction(wolf.id, 'kill', villagers[0].id));
+  check('and she is woken again', game.isWakingTheWitchNext());
+  game.advance();
+  check('she saves him again', game.handleNightAction(witchPlayer.id, 'heal', villagers[0].id));
+  game.advance();
+
+  check('the last potion is spent', game.getChargesLeft(witchPlayer.id, 'heal') === 0);
+  check(
+    'and the role card says so',
+    transport.directs.some(
+      d =>
+        d.playerId === witchPlayer.id &&
+        d.message.type === 'ROLE_ASSIGN' &&
+        d.message.payload.nightActions?.some(
+          (option: { id: string; chargesLeft?: number }) =>
+            option.id === 'heal' && option.chargesLeft === 0,
+        ),
+    ),
+  );
+
+  voteOut(game, villagers[2].id);
+  check('night three has started', game.state.currentPhase === 'Night' && game.round === 3);
+  check('with no potions left the night needs one press', !game.isWakingTheWitchNext());
+}
+
+console.log('\n26c. the house rules reach the night');
+{
+  const peaceful = new GameManager(makePlayers(4), new RecordingTransport());
+  peaceful.start([WerewolfRole, SeerRole, VillagerRole, VillagerRole], {
+    peacefulFirstNight: true,
+    guardNoRepeat: true,
+  });
+  passElection(peaceful);
+  check('the host can make a four player night peaceful', peaceful.isQuietNight());
+
+  const deadly = new GameManager(makePlayers(3), new RecordingTransport());
+  deadly.start([WerewolfRole, SeerRole, VillagerRole], {
+    peacefulFirstNight: false,
+    guardNoRepeat: true,
+  });
+  passElection(deadly);
+  check('and deadly at three players', !deadly.isQuietNight());
+
+  const auto = new GameManager(makePlayers(4), new RecordingTransport());
+  auto.start([WerewolfRole, SeerRole, VillagerRole, VillagerRole]);
+  passElection(auto);
+  check('left on auto a four player table is deadly', !auto.isQuietNight());
+
+  // The guard may shield the same player twice when the host allows it.
+  const relaxedPlayers = makePlayers(6);
+  const relaxed = new GameManager(relaxedPlayers, new RecordingTransport());
+  relaxed.start(
+    [WerewolfRole, GuardRole, SeerRole, VillagerRole, VillagerRole, VillagerRole],
+    { peacefulFirstNight: false, guardNoRepeat: false },
+  );
+  passElection(relaxed);
+
+  const relaxedGuard = findRole(relaxed, relaxedPlayers, 'guard')!;
+  const relaxedWolf = findRole(relaxed, relaxedPlayers, 'werewolf')!;
+  const relaxedVillagers = relaxedPlayers.filter(
+    p => relaxed.getRoleOf(p.id)?.id === 'villager',
+  );
+
+  check(
+    'the guard shields',
+    relaxed.handleNightAction(relaxedGuard.id, 'protect', relaxedVillagers[0].id),
+  );
+  check(
+    'the wolf bites somebody else',
+    relaxed.handleNightAction(relaxedWolf.id, 'kill', relaxedVillagers[1].id),
+  );
+  relaxed.advance();
+  check('the bite landed', !relaxedVillagers[1].isAlive);
+
+  voteOut(relaxed, relaxedVillagers[2].id);
+  check(
+    'the guard may shield the same player again',
+    relaxed.handleNightAction(relaxedGuard.id, 'protect', relaxedVillagers[0].id),
+  );
+
+  // The same table with the default rule refuses the repeat.
+  const strictPlayers = makePlayers(6);
+  const strict = new GameManager(strictPlayers, new RecordingTransport());
+  strict.start(
+    [WerewolfRole, GuardRole, SeerRole, VillagerRole, VillagerRole, VillagerRole],
+    { peacefulFirstNight: false, guardNoRepeat: true },
+  );
+  passElection(strict);
+
+  const strictGuard = findRole(strict, strictPlayers, 'guard')!;
+  const strictWolf = findRole(strict, strictPlayers, 'werewolf')!;
+  const strictSeer = findRole(strict, strictPlayers, 'seer')!;
+  const strictVillagers = strictPlayers.filter(
+    p => strict.getRoleOf(p.id)?.id === 'villager',
+  );
+
+  check(
+    'the guard shields on night one',
+    strict.handleNightAction(strictGuard.id, 'protect', strictVillagers[0].id),
+  );
+  check(
+    'the wolf bites somebody else',
+    strict.handleNightAction(strictWolf.id, 'kill', strictVillagers[1].id),
+  );
+  strict.advance();
+
+  voteOut(strict, strictVillagers[2].id);
+  check(
+    'but not the same player twice in a row',
+    !strict.handleNightAction(strictGuard.id, 'protect', strictVillagers[0].id),
+  );
+  check(
+    'while anybody else is fine',
+    strict.handleNightAction(strictGuard.id, 'protect', strictSeer.id),
+  );
 }
 
 console.log(failures === 0 ? `\nAll checks passed.` : `\n${failures} check(s) failed.`);

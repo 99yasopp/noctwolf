@@ -2,7 +2,14 @@ import { GameState } from './state';
 import { ActionContext, Phase, Player, Team } from './types';
 import { Role } from './roles';
 import { GameTransport, nullTransport } from './transport';
-import { ActionKind, NightActionOption, PlayableRole, buildRoleSet } from './roleSet';
+import {
+  ActionKind,
+  NightActionOption,
+  PlayableRole,
+  actionChargeLimit,
+  buildRoleSet,
+} from './roleSet';
+import { GameOptions, defaultGameOptions } from './setup';
 import {
   KillAction,
   ProtectAction,
@@ -72,8 +79,11 @@ export class GameManager {
   private nightChoices = new Map<string, Map<string, string>>();
   // 1 while the wolves and the other actors choose, 2 once the witch is up.
   private nightStage: 1 | 2 = 1;
-  // Actions a player has spent for good, keyed `playerId:actionId`.
-  private spent = new Set<string>();
+  // How many times a player has used each action, keyed `playerId:actionId`.
+  // A count rather than a flag, because a host may give the witch two potions.
+  private chargesUsed = new Map<string, number>();
+  // The rules the host picked for this table.
+  private options: GameOptions = defaultGameOptions();
   // The guard may not shield the same player twice in a row.
   private lastProtected = new Map<string, string>();
   // Set by Cupid on the first night.
@@ -128,8 +138,9 @@ export class GameManager {
 
   // Assign roles and open the first night. Roles are drawn from a shuffled
   // set so the same player is not always the wolf.
-  start(roleSet?: PlayableRole[]) {
+  start(roleSet?: PlayableRole[], options: GameOptions = defaultGameOptions()) {
     const players = this.state.players;
+    this.options = { ...defaultGameOptions(), ...options };
     if (players.length === 0) {
       console.warn('Cannot start a game without players');
       return;
@@ -139,7 +150,7 @@ export class GameManager {
     this.assignments.clear();
     this.votes.clear();
     this.nightChoices.clear();
-    this.spent.clear();
+    this.chargesUsed.clear();
     this.lastProtected.clear();
     this.lovers = null;
     this.pendingRevenge = null;
@@ -311,6 +322,18 @@ export class GameManager {
     return this.nightChoices.get(playerId)?.has(actionId) ?? false;
   }
 
+  // How many times this player has used this action.
+  private chargesUsedBy(playerId: string, actionId: string): number {
+    return this.chargesUsed.get(this.chargeKey(playerId, actionId)) ?? 0;
+  }
+
+  private spendCharge(playerId: string, actionId: string) {
+    this.chargesUsed.set(
+      this.chargeKey(playerId, actionId),
+      this.chargesUsedBy(playerId, actionId) + 1,
+    );
+  }
+
   // Whether this action is on the table for this player tonight. The wolves
   // skip the first night, the cupid only works on the first night, a spent
   // potion is gone for good, and each kind belongs to one half of the night.
@@ -322,7 +345,7 @@ export class GameManager {
     ignoreStage = false,
   ): boolean {
     if (!ignoreStage && stageOfKind(option.kind) !== this.nightStage) return false;
-    if (option.oncePerGame && this.spent.has(this.chargeKey(playerId, option.id))) return false;
+    if (this.chargesUsedBy(playerId, option.id) >= actionChargeLimit(option)) return false;
     if (option.kind === 'link' && this.round !== 1) return false;
     if (option.kind === 'attack' && this.isQuietNight()) return false;
     // Nothing to save means no potion to offer.
@@ -395,7 +418,13 @@ export class GameManager {
       if (option.kind === 'heal') return !!victim && victim.id === target.id;
       if (target.id === player.id && !option.allowSelf) return false;
       if (option.kind === 'attack' && this.assignments.get(target.id)?.team === 'Wolf') return false;
-      if (option.kind === 'protect' && this.lastProtected.get(player.id) === target.id) return false;
+      if (
+        option.kind === 'protect' &&
+        this.options.guardNoRepeat &&
+        this.lastProtected.get(player.id) === target.id
+      ) {
+        return false;
+      }
       return true;
     });
   }
@@ -578,15 +607,36 @@ export class GameManager {
     return victim ? { id: victim.id, name: victim.name, isAlive: victim.isAlive } : null;
   }
 
-  // Whether a once-per-game action is still available to this player.
-  hasChargeLeft(playerId: string, actionId: string): boolean {
-    return !this.spent.has(this.chargeKey(playerId, actionId));
+  // How many uses this player has left of an action, or null when the action
+  // is unlimited. The screens show this so a witch knows what is left.
+  getChargesLeft(playerId: string, actionId: string): number | null {
+    const option = this.assignments
+      .get(playerId)
+      ?.nightActions?.find(candidate => candidate.id === actionId);
+    const limit = actionChargeLimit(option);
+    if (!Number.isFinite(limit)) return null;
+
+    return Math.max(0, limit - this.chargesUsedBy(playerId, actionId));
   }
 
-  // The opening night is peaceful at the smallest table only: with three
-  // players a kill would hand the wolves parity before anyone has spoken.
+  // Whether a charged action is still available to this player.
+  hasChargeLeft(playerId: string, actionId: string): boolean {
+    const left = this.getChargesLeft(playerId, actionId);
+    return left === null || left > 0;
+  }
+
+  // The rules this table was started with.
+  getOptions(): GameOptions {
+    return { ...this.options };
+  }
+
+  // The opening night is peaceful when the host says so. Left on auto it is
+  // peaceful at the smallest table only: with three players a kill would hand
+  // the wolves parity before anyone has spoken.
   isQuietNight(): boolean {
-    return this.round === 1 && this.state.players.length <= 3;
+    if (this.round !== 1) return false;
+    if (this.options.peacefulFirstNight !== null) return this.options.peacefulFirstNight;
+    return this.state.players.length <= 3;
   }
 
   // Players who still owe a night action this round.
@@ -694,6 +744,13 @@ export class GameManager {
     }
   }
 
+  // A spent potion changes what the role card can do, so the card is sent
+  // again to the player who spent it. The count is what tells them it is gone.
+  private resendRoleTo(playerId: string) {
+    const role = this.assignments.get(playerId);
+    if (role) this.sendRoleAssign(playerId, role);
+  }
+
   private sendRoleAssign(playerId: string, role: PlayableRole) {
     const allies =
       role.team === 'Wolf'
@@ -714,6 +771,8 @@ export class GameManager {
         id: option.id,
         label: option.label,
         kind: option.kind,
+        // Left out for an action the player may use every night.
+        chargesLeft: this.getChargesLeft(playerId, option.id) ?? undefined,
       })),
       revengeOnDeath: role.revengeOnDeath,
       linksLovers: role.linksLovers,
@@ -1026,7 +1085,8 @@ export class GameManager {
         } else if (healed.has(target.id)) {
           // Spent only when it actually saves someone.
           const mender = healed.get(target.id)!;
-          this.spent.add(this.chargeKey(mender.playerId, mender.actionId));
+          this.spendCharge(mender.playerId, mender.actionId);
+          this.resendRoleTo(mender.playerId);
           this.actionLog.push(`Night ${this.round}: the witch saved ${target.name}.`);
         } else {
           target.isAlive = false;
@@ -1038,7 +1098,8 @@ export class GameManager {
 
     // Poison is not the wolves' bite: shielding does not stop it.
     poisoned.forEach((spentBy, targetId) => {
-      this.spent.add(this.chargeKey(spentBy.playerId, spentBy.actionId));
+      this.spendCharge(spentBy.playerId, spentBy.actionId);
+      this.resendRoleTo(spentBy.playerId);
 
       const target = this.state.players.find(p => p.id === targetId);
       if (target?.isAlive) {

@@ -61,7 +61,9 @@ export interface RoleAssignPayload {
   team: Team;
   description: string;
   allies: PlayerRef[];
-  nightActions?: { id: string; label: string; kind: string }[];
+  // A charged action that has some uses left carries the count; an action with
+  // no limit leaves it out.
+  nightActions?: { id: string; label: string; kind: string; chargesLeft?: number }[];
   revengeOnDeath?: boolean;
   linksLovers?: boolean;
 }

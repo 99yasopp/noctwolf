@@ -10,7 +10,8 @@ export interface OwnRole {
   name: string;
   team: string;
   description: string;
-  nightActions?: { id: string; label: string; kind: string }[];
+  // `chargesLeft` is left out when the action may be used every night.
+  nightActions?: { id: string; label: string; kind: string; chargesLeft?: number }[];
   revengeOnDeath?: boolean;
   linksLovers?: boolean;
   allies?: { id: string; name: string }[];
@@ -251,19 +252,21 @@ export const ActionPanel: React.FC<Props> = ({
   if (phase !== 'Night') return null;
 
   const declared = role.nightActions ?? [];
-  // The wolves look around on the first night instead of feeding, and the
-  // witch is not woken until the wolves have chosen.
+  // The wolves look around on the first night instead of feeding, the witch is
+  // not woken until the wolves have chosen, and a spent action is gone.
   const offered = declared.filter(option => {
     if (stageOfKind(option.kind) !== nightStage) return false;
     if (quietNight && option.kind === 'attack') return false;
+    if (option.chargesLeft === 0) return false;
     return true;
   });
 
   if (offered.length === 0) {
     const peaceful = quietNight && declared.some(option => option.kind === 'attack');
-    // The witch holds a potion but the night has not reached her yet.
+    // The witch still holds a potion but the night has not reached her yet.
     const stillToCome = declared.some(
-      option => stageOfKind(option.kind) === 2 && nightStage === 1,
+      option =>
+        stageOfKind(option.kind) === 2 && nightStage === 1 && option.chargesLeft !== 0,
     );
 
     return (
@@ -298,7 +301,12 @@ export const ActionPanel: React.FC<Props> = ({
 
         return (
           <View key={option.id}>
-            <Text style={styles.heading}>{option.label}</Text>
+            <Text style={styles.heading}>
+              {option.label}
+              {typeof option.chargesLeft === 'number'
+                ? ` (${option.chargesLeft} left)`
+                : ''}
+            </Text>
             {submitted.includes(option.id) ? (
               <Text style={styles.body}>Submitted.</Text>
             ) : candidates.length === 0 ? (

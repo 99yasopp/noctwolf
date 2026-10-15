@@ -14,9 +14,21 @@ export interface NightActionOption {
   allowSelf?: boolean;
   // May a wolf point the action at another wolf?
   allowPack?: boolean;
-  // Consumed on use: the witch's potions are spent once per game.
+  // How many times the whole game this action may be used. Left out means it
+  // can be used every night; the host can set it per role.
+  charges?: number;
+  // Older custom roles say it this way. Kept so a role made before charges
+  // existed still works; `charges` wins when both are present.
   oncePerGame?: boolean;
 }
+
+// How many uses one action has in a game. Unlimited unless the role or the
+// host says otherwise.
+export const actionChargeLimit = (option?: NightActionOption): number => {
+  if (!option) return Number.POSITIVE_INFINITY;
+  if (typeof option.charges === 'number') return Math.max(0, option.charges);
+  return option.oncePerGame ? 1 : Number.POSITIVE_INFINITY;
+};
 
 // A concrete, playable role. Kept separate from the abstract `Role` in
 // roles.ts, which describes the composable ability system.
@@ -71,8 +83,8 @@ export const WitchRole: PlayableRole = {
   team: 'Village',
   description: 'You hold one healing potion and one poison, each usable once in the whole game.',
   nightActions: [
-    { id: 'heal', label: 'Use the healing potion', kind: 'heal', allowSelf: true, oncePerGame: true },
-    { id: 'poison', label: 'Use the poison', kind: 'poison', oncePerGame: true },
+    { id: 'heal', label: 'Use the healing potion', kind: 'heal', allowSelf: true, charges: 1 },
+    { id: 'poison', label: 'Use the poison', kind: 'poison', charges: 1 },
   ],
 };
 
@@ -213,7 +225,7 @@ export const ROLE_PRESETS: RolePreset[] = [
   {
     id: 'classic',
     name: 'Classic',
-    description: 'Adds the guard, witch, hunter, mayor and cupid as the table grows.',
+    description: 'Adds the guard, witch, hunter and cupid as the table grows.',
     build: buildClassicRoleSet,
   },
   {

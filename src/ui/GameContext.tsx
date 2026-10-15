@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useRef, useState } from 'react';
 import { GameManager } from '../engine/gameManager';
-import { getPreset } from '../engine/roleSet';
+import { buildRoleSet } from '../engine/roleSet';
+import { RoleSetup, buildSetupRoles, setupFromRoles } from '../engine/setup';
 import { Player } from '../engine/types';
 import { lobby } from '../network/lobby';
 
@@ -12,7 +13,8 @@ interface GameContextValue {
   localPlayer: Player | null;
   // Only set on the host; guests read their state from the network instead.
   manager: GameManager | null;
-  startHostGame: (players: Player[], localPlayer: Player, presetId?: string) => void;
+  // The table the host built: its counts decide the deal, its options the rules.
+  startHostGame: (players: Player[], localPlayer: Player, setup?: RoleSetup) => void;
   enterPlayerMode: (localPlayer: Player) => void;
   returnToLobby: () => void;
   // Deal a fresh game to the players already at the table.
@@ -30,13 +32,13 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [manager, setManager] = useState<GameManager | null>(null);
   const [gameId, setGameId] = useState(0);
   const managerRef = useRef<GameManager | null>(null);
-  // The setup the host picked; a rematch re-deals from the same one.
-  const presetRef = useRef<string>('simple');
+  // The table the host built; a rematch re-deals from the same one.
+  const setupRef = useRef<RoleSetup>(setupFromRoles(buildRoleSet(3)));
 
-  const startHostGame = useCallback((players: Player[], host: Player, presetId: string = 'simple') => {
+  const startHostGame = useCallback((players: Player[], host: Player, setup?: RoleSetup) => {
     const game = new GameManager(players, lobby, true);
     managerRef.current = game;
-    presetRef.current = presetId;
+    setupRef.current = setup ?? setupFromRoles(buildRoleSet(players.length));
     setManager(game);
     setLocalPlayer(host);
 
@@ -85,7 +87,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     });
 
-    game.start(getPreset(presetId).build(players.length));
+    game.start(buildSetupRoles(setupRef.current, players.length), setupRef.current.options);
     setGameId(id => id + 1);
     setMode('narrator');
   }, []);
@@ -104,7 +106,10 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!current) return;
 
     lobby.resetRoster();
-    current.start(getPreset(presetRef.current).build(lobby.getPlayers().length));
+    // The same table, re-dealt: the counts are rebuilt for the seats that are
+    // actually still there, in case somebody left.
+    const roster = lobby.getPlayers();
+    current.start(buildSetupRoles(setupRef.current, roster.length), setupRef.current.options);
     setGameId(id => id + 1);
     setMode('narrator');
   }, []);

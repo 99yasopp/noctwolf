@@ -3,16 +3,23 @@ import { View, Text, StyleSheet, TextInput, ScrollView } from 'react-native';
 import { theme } from '../theme/colors';
 import { BaseButton } from '../components/BaseButton';
 import { GAME_PORT, HOST_PLAYER_ID, LOCAL_GUEST_ID, lobby } from '../../network/lobby';
-import { getPreset, getCustomRoles, ROLE_PRESETS, setCustomRoles } from '../../engine/roleSet';
+import { getPreset, ROLE_PRESETS, setCustomRoles } from '../../engine/roleSet';
 import { loadCustomRoles } from '../../services/customRoles';
 import { loadPreferences, savePreferences } from '../../services/preferences';
 import { SettingsScreen } from './SettingsScreen';
 import { RulesScreen } from './RulesScreen';
+import { SetupScreen } from './SetupScreen';
+import {
+  RoleSetup,
+  buildSetupRoles,
+  setupFromRoles,
+  setupProblem,
+} from '../../engine/setup';
 import { Player } from '../../engine/types';
 import { useGame } from '../GameContext';
 import { randomPlayerName } from '../randomName';
 
-type LobbyView = 'menu' | 'host' | 'join' | 'waiting' | 'settings' | 'rules';
+type LobbyView = 'menu' | 'host' | 'join' | 'waiting' | 'settings' | 'rules' | 'setup';
 
 const MIN_PLAYERS = 3;
 
@@ -37,6 +44,8 @@ export const LobbyScreen = () => {
   const [busy, setBusy] = useState(false);
   const [isHost, setIsHost] = useState(false);
   const [presetId, setPresetId] = useState(ROLE_PRESETS[0].id);
+  // The host's table: null until the saved one is read or a starter is seeded.
+  const [setup, setSetup] = useState<RoleSetup | null>(null);
   // Lets the setup picker show Custom only once there are roles to deal.
   const [customRoleCount, setCustomRoleCount] = useState(0);
 
@@ -50,20 +59,30 @@ export const LobbyScreen = () => {
     loadPreferences().then(saved => {
       if (saved.lastHost) setInputIp(saved.lastHost);
       if (saved.presetId) setPresetId(saved.presetId);
+      if (saved.setup) setSetup(saved.setup);
     });
   }, []);
 
-  const availablePresets = ROLE_PRESETS.filter(
-    entry => entry.id !== 'custom' || customRoleCount > 0,
-  );
   const preset = getPreset(presetId);
-  const cyclePreset = () =>
-    setPresetId(current => {
-      const index = availablePresets.findIndex(entry => entry.id === current);
-      const next = availablePresets[(index + 1) % availablePresets.length].id;
-      savePreferences({ presetId: next });
-      return next;
-    });
+
+  // Every change to the table is kept, so the next evening opens on it.
+  const changeSetup = (next: RoleSetup) => {
+    setSetup(next);
+    savePreferences({ setup: next });
+  };
+
+  // The first look at the waiting room seeds the table from the chosen
+  // starter: after that the host's own counts are left alone.
+  useEffect(() => {
+    if (view !== 'waiting' || !isHost || setup) return;
+    changeSetup(setupFromRoles(preset.build(Math.max(players.length, 1))));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, isHost, setup, players.length, preset]);
+
+  const seedFromPreset = (id: string) => {
+    setPresetId(id);
+    savePreferences({ presetId: id });
+  };
 
   // The host owns the roster; guests receive it over the network.
   useEffect(() => {
@@ -190,8 +209,14 @@ export const LobbyScreen = () => {
       return;
     }
 
+    const problem = setup ? setupProblem(setup, roster.length) : null;
+    if (problem) {
+      setError(problem);
+      return;
+    }
+
     setError('');
-    startHostGame(roster, host, presetId);
+    startHostGame(roster, host, setup ?? setupFromRoles(preset.build(roster.length)));
   };
 
   // Lets the host exercise a full game without extra devices. Bots act and
@@ -307,15 +332,17 @@ export const LobbyScreen = () => {
 
             {isHost && (
               <BaseButton
-                title={`Setup: ${preset.name}`}
-                onPress={cyclePreset}
+                title="Table setup"
+                onPress={() => setView('setup')}
                 variant="secondary"
               />
             )}
-            {isHost && <Text style={styles.hint}>{preset.description}</Text>}
-            {isHost && (
+            {isHost && setup && (
               <Text style={styles.hint}>
-                This table: {preset.build(Math.max(players.length, 1)).map(r => r.name).join(', ')}
+                This table:{' '}
+                {buildSetupRoles(setup, Math.max(players.length, 1))
+                  .map(role => role.name)
+                  .join(', ')}
               </Text>
             )}
 
@@ -341,6 +368,19 @@ export const LobbyScreen = () => {
         );
     }
   };
+
+  if (view === 'setup' && setup) {
+    return (
+      <SetupScreen
+        setup={setup}
+        presetId={presetId}
+        playerCount={Math.max(players.length, 1)}
+        onChange={changeSetup}
+        onPreset={seedFromPreset}
+        onBack={() => setView('waiting')}
+      />
+    );
+  }
 
   // Settings takes the whole screen: it has its own scrolling and header.
   if (view === 'rules') {
