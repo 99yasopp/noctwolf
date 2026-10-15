@@ -1,0 +1,52 @@
+# Dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native build output
+android/.gradle/
+android/build/
+android/app/build/
+ios/build/
+ios/Pods/
+*.hprof
+*.jsbundle
+
+# iOS is not in scope for now (kept on disk, regenerated via prebuild)
+ios/
+
+# Metro / bundler
+.metro-health-check*
+
+# Local tooling output
+/repomix-output.xml
+/temp
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Signing material
+*.jks
+*.keystore
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Logs
+*.log
+
+# TypeScript
+*.tsbuildinfo

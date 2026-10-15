@@ -117,6 +117,9 @@ export const LobbyScreen = ({ navigation }: { navigation?: any }) => {
 };
 
 const styles = StyleSheet.create({
+  menu: {
+    width: '100%',
+  },
   container: {
     flex: 1,
     backgroundColor: theme.colors.background,

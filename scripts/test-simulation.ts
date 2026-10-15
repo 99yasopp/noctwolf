@@ -1,6 +1,6 @@
-import { GameState } from './engine/state';
-import { Player } from './engine/types';
-import { KillAction } from './engine/actions';
+import { GameState } from '../src/engine/state';
+import { Player } from '../src/engine/types';
+import { KillAction } from '../src/engine/actions';
 
 // 1. Setup Players
 const players: Player[] = [

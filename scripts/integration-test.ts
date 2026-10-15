@@ -1,7 +1,7 @@
-// src/integration-test.ts
-import { GameManager } from './engine/gameManager';
-import { NarratorServer } from './network/socketServer';
-import { Player } from './engine/types';
+// scripts/integration-test.ts
+import { GameManager } from '../src/engine/gameManager';
+import { NarratorServer } from '../src/network/socketServer';
+import { Player } from '../src/engine/types';
 
 // Synchronous top-level execution
 console.log("=== Integration Test Starting ===");

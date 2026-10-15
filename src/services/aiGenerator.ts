@@ -17,8 +17,22 @@ export const generateCustomRole = async (prompt: string) => {
     }),
   });
 
+  if (!response.ok) {
+    throw new Error(`AI request failed with status ${response.status}`);
+  }
+
   const data = await response.json();
-  const generatedRole = JSON.parse(data.choices[0].message.content);
+  const content = data?.choices?.[0]?.message?.content;
+  if (typeof content !== 'string') {
+    throw new Error('AI response did not contain a role definition');
+  }
+
+  let generatedRole: any;
+  try {
+    generatedRole = JSON.parse(content);
+  } catch {
+    throw new Error('AI response was not valid JSON');
+  }
 
   // Run our validation pipeline
   const validation = validateRole(generatedRole);
