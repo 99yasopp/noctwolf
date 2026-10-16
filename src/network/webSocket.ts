@@ -236,6 +236,14 @@ export class WebSocketFrameReader {
         offset = 10;
       }
 
+      // Refuse an oversized claim before a single payload byte is buffered:
+      // waiting for the frame to arrive first would let a peer make the host
+      // hold (and re-copy) a buffer of any declared size.
+      if (length + this.pending.length > MAX_MESSAGE_BYTES) {
+        closeCode = 1009;
+        break;
+      }
+
       let maskKey: Uint8Array | null = null;
       if (masked) {
         if (this.buffer.length < offset + 4) break;
@@ -266,10 +274,6 @@ export class WebSocketFrameReader {
           break;
         }
         const text = asciiText(payload);
-        if (this.pending.length + text.length > MAX_MESSAGE_BYTES) {
-          closeCode = 1009;
-          break;
-        }
         this.pending += text;
         if (fin) {
           messages.push(this.pending);

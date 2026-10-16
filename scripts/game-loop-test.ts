@@ -35,9 +35,11 @@ import { GameTransport } from '../src/engine/transport';
 import { Player } from '../src/engine/types';
 import { NetworkMessage, PhaseUpdatePayload } from '../src/network/protocol';
 import { MessageDecoder, encodeMessage } from '../src/network/framing';
+import { ClientLink } from '../src/network/clientLink';
 import {
   WebSocketFrameReader,
   asciiBytes,
+  asciiText,
   encodeTextFrame,
   messageLimit,
   webSocketHandshakeResponse,
@@ -84,6 +86,43 @@ const roleOf = (game: GameManager, players: Player[], id: string) =>
 
 const findRole = (game: GameManager, players: Player[], roleId: string) =>
   players.find(p => game.getRoleOf(p.id)?.id === roleId);
+
+// A masked frame the way a browser writes one: short header unless the payload
+// needs a longer one (or the caller asks for it).
+const maskedFrame = (
+  opcode: number,
+  payload: Uint8Array,
+  fin = true,
+  forceLong = false,
+): Uint8Array => {
+  const key = new Uint8Array([0x12, 0x34, 0x56, 0x78]);
+  const header: number[] = [fin ? 0x80 | opcode : opcode];
+  if (payload.length < 126 && !forceLong) {
+    header.push(0x80 | payload.length);
+  } else if (payload.length < 0x10000 && !forceLong) {
+    header.push(0x80 | 126, (payload.length >> 8) & 0xff, payload.length & 0xff);
+  } else {
+    header.push(
+      0x80 | 127,
+      0,
+      0,
+      0,
+      0,
+      (payload.length >>> 24) & 0xff,
+      (payload.length >> 16) & 0xff,
+      (payload.length >> 8) & 0xff,
+      payload.length & 0xff,
+    );
+  }
+  header.push(...key);
+
+  const frame = new Uint8Array(header.length + payload.length);
+  frame.set(header, 0);
+  for (let i = 0; i < payload.length; i++) {
+    frame[header.length + i] = payload[i] ^ key[i % 4];
+  }
+  return frame;
+};
 
 // A mayor can die mid-test, and a bot mayor names his successor by himself, so
 // one more press clears the phase. Tests that check the succession drive it by
@@ -1765,42 +1804,6 @@ console.log('\n28. a browser can join the table');
     webSocketHandshakeResponse('GET / HTTP/1.1\r\nHost: x\r\n\r\n') === null,
   );
 
-  // A masked frame the way a browser writes one, short-form header.
-  const maskedFrame = (
-    opcode: number,
-    payload: Uint8Array,
-    fin = true,
-    forceLong = false,
-  ): Uint8Array => {
-    const key = new Uint8Array([0x12, 0x34, 0x56, 0x78]);
-    const header: number[] = [fin ? 0x80 | opcode : opcode];
-    if (payload.length < 126 && !forceLong) {
-      header.push(0x80 | payload.length);
-    } else if (payload.length < 0x10000 && !forceLong) {
-      header.push(0x80 | 126, (payload.length >> 8) & 0xff, payload.length & 0xff);
-    } else {
-      header.push(
-        0x80 | 127,
-        0,
-        0,
-        0,
-        0,
-        (payload.length >>> 24) & 0xff,
-        (payload.length >> 16) & 0xff,
-        (payload.length >> 8) & 0xff,
-        payload.length & 0xff,
-      );
-    }
-    header.push(...key);
-
-    const frame = new Uint8Array(header.length + payload.length);
-    frame.set(header, 0);
-    for (let i = 0; i < payload.length; i++) {
-      frame[header.length + i] = payload[i] ^ key[i % 4];
-    }
-    return frame;
-  };
-
   const wireMessage: NetworkMessage = {
     type: 'SECRET_INFO',
     payload: { message: 'Le loup est déchaîné 🐺' },
@@ -1860,6 +1863,142 @@ console.log('\n28. a browser can join the table');
     'a message over the cap is refused',
     oversized.push(maskedFrame(0x1, new Uint8Array(messageLimit + 1))).closeCode === 1009,
   );
+
+  // The claim alone must be refused: buffering the payload first would let a
+  // peer make the host hold a buffer of any size it names.
+  const claim: number[] = [0x81, 0x80 | 127, 0, 0, 0, 0];
+  const claimed = messageLimit + 1;
+  for (let shift = 24; shift >= 0; shift -= 8) claim.push((claimed >>> shift) & 0xff);
+  check(
+    'an oversized claim is refused before the payload arrives',
+    new WebSocketFrameReader().push(new Uint8Array(claim)).closeCode === 1009,
+  );
+}
+
+console.log('\n29. the host link speaks both wires');
+{
+  const tcpSocket = {
+    written: [] as any[],
+    destroyed: false,
+    write(data: any) {
+      this.written.push(data);
+    },
+    destroy() {
+      this.destroyed = true;
+    },
+  };
+  const tcpMessages: NetworkMessage[] = [];
+  const tcpLink = new ClientLink(tcpSocket, message => tcpMessages.push(message));
+
+  const joinLine = encodeMessage({
+    type: 'PLAYER_JOIN',
+    payload: { player: { id: 'g-1', name: 'Anaïs' } },
+    timestamp: 1,
+  });
+
+  tcpLink.push(asciiBytes(joinLine));
+  check(
+    'a TCP guest joins with a line',
+    tcpMessages.length === 1 &&
+      tcpMessages[0].type === 'PLAYER_JOIN' &&
+      tcpMessages[0].payload?.player?.name === 'Anaïs',
+    JSON.stringify(tcpMessages),
+  );
+
+  tcpLink.write('{"type":"PLAYER_LIST"}\n');
+  check('and is written to raw', tcpSocket.written[0] === '{"type":"PLAYER_LIST"}\n');
+
+  const webSocket = {
+    written: [] as any[],
+    destroyed: false,
+    write(data: any) {
+      this.written.push(data);
+    },
+    destroy() {
+      this.destroyed = true;
+    },
+  };
+  const webMessages: NetworkMessage[] = [];
+  const webLink = new ClientLink(webSocket, message => webMessages.push(message));
+
+  const request = [
+    'GET / HTTP/1.1',
+    'Host: 192.168.0.140:12345',
+    'Upgrade: websocket',
+    'Connection: Upgrade',
+    'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==',
+    'Sec-WebSocket-Version: 13',
+    '',
+    '',
+  ].join('\r\n');
+  const requestBytes = asciiBytes(request);
+
+  webLink.push(requestBytes.subarray(0, 2));
+  check(
+    'a split verb is held instead of parsed as JSON',
+    webSocket.written.length === 0 && webMessages.length === 0,
+  );
+
+  webLink.push(requestBytes.subarray(2));
+  check(
+    'the browser gets its 101 with the right accept key',
+    typeof webSocket.written[0] === 'string' &&
+      webSocket.written[0].startsWith('HTTP/1.1 101') &&
+      webSocket.written[0].includes('Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo='),
+    String(webSocket.written[0]),
+  );
+  check(
+    'nothing was answered before the handshake finished',
+    !webSocket.destroyed && webMessages.length === 0,
+  );
+
+  webLink.push(maskedFrame(0x1, asciiBytes(joinLine)));
+  check(
+    'a frame carries the same join line',
+    webMessages.length === 1 && webMessages[0].payload?.player?.name === 'Anaïs',
+    JSON.stringify(webMessages),
+  );
+
+  webLink.write(joinLine);
+  const frameWritten = webSocket.written[1] as Uint8Array;
+  const frameLength = frameWritten[1] & 0x7f;
+  check(
+    'a browser guest is written a text frame',
+    frameWritten[0] === 0x81 &&
+      frameLength === joinLine.length &&
+      asciiText(frameWritten.subarray(2, 2 + frameLength)) === joinLine,
+  );
+
+  // A raw write aimed at a browser before its handshake must not leak onto
+  // the wire: JSON in front of the HTTP response would break the upgrade.
+  const silent = {
+    written: [] as any[],
+    destroyed: false,
+    write(data: any) {
+      this.written.push(data);
+    },
+    destroy() {
+      this.destroyed = true;
+    },
+  };
+  const silentLink = new ClientLink(silent, () => {});
+  silentLink.write('{"type":"PLAYER_LIST"}\n');
+  check('an unclassified connection is not written to', silent.written.length === 0);
+
+  // A bogus handshake is hung up rather than left waiting.
+  const bogus = {
+    written: [] as any[],
+    destroyed: false,
+    write(data: any) {
+      this.written.push(data);
+    },
+    destroy() {
+      this.destroyed = true;
+    },
+  };
+  const bogusLink = new ClientLink(bogus, () => {});
+  bogusLink.push(asciiBytes('GET / HTTP/1.1\r\nHost: x\r\n\r\n'));
+  check('a request without a key is dropped', bogus.destroyed);
 }
 
 console.log(failures === 0 ? `\nAll checks passed.` : `\n${failures} check(s) failed.`);

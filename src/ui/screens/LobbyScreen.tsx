@@ -287,9 +287,11 @@ export const LobbyScreen = () => {
               value={playerName}
               onChangeText={setPlayerName}
             />
-            {!WEB && <BaseButton title="Host a Game" onPress={() => setView('host')} />}
+            {lobby.canHost() && (
+              <BaseButton title="Host a Game" onPress={() => setView('host')} />
+            )}
             <BaseButton title="Join a Game" onPress={() => setView('join')} variant="secondary" />
-            {WEB && (
+            {!lobby.canHost() && (
               <Text style={styles.hint}>
                 This browser joins as a guest. Host the table from the phone app.
               </Text>
@@ -366,7 +368,7 @@ export const LobbyScreen = () => {
               </Text>
             ))}
 
-            {isHost && (
+            {isHost && setup && (
               <BaseButton
                 title="Table setup"
                 onPress={() => setView('setup')}

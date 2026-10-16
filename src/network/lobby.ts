@@ -201,8 +201,12 @@ export class LobbyManager implements GameTransport {
         const playerId = this.socketOwners.get(socket);
         if (!playerId) return;
 
-        this.sockets.delete(playerId);
         this.socketOwners.delete(socket);
+
+        // A reconnect registers a fresh socket before the old one's close
+        // lands; that stale close must not wipe the new mapping.
+        if (this.sockets.get(playerId) !== socket) return;
+        this.sockets.delete(playerId);
 
         // Mid-game the player keeps their seat so they can reconnect; before
         // the game starts they are simply removed.
@@ -387,8 +391,16 @@ export class LobbyManager implements GameTransport {
   private connect(host: string, player: Player, port: number = GAME_PORT): Promise<boolean> {
     this.disconnectClient();
     // A phone guest speaks TCP, a browser guest WebSocket; both land on the
-    // host's one port.
-    const client = createGuestClient(host, port);
+    // host's one port. The browser client throws on an address it cannot even
+    // build a URL from, and that must fail the join rather than the button.
+    let client: GuestClient;
+    try {
+      client = createGuestClient(host, port);
+    } catch (error) {
+      console.error('Could not open a connection to the host', error);
+      return Promise.resolve(false);
+    }
+
     this.client = client;
     this.lastHost = host;
     this.lastPort = port;
