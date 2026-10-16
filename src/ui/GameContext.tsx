@@ -19,6 +19,9 @@ interface GameContextValue {
   returnToLobby: () => void;
   // Deal a fresh game to the players already at the table.
   rematch: () => void;
+  // Keep the room and the seats, but leave the finished game behind: the host
+  // wants a different table for the next round.
+  changeTable: () => void;
   // Bumped for every fresh deal, so the screens can drop the notes they kept
   // about the previous game.
   gameId: number;
@@ -36,6 +39,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const setupRef = useRef<RoleSetup>(setupFromRoles(buildRoleSet(3)));
 
   const startHostGame = useCallback((players: Player[], host: Player, setup?: RoleSetup) => {
+    // A table that comes back from a finished game still has its dead, and a
+    // new deal has to start from a living roster.
+    lobby.resetRoster();
     const game = new GameManager(players, lobby, true);
     managerRef.current = game;
     setupRef.current = setup ?? setupFromRoles(buildRoleSet(players.length));
@@ -119,6 +125,17 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setMode('narrator');
   }, []);
 
+  // Keep the room up, drop the finished game. The host lands in the waiting
+  // room with the same seats and can pick another table before dealing again.
+  const changeTable = useCallback(() => {
+    managerRef.current = null;
+    setManager(null);
+    setLocalPlayer(null);
+    // Player actions have no game to reach any more.
+    lobby.onGameMessage(null);
+    setMode('lobby');
+  }, []);
+
   const returnToLobby = useCallback(() => {
     const wasHost = managerRef.current !== null;
 
@@ -137,7 +154,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   return (
     <GameContext.Provider
-      value={{ mode, localPlayer, manager, startHostGame, enterPlayerMode, returnToLobby, rematch, gameId }}
+      value={{ mode, localPlayer, manager, startHostGame, enterPlayerMode, returnToLobby, rematch, changeTable, gameId }}
     >
       {children}
     </GameContext.Provider>

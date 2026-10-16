@@ -50,6 +50,9 @@ export const LobbyScreen = () => {
   const [presetId, setPresetId] = useState(ROLE_PRESETS[0].id);
   // The host's table: null until the saved one is read or a starter is seeded.
   const [setup, setSetup] = useState<RoleSetup | null>(null);
+  // Seeding a starter from the preset must wait for the saved table: the two
+  // land in the same breath when this screen mounts straight from a game.
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
   // Lets the setup picker show Custom only once there are roles to deal.
   const [customRoleCount, setCustomRoleCount] = useState(0);
 
@@ -64,7 +67,20 @@ export const LobbyScreen = () => {
       if (saved.lastHost) setInputIp(saved.lastHost);
       if (saved.presetId) setPresetId(saved.presetId);
       if (saved.setup) setSetup(saved.setup);
+      setPrefsLoaded(true);
     });
+  }, []);
+
+  // The host can come back here from a finished game with the room still up:
+  // he lands in the waiting room he left, with the same seats, instead of the
+  // main menu where he would start over.
+  useEffect(() => {
+    if (!lobby.isHosting()) return;
+
+    setIsHost(true);
+    setRoomCode(lobby.getRoomCode());
+    setPlayers([...lobby.getPlayers()]);
+    setView('waiting');
   }, []);
 
   const preset = getPreset(presetId);
@@ -78,10 +94,10 @@ export const LobbyScreen = () => {
   // The first look at the waiting room seeds the table from the chosen
   // starter: after that the host's own counts are left alone.
   useEffect(() => {
-    if (view !== 'waiting' || !isHost || setup) return;
+    if (view !== 'waiting' || !isHost || setup || !prefsLoaded) return;
     changeSetup(setupFromRoles(preset.build(Math.max(players.length, 1))));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, isHost, setup, players.length, preset]);
+  }, [view, isHost, setup, players.length, preset, prefsLoaded]);
 
   const seedFromPreset = (id: string) => {
     setPresetId(id);

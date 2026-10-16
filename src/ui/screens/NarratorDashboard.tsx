@@ -8,7 +8,7 @@ import { useGame } from '../GameContext';
 import { lobby } from '../../network/lobby';
 
 export const NarratorDashboard = () => {
-  const { manager, localPlayer, returnToLobby, rematch, gameId } = useGame();
+  const { manager, localPlayer, returnToLobby, rematch, changeTable, gameId } = useGame();
   const [, forceRender] = useState(0);
   const [secrets, setSecrets] = useState<string[]>([]);
   const [submitted, setSubmitted] = useState<string[]>([]);
@@ -310,9 +310,16 @@ export const NarratorDashboard = () => {
               : 'Village wins!'}
           </Text>
           <Text style={styles.winnerSub}>
-            Everyone keeps their seat. Playing again deals new roles to the same table.
+            Everyone keeps their seat. Playing again deals new roles to the
+            same table; changing the table keeps the seats but lets you pick
+            another setup first.
           </Text>
           <BaseButton title="Play again" onPress={rematch} />
+          <BaseButton
+            title="Change the table"
+            onPress={changeTable}
+            variant="secondary"
+          />
         </View>
       )}
 
