@@ -229,7 +229,8 @@ export const NarratorDashboard = () => {
         {role && <Text style={styles.roleDescription}>{role.description}</Text>}
         {ownRole && ownRole.allies && ownRole.allies.length > 0 && (
           <Text style={styles.roleDescription}>
-            Your pack: {ownRole.allies.map(ally => ally.name).join(', ')}
+            {ownRole.team === 'Wolf' ? 'Your pack' : 'Your alliance'}:{' '}
+            {ownRole.allies.map(ally => ally.name).join(', ')}
           </Text>
         )}
       </View>
@@ -355,6 +356,14 @@ export const NarratorDashboard = () => {
             </Text>
           ))}
         </View>
+      )}
+
+      {phase === 'Night' && manager.hasLittleGirl() && !manager.isGirlCaught() && (
+        <BaseButton
+          title="The wolves caught the little girl"
+          variant="secondary"
+          onPress={() => manager.catchLittleGirl()}
+        />
       )}
 
       {!manager.winner && nextLabel && (

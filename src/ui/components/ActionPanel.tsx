@@ -63,7 +63,8 @@ const allowsSelf = (kind: string) => kind === 'protect' || kind === 'heal';
 const wantsPack = (kind: string) => kind === 'wolfAttack';
 // These report 0/1 for "up right now" rather than uses left, so the count
 // would read as a lie.
-const packPower = (kind: string) => kind === 'wolfAttack' || kind === 'extraAttack';
+const upNow = (kind: string) =>
+  kind === 'wolfAttack' || kind === 'extraAttack' || kind === 'fox';
 // A wolf never eats its own pack.
 const excludesPack = (kind: string) => kind === 'attack';
 
@@ -384,7 +385,7 @@ export const ActionPanel: React.FC<Props> = ({
             ? victim
               ? alive.filter(target => target.id === victim.id)
               : []
-            : option.kind === 'infect'
+            : option.kind === 'infect' || option.kind === 'spy'
             ? alive.filter(target => target.id === selfId)
             : alive.filter(target => {
                 if (target.id === selfId && !allowsSelf(option.kind)) return false;
@@ -397,7 +398,7 @@ export const ActionPanel: React.FC<Props> = ({
           <View key={option.id}>
             <Text style={styles.heading}>
               {option.label}
-              {typeof option.chargesLeft === 'number' && !packPower(option.kind)
+              {typeof option.chargesLeft === 'number' && !upNow(option.kind)
                 ? ` (${option.chargesLeft} left)`
                 : ''}
             </Text>
@@ -419,6 +420,8 @@ export const ActionPanel: React.FC<Props> = ({
                         ? `Save ${target.name}`
                         : option.kind === 'infect'
                         ? "Infect the pack's victim"
+                        : option.kind === 'spy'
+                        ? 'Spy on the wolves tonight'
                         : target.name
                     }
                     onPress={() => onChoose(option.id, target.id)}

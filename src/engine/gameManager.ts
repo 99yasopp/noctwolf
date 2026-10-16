@@ -106,6 +106,12 @@ export class GameManager {
   // Set while the Alien still owes the table an answer: the day cannot move on
   // to the vote until he stops guessing.
   private alienGuess: string | null = null;
+  // The Fox keeps his nose only until it fails him once.
+  private foxLost = new Set<string>();
+  // The Raven's two votes against one player, counted in the next day's vote.
+  private ravenTarget: string | null = null;
+  // Set by the host when the wolves spotted the little girl tonight.
+  private girlCaught = false;
   // Who won when 'Solitary' is not the lovers: the announcement text, also
   // carried to the screens.
   private winnerLabel: string | null = null;
@@ -190,6 +196,9 @@ export class GameManager {
     this.blockedTargets.clear();
     this.alienGuess = null;
     this.winnerLabel = null;
+    this.foxLost.clear();
+    this.ravenTarget = null;
+    this.girlCaught = false;
     this.pendingRevenge = null;
     this.revengeChoice = null;
     this.revengeOrigin = null;
@@ -349,6 +358,17 @@ export class GameManager {
         : `Day ${this.round}: nobody died in the night.`,
     );
 
+    // A bear growls when a wolf is sitting next to its tamer. Nobody is named,
+    // but the table hears it.
+    this.state.players
+      .filter(player => player.isAlive && this.assignments.get(player.id)?.bearTamer)
+      .forEach(tamer => {
+        const neighbours = this.neighbourhood(tamer.id).filter(p => p.id !== tamer.id);
+        if (neighbours.some(p => this.assignments.get(p.id)?.team === 'Wolf')) {
+          this.announce(`Day ${this.round}: the bear tamer's bear growls.`);
+        }
+      });
+
     const winner = this.checkWin();
     if (winner) this.finish(winner);
   }
@@ -419,6 +439,8 @@ export class GameManager {
     // bite that a peaceful night never takes.
     if (option.kind === 'wolfAttack' && this.round % 2 !== 0) return false;
     if (option.kind === 'infect' && this.isQuietNight()) return false;
+    // A fox that once found nothing has lost his nose for good.
+    if (option.kind === 'fox' && this.foxLost.has(playerId)) return false;
     // Nothing to save means no potion to offer.
     if (option.kind === 'heal' && !this.healTarget()) return false;
     return true;
@@ -457,9 +479,63 @@ export class GameManager {
     return this.round <= (this.silencedUntil.get(playerId) ?? 0);
   }
 
+  // The Little Girl, if she spied tonight: the host's catch is hers to take.
+  private whoSpied(): string | null {
+    let found: string | null = null;
+
+    this.nightChoices.forEach((choices, playerId) => {
+      const actor = this.state.players.find(p => p.id === playerId);
+      const role = this.assignments.get(playerId);
+      if (!actor?.isAlive || !role || this.isSilenced(playerId)) return;
+
+      choices.forEach((targetId, actionId) => {
+        if (targetId === PASSED) return;
+        if (role.nightActions?.find(candidate => candidate.id === actionId)?.kind === 'spy') {
+          found = playerId;
+        }
+      });
+    });
+
+    return found;
+  }
+
+  // A player and the living seats around him: the fox reads all three, and the
+  // bear tamer only cares about the two neighbours.
+  private neighbourhood(playerId: string): Player[] {
+    const alive = this.getAlivePlayers();
+    const index = alive.findIndex(player => player.id === playerId);
+    if (index < 0) return [];
+
+    const count = alive.length;
+    const at = (offset: number) => alive[(index + offset + count) % count];
+    return [...new Set([at(-1), at(0), at(1)])];
+  }
+
   // The day waits for the Alien: no vote, and the host cannot move it on.
   isDayFrozen(): boolean {
     return this.alienGuess !== null;
+  }
+
+  // True when a Little Girl sits at this table. The host asked for her card,
+  // so this only tells his own screen when the button is worth showing.
+  hasLittleGirl(): boolean {
+    return this.state.players.some(p => this.assignments.get(p.id)?.id === 'little-girl');
+  }
+
+  // The host decides: the wolves spotted the little girl tonight, so she dies
+  // in the victim's place. A night she did not spy on changes nothing.
+  catchLittleGirl(): boolean {
+    if (this.winner) return false;
+    if (this.state.currentPhase !== 'Night' || this.girlCaught) return false;
+
+    this.girlCaught = true;
+    this.actionLog.push(`Night ${this.round}: the little girl was caught.`);
+    this.emit({ type: 'changed' });
+    return true;
+  }
+
+  isGirlCaught(): boolean {
+    return this.girlCaught;
   }
 
   // Who the wolves took tonight, as far as the choice alone says. Null when
@@ -508,6 +584,8 @@ export class GameManager {
     // The father is about to infect the pack's victim instead of killing
     // them, so there is no death to save.
     if (this.pendingInfection()) return null;
+    // The wolves have the little girl instead: the victim walks away unhurt.
+    if (this.girlCaught && this.whoSpied()) return null;
     return victim;
   }
 
@@ -534,11 +612,14 @@ export class GameManager {
       if (target.id === player.id && !option.allowSelf) return false;
       if (option.kind === 'attack' && this.assignments.get(target.id)?.team === 'Wolf') return false;
       // The White Wolf picks among his own kin, and the father only switches
-      // the infection on: the pack's victim is whoever the pack picked.
+      // the infection on: the pack's victim is whoever the pack picked. The
+      // little girl has no target either: she only opens her eyes.
       if (option.kind === 'wolfAttack' && this.assignments.get(target.id)?.team !== 'Wolf') {
         return false;
       }
-      if (option.kind === 'infect' && target.id !== player.id) return false;
+      if ((option.kind === 'infect' || option.kind === 'spy') && target.id !== player.id) {
+        return false;
+      }
       if (
         option.kind === 'protect' &&
         this.options.guardNoRepeat &&
@@ -867,6 +948,7 @@ export class GameManager {
     // whole. Reporting 0 or 1 is what hides the button on the other nights.
     if (option?.kind === 'wolfAttack') return this.round % 2 === 0 ? 1 : 0;
     if (option?.kind === 'extraAttack') return this.anyWolfDead() ? 0 : 1;
+    if (option?.kind === 'fox') return this.foxLost.has(playerId) ? 0 : 1;
     const limit = actionChargeLimit(option);
     if (!Number.isFinite(limit)) return null;
 
@@ -1016,11 +1098,18 @@ export class GameManager {
   }
 
   private sendRoleAssign(playerId: string, role: PlayableRole) {
+    const group = role.alliance;
     const allies =
       role.team === 'Wolf'
         ? this.state.players
             .filter(
               p => p.id !== playerId && this.assignments.get(p.id)?.team === 'Wolf',
+            )
+            .map(p => ({ id: p.id, name: p.name, isAlive: p.isAlive }))
+        : group
+        ? this.state.players
+            .filter(
+              p => p.id !== playerId && this.assignments.get(p.id)?.alliance === group,
             )
             .map(p => ({ id: p.id, name: p.name, isAlive: p.isAlive }))
         : [];
@@ -1380,6 +1469,8 @@ export class GameManager {
     const wolfAttacks: string[] = [];
     let inspect: { sourceId: string; targetId: string } | null = null;
     let link: { sourceId: string; targetId: string } | null = null;
+    let fox: { sourceId: string; targetId: string } | null = null;
+    let raven: { sourceId: string; targetId: string } | null = null;
 
     // Read before the choices are tallied: the father's infection replaces the
     // pack's bite, so his own kill vote must not be counted.
@@ -1424,6 +1515,12 @@ export class GameManager {
           case 'link':
             link = { sourceId: playerId, targetId };
             break;
+          case 'fox':
+            fox = { sourceId: playerId, targetId };
+            break;
+          case 'curse':
+            raven = { sourceId: playerId, targetId };
+            break;
         }
       });
     });
@@ -1433,6 +1530,8 @@ export class GameManager {
     const biteTarget = this.pickMostVoted(attackVotes);
     const peek = inspect as { sourceId: string; targetId: string } | null;
     const bond = link as { sourceId: string; targetId: string } | null;
+    const sniff = fox as { sourceId: string; targetId: string } | null;
+    const mark = raven as { sourceId: string; targetId: string } | null;
 
     // Every wolf kill takes the same path: the Alien shrugs it off, the
     // guard's shield stops it, the witch may already have saved the victim,
@@ -1471,7 +1570,15 @@ export class GameManager {
     } else if (biteTarget) {
       const target = this.state.players.find(p => p.id === biteTarget);
       if (target?.isAlive) {
-        if (infection) {
+        const spy = this.girlCaught ? this.whoSpied() : null;
+        const girl = spy ? this.state.players.find(p => p.id === spy) : undefined;
+        if (girl?.isAlive) {
+          // The wolves took her instead of the victim: nobody else is hurt,
+          // and the victim never learns how close it was.
+          girl.isAlive = false;
+          deaths.push(girl);
+          this.actionLog.push(`Night ${this.round}: the wolves caught ${girl.name} spying.`);
+        } else if (infection) {
           // Spent whether or not it lands: the father used his one charge.
           this.spendCharge(infection.playerId, infection.actionId);
           this.resendRoleTo(infection.playerId);
@@ -1492,6 +1599,26 @@ export class GameManager {
         const target = this.state.players.find(p => p.id === targetId);
         if (target?.isAlive) wolfKill(target, 'the White Werewolf', false);
       });
+    }
+
+    // The little girl's night: if the host caught her the bite above already
+    // took her, otherwise she saw exactly who was awake.
+    const spy = this.whoSpied();
+    const spyPlayer = spy ? this.state.players.find(p => p.id === spy) : undefined;
+    if (spy && spyPlayer?.isAlive) {
+      const pack = this.state.players
+        .filter(p => this.assignments.get(p.id)?.team === 'Wolf')
+        .map(p => p.name);
+      const message =
+        pack.length > 0
+          ? `You saw the wolves awake: ${pack.join(', ')}.`
+          : 'You saw nobody awake tonight.';
+      this.transport.sendToPlayer(spy, {
+        type: 'SECRET_INFO',
+        payload: { message },
+        timestamp: Date.now(),
+      });
+      this.emit({ type: 'secret', playerId: spy, message });
     }
 
     // Poison is not the wolves' bite: shielding does not stop it.
@@ -1536,6 +1663,41 @@ export class GameManager {
       }
     }
 
+    if (sniff) {
+      const { sourceId, targetId } = sniff;
+      const seat = this.state.players.find(p => p.id === targetId);
+      const around = this.neighbourhood(targetId);
+      const found = around.some(p => this.assignments.get(p.id)?.team === 'Wolf');
+      // One fruitless night and the nose is gone for good.
+      if (!found) this.foxLost.add(sourceId);
+
+      const names = around.map(p => p.name).join(', ');
+      const message = found
+        ? `Yes: a wolf is among ${names}. Your nose stays sharp.`
+        : `No: no wolf is among ${names}. Your nose is gone for good.`;
+      this.actionLog.push(
+        `Night ${this.round}: the fox sniffed around ${seat?.name ?? targetId} and found ${
+          found ? 'a wolf' : 'nothing'
+        }.`,
+      );
+      this.transport.sendToPlayer(sourceId, {
+        type: 'SECRET_INFO',
+        payload: { message },
+        timestamp: Date.now(),
+      });
+      this.emit({ type: 'secret', playerId: sourceId, message });
+    }
+
+    if (mark) {
+      // Counted in the next day's vote, and again in a re-vote, until the vote
+      // is truly over.
+      this.ravenTarget = mark.targetId;
+      const marked = this.state.players.find(p => p.id === mark.targetId);
+      this.actionLog.push(
+        `Night ${this.round}: the raven marked ${marked?.name ?? mark.targetId}.`,
+      );
+    }
+
     this.applyLoverDeaths(deaths);
 
     // Whoever dies leaves a parting shot for the hunter.
@@ -1549,6 +1711,9 @@ export class GameManager {
     if (deaths.length === 0) {
       this.actionLog.push(`Night ${this.round}: nobody died.`);
     }
+
+    // The catch was for one night only.
+    this.girlCaught = false;
 
     return deaths;
   }
@@ -1886,6 +2051,12 @@ export class GameManager {
       }
     });
 
+    // The raven's two votes count like any others, without a ballot row of
+    // their own: the table sees the total, never who added to it.
+    if (this.ravenTarget && tally.has(this.ravenTarget)) {
+      tally.set(this.ravenTarget, (tally.get(this.ravenTarget) ?? 0) + 2);
+    }
+
     let topVotes = 0;
     tally.forEach(count => {
       if (count > topVotes) topVotes = count;
@@ -1972,6 +2143,9 @@ export class GameManager {
     };
 
     this.lastVote = result;
+
+    // The raven's votes were for this vote and the re-votes it took to settle.
+    this.ravenTarget = null;
 
     this.transport.broadcast({
       type: 'VOTE_RESULT',

@@ -444,7 +444,9 @@ export const PlayerScreen = () => {
 
       {!outcome && ownRole?.allies && ownRole.allies.length > 0 && (
         <View style={styles.secretCard}>
-          <Text style={styles.secretHeading}>Your pack</Text>
+          <Text style={styles.secretHeading}>
+            {ownRole.team === 'Wolf' ? 'Your pack' : 'Your alliance'}
+          </Text>
           {ownRole.allies.map(ally => (
             <Text key={ally.id} style={styles.secretText}>
               {ally.name}

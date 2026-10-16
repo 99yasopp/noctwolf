@@ -13,7 +13,10 @@ export type ActionKind =
   | 'poison'
   | 'inspect'
   | 'link'
-  | 'block';
+  | 'block'
+  | 'fox'
+  | 'spy'
+  | 'curse';
 
 // One choice a role gets to make at night.
 export interface NightActionOption {
@@ -60,6 +63,10 @@ export interface PlayableRole {
   guessesRoles?: boolean;
   // Wins the game outright by being the last player alive.
   winsAlone?: boolean;
+  // Growls at daybreak when one of its two neighbours is a wolf.
+  bearTamer?: boolean;
+  // Players carrying the same tag know each other: sisters, brothers.
+  alliance?: string;
 }
 
 export const WerewolfRole: PlayableRole = {
@@ -181,6 +188,63 @@ export const HunterRole: PlayableRole = {
   revengeOnDeath: true,
 };
 
+export const FoxRole: PlayableRole = {
+  id: 'fox',
+  name: 'Fox',
+  team: 'Village',
+  description:
+    'Each night you sniff at a player and their two nearest neighbours. One wolf among them and you keep your nose; find nothing and you lose it for good.',
+  nightActions: [{ id: 'sniff', label: 'Sniff out a player and their neighbours', kind: 'fox' }],
+};
+
+export const LittleGirlRole: PlayableRole = {
+  id: 'little-girl',
+  name: 'Little Girl',
+  team: 'Village',
+  description:
+    'At night you may spy on the wolves and learn who they are. If the wolves catch you, you die in the victim\'s place.',
+  nightActions: [{ id: 'spy', label: 'Spy on the wolves', kind: 'spy', allowSelf: true }],
+};
+
+// No night action: the bear does the work at daybreak.
+export const BearTamerRole: PlayableRole = {
+  id: 'bear-tamer',
+  name: 'Bear Tamer',
+  team: 'Village',
+  description:
+    'Your bear growls at daybreak whenever one of your two neighbours is a wolf. The whole table hears it.',
+  bearTamer: true,
+};
+
+export const RavenRole: PlayableRole = {
+  id: 'raven',
+  name: 'Raven',
+  team: 'Village',
+  description:
+    "Each night you place two secret votes against one player. They count in the next day's vote, on top of whatever the table decides.",
+  nightActions: [{ id: 'curse', label: 'Add two votes against a player', kind: 'curse' }],
+};
+
+// The two sisters and the three brothers are the same card taken several
+// times: each copy knows the others from the first night.
+export const TwoSistersRole: PlayableRole = {
+  id: 'two-sisters',
+  name: 'Two Sisters',
+  team: 'Village',
+  description:
+    'You and your sister know each other from the first night. Pick this card twice so that both sisters are at the table.',
+  alliance: 'sisters',
+};
+
+export const ThreeBrothersRole: PlayableRole = {
+  id: 'three-brothers',
+  name: 'Three Brothers',
+  team: 'Village',
+  description:
+    'You and your brothers know each other from the first night. Pick this card three times so that the trio is at the table.',
+  alliance: 'brothers',
+};
+
 
 export const CupidRole: PlayableRole = {
   id: 'cupid',
@@ -204,6 +268,12 @@ export const ALL_ROLES: PlayableRole[] = [
   WitchRole,
   HunterRole,
   CupidRole,
+  FoxRole,
+  LittleGirlRole,
+  BearTamerRole,
+  RavenRole,
+  TwoSistersRole,
+  ThreeBrothersRole,
 ];
 
 export const getRoleById = (id: string): PlayableRole | undefined =>

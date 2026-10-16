@@ -7,14 +7,19 @@
 import { GameManager } from '../src/engine/gameManager';
 import {
   AlienRole,
+  BearTamerRole,
   BigBadWolfRole,
   CupidRole,
+  FoxRole,
   GuardRole,
   HunterRole,
   InfectiousFatherRole,
+  LittleGirlRole,
   PlayableRole,
+  RavenRole,
   RedWolfRole,
   SeerRole,
+  TwoSistersRole,
   VillagerRole,
   WerewolfRole,
   WhiteWerewolfRole,
@@ -2465,6 +2470,191 @@ console.log('\n32. the day and the pack keep their books straight');
   let presses = 0;
   while (botGame.winner === null && presses++ < 300) botGame.advance();
   check('a bot table with an alien still ends', botGame.winner !== null, `${presses} presses`);
+}
+
+console.log('\n33. the village learns what it can');
+{
+  // The fox reads a player and the two seats around him.
+  const table = makePlayers(6);
+  const transport = new RecordingTransport();
+  const game = new GameManager(table, transport);
+  game.start([FoxRole, WerewolfRole, VillagerRole, VillagerRole, SeerRole, GuardRole]);
+  passElection(game);
+
+  const fox = findRole(game, table, 'fox')!;
+  const wolf = findRole(game, table, 'werewolf')!;
+  const seatOf = (id: string) => table.findIndex(p => p.id === id);
+
+  const lastFoxWord = () =>
+    String(
+      [...transport.directs]
+        .reverse()
+        .find(d => d.playerId === fox.id && d.message.type === 'SECRET_INFO')?.message.payload
+        ?.message ?? '',
+    );
+
+  check('the fox sniffs at the wolf', game.handleNightAction(fox.id, 'sniff', wolf.id));
+  game.advance();
+  settleSuccession(game);
+  check('and hears yes', lastFoxWord().startsWith('Yes'));
+  check('keeping his nose', game.getChargesLeft(fox.id, 'sniff') === 1);
+
+  game.advance();
+  game.advance();
+  settleSuccession(game);
+  check('the second night starts', game.state.currentPhase === 'Night' && game.round === 2);
+
+  // A seat that is neither the wolf, nor next to him, nor the fox himself.
+  const wolfSeat = seatOf(wolf.id);
+  const forbidden = new Set([
+    wolfSeat,
+    (wolfSeat + 1) % table.length,
+    (wolfSeat + table.length - 1) % table.length,
+    seatOf(fox.id),
+  ]);
+  const safe = table.find((_, index) => !forbidden.has(index))!;
+  check('the fox sniffs at a clean corner', game.handleNightAction(fox.id, 'sniff', safe.id));
+  game.advance();
+  settleSuccession(game);
+  check('and hears no', lastFoxWord().startsWith('No'));
+  check('the nose is gone for good', game.getChargesLeft(fox.id, 'sniff') === 0);
+
+  game.advance();
+  game.advance();
+  settleSuccession(game);
+  check('a fox who found nothing cannot sniff again', !game.handleNightAction(fox.id, 'sniff', wolf.id));
+
+  // The little girl sees who is awake.
+  const spyTable = makePlayers(5);
+  const spyTransport = new RecordingTransport();
+  const spyGame = new GameManager(spyTable, spyTransport);
+  spyGame.start([LittleGirlRole, WerewolfRole, VillagerRole, VillagerRole, SeerRole]);
+  passElection(spyGame);
+
+  const girl = findRole(spyGame, spyTable, 'little-girl')!;
+  const spyWolf = findRole(spyGame, spyTable, 'werewolf')!;
+
+  check('the girl opens her eyes', spyGame.handleNightAction(girl.id, 'spy', girl.id));
+  spyGame.advance();
+  settleSuccession(spyGame);
+  check(
+    'and saw the wolf',
+    spyTransport.directs.some(
+      d =>
+        d.playerId === girl.id &&
+        d.message.type === 'SECRET_INFO' &&
+        String(d.message.payload?.message).includes(spyWolf.name),
+    ),
+  );
+
+  // Caught, she dies in the victim's place and the victim walks away.
+  const caughtTable = makePlayers(5);
+  const caughtTransport = new RecordingTransport();
+  const caughtGame = new GameManager(caughtTable, caughtTransport);
+  caughtGame.start([LittleGirlRole, WerewolfRole, VillagerRole, VillagerRole, SeerRole]);
+  passElection(caughtGame);
+
+  const caughtGirl = findRole(caughtGame, caughtTable, 'little-girl')!;
+  const caughtWolf = findRole(caughtGame, caughtTable, 'werewolf')!;
+  const caughtVictim = caughtTable.find(
+    p =>
+      p.id !== caughtGirl.id &&
+      p.id !== caughtWolf.id &&
+      caughtGame.getRoleOf(p.id)?.id === 'villager',
+  )!;
+
+  check('the table has a girl to catch', caughtGame.hasLittleGirl());
+  check('she spies', caughtGame.handleNightAction(caughtGirl.id, 'spy', caughtGirl.id));
+  check('the wolf picks a victim', caughtGame.handleNightAction(caughtWolf.id, 'kill', caughtVictim.id));
+  check('the host marks the catch', caughtGame.catchLittleGirl() && caughtGame.isGirlCaught());
+  check('and cannot mark it twice', !caughtGame.catchLittleGirl());
+
+  caughtGame.advance();
+  settleSuccession(caughtGame);
+  check('the girl dies instead of the victim', !caughtGirl.isAlive && caughtVictim.isAlive);
+  check(
+    'the morning names her',
+    caughtGame.getPublicLog().some(l => l.includes(caughtGirl.name) && l.includes('did not survive')),
+  );
+  check('and the catch is over with the night', !caughtGame.isGirlCaught());
+
+  // The bear growls for a wolf next door, whatever the seating.
+  const bearTable = makePlayers(4);
+  const bearGame = new GameManager(bearTable, new RecordingTransport());
+  bearGame.start([BearTamerRole, WerewolfRole, WerewolfRole, VillagerRole]);
+  passElection(bearGame);
+
+  const bearWolf = findRole(bearGame, bearTable, 'werewolf')!;
+  const bearMeal = findRole(bearGame, bearTable, 'villager')!;
+  bearGame.handleNightAction(bearWolf.id, 'kill', bearMeal.id);
+  bearGame.advance();
+  settleSuccession(bearGame);
+  check(
+    'the bear growls at daybreak',
+    bearGame.getPublicLog().some(l => l.includes('bear growls')),
+  );
+
+  // The raven's two votes need no ballot of their own.
+  const ravenTable = makePlayers(6);
+  const ravenGame = new GameManager(ravenTable, new RecordingTransport());
+  ravenGame.start([RavenRole, WerewolfRole, VillagerRole, VillagerRole, VillagerRole, SeerRole]);
+  passElection(ravenGame);
+
+  const raven = findRole(ravenGame, ravenTable, 'raven')!;
+  const ravenWolf = findRole(ravenGame, ravenTable, 'werewolf')!;
+  const villagers = ravenTable.filter(
+    p => p.id !== raven.id && ravenGame.getRoleOf(p.id)?.id === 'villager',
+  );
+  const marked = villagers[0];
+  const meal = villagers[1];
+
+  check('the raven marks a player', ravenGame.handleNightAction(raven.id, 'curse', marked.id));
+  check('the pack bites another', ravenGame.handleNightAction(ravenWolf.id, 'kill', meal.id));
+  ravenGame.advance();
+  settleSuccession(ravenGame);
+  check('the day runs', ravenGame.state.currentPhase === 'Day');
+  ravenGame.advance();
+  ravenGame.advance();
+  settleSuccession(ravenGame);
+  check('two votes alone send the marked player out', !marked.isAlive);
+  check(
+    'and the tally shows them',
+    ravenGame.lastVote?.tally?.some(row => row.id === marked.id && row.count === 2) === true,
+  );
+
+  ravenGame.advance();
+  settleSuccession(ravenGame);
+  check('the next day comes', ravenGame.state.currentPhase === 'Day');
+  ravenGame.advance();
+  ravenGame.advance();
+  check('the mark is spent after one vote', !ravenGame.lastVote?.eliminatedId);
+
+  // The sisters know each other from the start, and nobody else does.
+  const sistersTable = makePlayers(6);
+  const sistersTransport = new RecordingTransport();
+  const sistersGame = new GameManager(sistersTable, sistersTransport);
+  sistersGame.start([
+    TwoSistersRole,
+    TwoSistersRole,
+    WerewolfRole,
+    VillagerRole,
+    SeerRole,
+    GuardRole,
+  ]);
+
+  const sisters = sistersTable.filter(p => sistersGame.getRoleOf(p.id)?.id === 'two-sisters');
+  const assignOf = (id: string) =>
+    sistersTransport.directs.find(d => d.playerId === id && d.message.type === 'ROLE_ASSIGN');
+
+  check('two sisters were dealt', sisters.length === 2);
+  check(
+    'each sister knows the other',
+    assignOf(sisters[0].id)?.message.payload.allies?.some(
+      (a: { id: string }) => a.id === sisters[1].id,
+    ) === true,
+  );
+  const outsider = findRole(sistersGame, sistersTable, 'seer')!;
+  check('nobody else is told', (assignOf(outsider.id)?.message.payload.allies?.length ?? 0) === 0);
 }
 
 console.log(failures === 0 ? `\nAll checks passed.` : `\n${failures} check(s) failed.`);
