@@ -87,6 +87,11 @@ export class GameManager {
   private nightChoices = new Map<string, Map<string, string>>();
   // 1 while the wolves and the other actors choose, 2 once the witch is up.
   private nightStage: 1 | 2 = 1;
+  // The pack's vote left several names level: whoever breaks the tie, and the
+  // names themselves, wait here until the victim is named.
+  private packTieOpen = false;
+  private packTie: string[] = [];
+  private packTiePick: string | null = null;
   // How many times a player has used each action, keyed `playerId:actionId`.
   // A count rather than a flag, because a host may give the witch two potions.
   private chargesUsed = new Map<string, number>();
@@ -234,6 +239,9 @@ export class GameManager {
     this.revoteCandidates = [];
     this.timer = null;
     this.nightStage = 1;
+    this.packTieOpen = false;
+    this.packTie = [];
+    this.packTiePick = null;
     this.mayorVolunteers = [];
     this.electionStage = 'nominate';
     this.electionRevote = false;
@@ -300,8 +308,13 @@ export class GameManager {
 
     switch (this.state.currentPhase) {
       case 'Night':
-        // First press: the wolves are done, so the witch wakes. Second press:
-        // the night resolves. A table with no witch skips straight through.
+        // The pack's vote left two names level: nothing resolves until one of
+        // them is named, by the father or by the host.
+        if (this.nightStage === 1 && this.packTieOpen && !this.packTiePick) return;
+        // First press: a split pack opens the tie window, or the wolves are
+        // done and the witch wakes. Second press: the night resolves. A table
+        // with no witch and no tie skips straight through.
+        if (this.nightStage === 1 && this.openPackTie()) return;
         if (this.nightStage === 1 && this.hasStageTwoActors()) {
           this.wakeTheWitch();
           return;
@@ -666,14 +679,29 @@ export class GameManager {
   }
 
   // Who the wolves took tonight, as far as the choice alone says. Null when
-  // they have not picked, or picked nobody.
+  // they have not picked, or picked nobody. The father's tie-break outranks
+  // the tally the moment he names a name.
   private victimOfNight(): Player | null {
+    if (this.packTiePick) {
+      return this.state.players.find(p => p.id === this.packTiePick) ?? null;
+    }
+
+    const targetId = this.pickMostVoted(this.attackTally());
+    return this.state.players.find(p => p.id === targetId) ?? null;
+  }
+
+  // The pack's picks, counted once and read by both the tie window and the
+  // witch's victim, so the two can never disagree.
+  private attackTally(): Map<string, number> {
     const votes = new Map<string, number>();
 
     this.nightChoices.forEach((choices, playerId) => {
       const actor = this.state.players.find(p => p.id === playerId);
       const role = this.assignments.get(playerId);
       if (!actor?.isAlive || !role) return;
+      // A player silenced on an earlier night has no powers tonight; tonight's
+      // silence is only settled when the night resolves.
+      if (this.isSilenced(playerId)) return;
 
       choices.forEach((targetId, actionId) => {
         const option = role.nightActions?.find(candidate => candidate.id === actionId);
@@ -682,8 +710,39 @@ export class GameManager {
       });
     });
 
-    const targetId = this.pickMostVoted(votes);
-    return this.state.players.find(p => p.id === targetId) ?? null;
+    return votes;
+  }
+
+  // Every name the pack left level on the top count. Two or more means a tie.
+  private packTieLeaders(): Player[] {
+    const tally = this.attackTally();
+    let top = 0;
+    tally.forEach(count => {
+      if (count > top) top = count;
+    });
+    if (top === 0) return [];
+
+    const leaders = [...tally.entries()]
+      .filter(([, count]) => count === top)
+      .map(([id]) => id);
+    if (leaders.length < 2) return [];
+
+    return this.state.players.filter(player => player.isAlive && leaders.includes(player.id));
+  }
+
+  // The Infectious Father decides a split pack. He has to be awake and holding
+  // his powers: a silenced wolf says nothing.
+  private packTieBreaker(): Player | null {
+    return (
+      this.state.players.find(
+        player =>
+          player.isAlive &&
+          !this.isSilenced(player.id) &&
+          this.assignments
+            .get(player.id)
+            ?.nightActions?.some(option => option.kind === 'infect'),
+      ) ?? null
+    );
   }
 
   private isShieldedBySomeone(targetId: string): boolean {
@@ -1150,6 +1209,24 @@ export class GameManager {
     return this.nightStage;
   }
 
+  // True while the pack's vote is split and the night waits on a name.
+  hasOpenPackTie(): boolean {
+    return this.packTieOpen && !this.packTiePick && this.state.currentPhase === 'Night';
+  }
+
+  // The tied names, for the father's panel and the host's override buttons.
+  getPackTieTargets(): PlayerRef[] {
+    return this.packTie
+      .map(id => this.state.players.find(player => player.id === id))
+      .filter((player): player is Player => !!player)
+      .map(player => ({ id: player.id, name: player.name, isAlive: player.isAlive }));
+  }
+
+  // The seat the tie waits on, when an infectious father can still decide.
+  getPackTieBreakerId(): string | null {
+    return this.packTieBreaker()?.id ?? null;
+  }
+
   // True when the host's next press only wakes the witch rather than resolving
   // the night, so the button can say so.
   isWakingTheWitchNext(): boolean {
@@ -1518,6 +1595,76 @@ export class GameManager {
     };
   }
 
+  // ------------------------------------------------------- the split pack
+
+  // Called by the host's press on the night. True when a tie has to be named
+  // before the night can move on: the infectious father is woken with the tied
+  // names in front of him, or the host is asked to choose when the setting
+  // says so. With neither, one of the tied names is taken at random.
+  private openPackTie(): boolean {
+    if (this.packTieOpen || this.packTiePick) return false;
+
+    const leaders = this.packTieLeaders();
+    if (leaders.length === 0) return false;
+
+    const breaker = this.packTieBreaker();
+    if (!breaker && this.options.wolfTieBreak !== 'host') {
+      this.packTiePick = leaders[Math.floor(Math.random() * leaders.length)].id;
+      return false;
+    }
+
+    this.packTieOpen = true;
+    this.packTie = leaders.map(player => player.id);
+    if (breaker) this.sendPackTieTo(breaker.id);
+
+    this.autoPlayBots();
+    this.emit({ type: 'changed' });
+    return true;
+  }
+
+  private sendPackTieTo(playerId: string) {
+    this.transport.sendToPlayer(playerId, {
+      type: 'NIGHT_STAGE',
+      payload: { stage: this.nightStage, tieTargets: this.getPackTieTargets() },
+      timestamp: Date.now(),
+    });
+  }
+
+  // The infectious father names the victim among the pack's tied picks.
+  handleTieBreak(playerId: string, targetId: string): boolean {
+    if (this.state.currentPhase !== 'Night' || this.nightStage !== 1) return false;
+    if (!this.packTieOpen || this.packTiePick) return false;
+    if (this.packTieBreaker()?.id !== playerId) return false;
+    if (!this.packTie.includes(targetId)) return false;
+
+    return this.setPackTiePick(targetId);
+  }
+
+  // The host's own tap: the whole rule when the table asked for it, and a way
+  // out when a father will not answer his phone.
+  handlePackTie(targetId: string): boolean {
+    if (this.state.currentPhase !== 'Night' || this.nightStage !== 1) return false;
+    if (!this.packTieOpen || this.packTiePick) return false;
+    if (!this.packTie.includes(targetId)) return false;
+
+    return this.setPackTiePick(targetId);
+  }
+
+  private setPackTiePick(targetId: string): boolean {
+    this.packTiePick = targetId;
+    this.packTieOpen = false;
+
+    const target = this.state.players.find(player => player.id === targetId);
+    if (target) {
+      this.actionLog.push(
+        `Night ${this.round}: the pack's vote was split, and the victim chosen was ${target.name}.`,
+      );
+    }
+
+    this.emit({ type: 'changed' });
+    return true;
+  }
+
   private setPhase(phase: Phase, extra: Partial<PhaseUpdatePayload> = {}) {
     this.state.setPhase(phase);
 
@@ -1530,6 +1677,9 @@ export class GameManager {
       this.votes.clear();
       this.revoteCandidates = [];
       this.nightStage = 1;
+      this.packTieOpen = false;
+      this.packTie = [];
+      this.packTiePick = null;
     }
 
     if (phase === 'Vote') {
@@ -1580,6 +1730,16 @@ export class GameManager {
             this.handleNightAction(player.id, option.id, target.id);
           });
         });
+
+      // A split pack is the father's call, and a bot father makes it at once
+      // rather than leaving the host waiting on a phone nobody holds.
+      if (this.packTieOpen && !this.packTiePick) {
+        const breaker = this.packTieBreaker();
+        if (breaker?.isBot && this.packTie.length > 0) {
+          const target = this.packTie[Math.floor(Math.random() * this.packTie.length)];
+          this.handleTieBreak(breaker.id, target);
+        }
+      }
     }
 
     // A bot Alien would otherwise let a two-player endgame run forever: it
@@ -1823,7 +1983,7 @@ export class GameManager {
 
     // Read once into locals: the values were assigned inside a callback, which
     // control-flow analysis cannot follow.
-    const biteTarget = this.pickMostVoted(attackVotes);
+    const biteTarget = this.packTiePick ?? this.pickMostVoted(attackVotes);
     const peek = inspect as { sourceId: string; targetId: string } | null;
     const bond = link as { sourceId: string; targetId: string } | null;
     const sniff = fox as { sourceId: string; targetId: string } | null;

@@ -32,6 +32,8 @@ export const PlayerScreen = () => {
   // Which half of the night it is, and who the wolves took (the witch alone).
   const [nightStage, setNightStage] = useState<1 | 2>(1);
   const [victim, setVictim] = useState<{ id: string; name: string } | null>(null);
+  // The names the pack left level, sent to the infectious father alone.
+  const [tieTargets, setTieTargets] = useState<{ id: string; name: string }[]>([]);
   // The election is public, so every phone gets the same list.
   const [electionStage, setElectionStage] = useState<'nominate' | 'vote'>('nominate');
   const [mayorCandidates, setMayorCandidates] = useState<{ id: string; name: string }[]>([]);
@@ -112,6 +114,7 @@ export const PlayerScreen = () => {
           }
           setNightStage(1);
           setVictim(null);
+          setTieTargets([]);
 
           // Deaths are announced when the morning comes, not at nightfall, and
           // only on a real transition: the Alien's frozen day re-broadcasts
@@ -133,6 +136,7 @@ export const PlayerScreen = () => {
           setRoleHidden(false);
           setNightStage(1);
           setVictim(null);
+          setTieTargets([]);
           setDayFrozen(false);
           setSubmitted([]);
           // A refresh of the same card keeps the player's own history: only a
@@ -164,6 +168,9 @@ export const PlayerScreen = () => {
           setNightStage(payload.stage === 2 ? 2 : 1);
           // Only the witch is sent the victim; everyone else gets the stage.
           if (payload.victim !== undefined) setVictim(payload.victim ?? null);
+          // Only the father is sent the tied names, and only while the pack
+          // is split.
+          if (payload.tieTargets !== undefined) setTieTargets(payload.tieTargets);
           break;
         }
 
@@ -318,6 +325,13 @@ export const PlayerScreen = () => {
     } else if (actionId === 'scapegoatBan') {
       client.sendMessage({
         type: 'SCAPEGOAT_BAN',
+        payload: { targetId },
+        senderId: localPlayer.id,
+        timestamp: Date.now(),
+      });
+    } else if (actionId === 'tieBreak') {
+      client.sendMessage({
+        type: 'TIE_BREAK',
         payload: { targetId },
         senderId: localPlayer.id,
         timestamp: Date.now(),
@@ -511,6 +525,7 @@ export const PlayerScreen = () => {
           candidates={voteResult?.revote ? voteResult.candidates?.map(c => c.id) : undefined}
           nightStage={nightStage}
           victim={victim}
+          tieTargets={tieTargets}
           electionStage={electionStage}
           mayorCandidates={mayorCandidates}
           successionMayorId={successionMayorId}

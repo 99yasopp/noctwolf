@@ -3198,5 +3198,120 @@ console.log('\n36. the piper collects the village');
   );
 }
 
+console.log('\n37. the pack splits its vote');
+{
+  // The father is awake, so the table waits for him and nobody else.
+  const tieTable = makePlayers(6);
+  const tieTransport = new RecordingTransport();
+  const tieGame = new GameManager(tieTable, tieTransport);
+  tieGame.start([
+    InfectiousFatherRole,
+    WerewolfRole,
+    WitchRole,
+    SeerRole,
+    VillagerRole,
+    VillagerRole,
+  ]);
+  passElection(tieGame);
+
+  const tieFather = findRole(tieGame, tieTable, 'infectious-father')!;
+  const tieWolf = findRole(tieGame, tieTable, 'werewolf')!;
+  const tieWitch = findRole(tieGame, tieTable, 'witch')!;
+  const tieVillagers = tieTable.filter(p => tieGame.getRoleOf(p.id)?.id === 'villager');
+
+  check('the father bites one way', tieGame.handleNightAction(tieFather.id, 'kill', tieVillagers[0].id));
+  check('and the wolf the other', tieGame.handleNightAction(tieWolf.id, 'kill', tieVillagers[1].id));
+  tieGame.advance();
+  check('the night waits on the tied names', tieGame.hasOpenPackTie());
+  check(
+    'and names them',
+    tieGame.getPackTieTargets().length === 2 &&
+      tieGame.getPackTieTargets().every(target =>
+        [tieVillagers[0].id, tieVillagers[1].id].includes(target.id),
+      ),
+  );
+  check('the father is the one asked', tieGame.getPackTieBreakerId() === tieFather.id);
+  check(
+    'the father is told privately',
+    tieTransport.directs.some(
+      d => d.playerId === tieFather.id && d.message.payload?.tieTargets?.length === 2,
+    ),
+  );
+  check(
+    'and nobody else is',
+    !tieTransport.directs.some(d => d.playerId !== tieFather.id && d.message.payload?.tieTargets),
+  );
+  tieGame.advance();
+  check('a second press changes nothing', tieGame.hasOpenPackTie());
+  check('the wolf cannot answer for the father', !tieGame.handleTieBreak(tieWolf.id, tieVillagers[0].id));
+  check('a name outside the tie is refused', !tieGame.handleTieBreak(tieFather.id, tieWitch.id));
+  check('the host cannot name a stranger either', !tieGame.handlePackTie(tieWitch.id));
+  check('the father names the victim', tieGame.handleTieBreak(tieFather.id, tieVillagers[0].id));
+  check('and the tie closes', !tieGame.hasOpenPackTie());
+  check('the father cannot answer twice', !tieGame.handleTieBreak(tieFather.id, tieVillagers[1].id));
+
+  check('the witch still wakes', tieGame.isWakingTheWitchNext());
+  tieGame.advance();
+  check(
+    'and is shown the name the father chose',
+    tieGame.getHealTarget()?.id === tieVillagers[0].id,
+  );
+  tieGame.advance();
+  settleSuccession(tieGame);
+  check('the chosen victim dies', !tieVillagers[0].isAlive);
+  check('and the other walks away', tieVillagers[1].isAlive);
+
+  // No father: the game takes one of the tied names at random.
+  const randomTable = makePlayers(6);
+  const randomTransport = new RecordingTransport();
+  const randomGame = new GameManager(randomTable, randomTransport);
+  randomGame.start([
+    WerewolfRole,
+    WerewolfRole,
+    SeerRole,
+    VillagerRole,
+    VillagerRole,
+    VillagerRole,
+  ]);
+  passElection(randomGame);
+
+  const randomWolves = randomTable.filter(p => randomGame.getRoleOf(p.id)?.id === 'werewolf');
+  const randomVillagers = randomTable.filter(p => randomGame.getRoleOf(p.id)?.id === 'villager');
+  randomGame.handleNightAction(randomWolves[0].id, 'kill', randomVillagers[0].id);
+  randomGame.handleNightAction(randomWolves[1].id, 'kill', randomVillagers[1].id);
+  randomGame.advance();
+  settleSuccession(randomGame);
+  check('with no father the night never waits', !randomGame.hasOpenPackTie());
+  check(
+    'and one of the tied names dies',
+    randomVillagers[0].isAlive !== randomVillagers[1].isAlive,
+  );
+
+  // The host asked for the tie to be his to call.
+  const hostTable = makePlayers(6);
+  const hostTransport = new RecordingTransport();
+  const hostGame = new GameManager(hostTable, hostTransport);
+  hostGame.start(
+    [WerewolfRole, WerewolfRole, SeerRole, VillagerRole, VillagerRole, VillagerRole],
+    { peacefulFirstNight: false, guardNoRepeat: true, wolfTieBreak: 'host' },
+  );
+  passElection(hostGame);
+
+  const hostWolves = hostTable.filter(p => hostGame.getRoleOf(p.id)?.id === 'werewolf');
+  const hostVillagers = hostTable.filter(p => hostGame.getRoleOf(p.id)?.id === 'villager');
+  hostGame.handleNightAction(hostWolves[0].id, 'kill', hostVillagers[0].id);
+  hostGame.handleNightAction(hostWolves[1].id, 'kill', hostVillagers[1].id);
+  hostGame.advance();
+  check('the host is asked instead', hostGame.hasOpenPackTie());
+  check('and has no father to wait for', hostGame.getPackTieBreakerId() === null);
+  hostGame.advance();
+  check('the night still waits', hostGame.state.currentPhase === 'Night');
+  check('a name outside the tie is refused', !hostGame.handlePackTie(hostVillagers[2].id));
+  check('the host names the victim', hostGame.handlePackTie(hostVillagers[1].id));
+  hostGame.advance();
+  settleSuccession(hostGame);
+  check('and that one dies', !hostVillagers[1].isAlive && hostVillagers[0].isAlive);
+}
+
 console.log(failures === 0 ? `\nAll checks passed.` : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

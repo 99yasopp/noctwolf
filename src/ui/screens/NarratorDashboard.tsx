@@ -176,7 +176,9 @@ export const NarratorDashboard = () => {
     : phase === 'Judge'
     ? 'No second vote → night'
     : phase === 'Night'
-    ? manager.isWakingTheWitchNext()
+    ? manager.hasOpenPackTie()
+      ? 'The pack is split → choose the victim'
+      : manager.isWakingTheWitchNext()
       ? 'Wake the witch'
       : `Resolve night ${round} → Day`
     : phase === 'Day'
@@ -217,6 +219,8 @@ export const NarratorDashboard = () => {
         ? manager.handleRevenge(localPlayer.id, targetId)
         : actionId === 'pass'
         ? manager.passNightAction(localPlayer.id, targetId)
+        : actionId === 'tieBreak'
+        ? manager.handleTieBreak(localPlayer.id, targetId)
         : manager.handleNightAction(localPlayer.id, actionId, targetId);
 
     if (ok) setSubmitted(prev => [...prev, actionId === 'pass' ? targetId : actionId]);
@@ -390,6 +394,27 @@ export const NarratorDashboard = () => {
         />
       )}
 
+      {manager.hasOpenPackTie() && (
+        <>
+          <Text style={styles.hint}>
+            {manager.getPackTieBreakerId()
+              ? 'The pack split its vote: the infectious father names the victim, and you can answer for him.'
+              : 'The pack split its vote. Choose the victim.'}
+          </Text>
+          {manager.getPackTieTargets().map(target => (
+            <BaseButton
+              key={target.id}
+              title={`Devour ${target.name}`}
+              variant="secondary"
+              onPress={() => {
+                manager.handlePackTie(target.id);
+                setSubmitted([]);
+              }}
+            />
+          ))}
+        </>
+      )}
+
       {!manager.winner && nextLabel && (
         <BaseButton
           title={nextLabel}
@@ -416,6 +441,11 @@ export const NarratorDashboard = () => {
         selfAlive={localPlayer.isAlive}
         nightStage={manager.getNightStage()}
         victim={manager.getHealTarget()}
+        tieTargets={
+          manager.hasOpenPackTie() && manager.getPackTieBreakerId() === localPlayer.id
+            ? manager.getPackTieTargets()
+            : undefined
+        }
         electionStage={manager.getElectionStage()}
         mayorCandidates={manager.getElectionList()}
         successionMayorId={manager.getPendingSuccessionMayor()?.id ?? null}

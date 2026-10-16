@@ -15,11 +15,16 @@ export interface GameOptions {
   peacefulFirstNight: boolean | null;
   // The guard may not shield the same player two nights in a row.
   guardNoRepeat: boolean;
+  // Who breaks a tie in the pack's vote when no infectious father is left to
+  // decide: the game takes one at random, or the host names the victim.
+  // Optional so older saved setups keep the random default.
+  wolfTieBreak?: 'random' | 'host';
 }
 
 export const defaultGameOptions = (): GameOptions => ({
   peacefulFirstNight: null,
   guardNoRepeat: true,
+  wolfTieBreak: 'random',
 });
 
 // The host's table: how many seats each role takes, how many potions the witch

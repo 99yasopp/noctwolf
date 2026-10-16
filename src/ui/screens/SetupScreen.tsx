@@ -211,6 +211,27 @@ export const SetupScreen: React.FC<Props> = ({
         way the game can start fairly.
       </Text>
 
+      <BaseButton
+        title={`Wolves on a tie: ${
+          setup.options.wolfTieBreak === 'host' ? 'the host picks' : 'random victim'
+        }`}
+        variant="secondary"
+        onPress={() =>
+          onChange({
+            ...setup,
+            options: {
+              ...setup.options,
+              wolfTieBreak: setup.options.wolfTieBreak === 'host' ? 'random' : 'host',
+            },
+          })
+        }
+      />
+      <Text style={styles.hint}>
+        When the pack's vote leaves two names level, the infectious father names
+        the victim if he is still alive. This rule says who names it when he is
+        not.
+      </Text>
+
       <BaseButton title="Back to the waiting room" onPress={onBack} variant="danger" />
     </ScrollView>
   );

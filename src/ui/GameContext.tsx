@@ -122,6 +122,11 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
+      if (message.type === 'TIE_BREAK') {
+        current.handleTieBreak(playerId, message.payload?.targetId);
+        return;
+      }
+
       if (message.type === 'STATE_REQUEST') {
         current.sendStateTo(playerId);
       }

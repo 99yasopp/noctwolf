@@ -26,7 +26,8 @@ export type MessageType =
   | 'ALIEN_RESUME'
   | 'THIEF_SWAP'
   | 'JUDGE_REPEAT'
-  | 'SCAPEGOAT_BAN';
+  | 'SCAPEGOAT_BAN'
+  | 'TIE_BREAK';
 
 export interface NetworkMessage {
   type: MessageType;
@@ -150,6 +151,8 @@ export interface NightStagePayload {
   victim?: PlayerRef | null;
   // The only player her healing potion may be pointed at, if any.
   healTargets?: string[];
+  // Sent to the infectious father alone while the pack's vote is split.
+  tieTargets?: PlayerRef[];
 }
 
 export interface MayorElectedPayload {

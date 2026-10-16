@@ -52,6 +52,8 @@ interface Props {
   nightStage?: number;
   // Who the wolves took, as told to the witch alone.
   victim?: { id: string; name: string } | null;
+  // The names the pack left level, sent to the infectious father alone.
+  tieTargets?: { id: string; name: string }[];
   // The mayoral election: who is standing, and which half of it is running.
   electionStage?: 'nominate' | 'vote';
   mayorCandidates?: { id: string; name: string }[];
@@ -98,6 +100,7 @@ export const ActionPanel: React.FC<Props> = ({
   candidates,
   nightStage = 1,
   victim = null,
+  tieTargets = [],
   electionStage = 'nominate',
   mayorCandidates = [],
   successionMayorId = null,
@@ -423,6 +426,26 @@ export const ActionPanel: React.FC<Props> = ({
   }
 
   if (phase !== 'Night') return null;
+
+  // The pack's vote is split, and the father is the one who names the victim.
+  if (nightStage === 1 && tieTargets.length > 0) {
+    return (
+      <View style={styles.panel}>
+        <Text style={styles.heading}>The pack is split</Text>
+        <Text style={styles.body}>
+          The wolves cannot agree on a victim. Point at the one you want, and
+          the pack takes them instead.
+        </Text>
+        {tieTargets.map(target => (
+          <BaseButton
+            key={target.id}
+            title={target.name}
+            onPress={() => onChoose('tieBreak', target.id)}
+          />
+        ))}
+      </View>
+    );
+  }
 
   const declared = role.nightActions ?? [];
   // The Wolf-Dog picks one camp and the other button goes with it.
