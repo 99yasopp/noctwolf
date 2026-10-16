@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TextInput, ScrollView, Platform } from 'react-native';
 import { theme } from '../theme/colors';
 import { BaseButton } from '../components/BaseButton';
 import { GAME_PORT, HOST_PLAYER_ID, LOCAL_GUEST_ID, lobby } from '../../network/lobby';
@@ -22,6 +22,10 @@ import { randomPlayerName } from '../randomName';
 type LobbyView = 'menu' | 'host' | 'join' | 'waiting' | 'settings' | 'rules' | 'setup';
 
 const MIN_PLAYERS = 3;
+
+// A browser cannot bind a port, so it is always a guest. The rest of the
+// screen only differs in the hints it shows.
+const WEB = Platform.OS === 'web';
 
 // Randomised so two devices left on the default do not look alike, and stable
 // for the life of the app run so leaving a game does not rename the player.
@@ -178,6 +182,12 @@ export const LobbyScreen = () => {
 
   const joinGame = async () => {
     setError('');
+
+    if (WEB && !inputIp.trim()) {
+      setError('Enter the host address to join from a browser.');
+      return;
+    }
+
     setBusy(true);
 
     const succeeded = inputIp.trim()
@@ -261,8 +271,13 @@ export const LobbyScreen = () => {
               value={playerName}
               onChangeText={setPlayerName}
             />
-            <BaseButton title="Host a Game" onPress={() => setView('host')} />
+            {!WEB && <BaseButton title="Host a Game" onPress={() => setView('host')} />}
             <BaseButton title="Join a Game" onPress={() => setView('join')} variant="secondary" />
+            {WEB && (
+              <Text style={styles.hint}>
+                This browser joins as a guest. Host the table from the phone app.
+              </Text>
+            )}
             <BaseButton title="How to Play" onPress={() => setView('rules')} variant="secondary" />
             <BaseButton
               title="Settings"
@@ -295,16 +310,20 @@ export const LobbyScreen = () => {
               autoCorrect={false}
             />
             <Text style={styles.hint}>
-              Leave the IP empty to search for the room code instead.
+              {WEB
+                ? "Type the host's Wi-Fi address, the same one the phone app would use."
+                : 'Leave the IP empty to search for the room code instead.'}
             </Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Room code (optional)"
-              placeholderTextColor="#666"
-              value={inputCode}
-              onChangeText={setInputCode}
-              autoCapitalize="characters"
-            />
+            {!WEB && (
+              <TextInput
+                style={styles.input}
+                placeholder="Room code (optional)"
+                placeholderTextColor="#666"
+                value={inputCode}
+                onChangeText={setInputCode}
+                autoCapitalize="characters"
+              />
+            )}
             <BaseButton title={busy ? 'Joining...' : 'Join'} onPress={joinGame} />
             <BaseButton title="Back" onPress={() => setView('menu')} variant="danger" />
           </View>
@@ -316,7 +335,8 @@ export const LobbyScreen = () => {
             {isHost && <Text style={styles.text}>Room Code: {roomCode}</Text>}
             {isHost && (
               <Text style={styles.hint}>
-                Guests join by IP. Your address is shown on your phone's Wi-Fi settings.
+                Guests join by IP, from the app or from a browser on the same
+                Wi-Fi. Your address is in this phone's Wi-Fi settings.
               </Text>
             )}
             <Text style={styles.title}>Waiting Room</Text>

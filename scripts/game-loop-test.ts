@@ -34,6 +34,14 @@ import { ALLOWED_ACTIONS as VALIDATED_ACTIONS } from '../src/engine/roleGenerato
 import { GameTransport } from '../src/engine/transport';
 import { Player } from '../src/engine/types';
 import { NetworkMessage, PhaseUpdatePayload } from '../src/network/protocol';
+import { MessageDecoder, encodeMessage } from '../src/network/framing';
+import {
+  WebSocketFrameReader,
+  asciiBytes,
+  encodeTextFrame,
+  messageLimit,
+  webSocketHandshakeResponse,
+} from '../src/network/webSocket';
 
 let failures = 0;
 
@@ -1728,6 +1736,129 @@ console.log('\n27c. a declined potion stops the waiting');
     'the night resolves peacefully',
     game.getPublicLog().some(line => line.includes('nobody died in the night')),
     game.getPublicLog().join('\n'),
+  );
+}
+
+console.log('\n28. a browser can join the table');
+{
+  // The RFC6455 example request: its key must yield its published answer.
+  const request = [
+    'GET / HTTP/1.1',
+    'Host: 192.168.0.140:12345',
+    'Upgrade: websocket',
+    'Connection: Upgrade',
+    'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==',
+    'Sec-WebSocket-Version: 13',
+    '',
+    '',
+  ].join('\r\n');
+
+  const response = webSocketHandshakeResponse(request);
+  check(
+    'the handshake answers with the published accept key',
+    !!response && response.includes('Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo='),
+    response ?? 'null',
+  );
+  check('and switches protocols', !!response && response.startsWith('HTTP/1.1 101'));
+  check(
+    'a request without a key is not a handshake',
+    webSocketHandshakeResponse('GET / HTTP/1.1\r\nHost: x\r\n\r\n') === null,
+  );
+
+  // A masked frame the way a browser writes one, short-form header.
+  const maskedFrame = (
+    opcode: number,
+    payload: Uint8Array,
+    fin = true,
+    forceLong = false,
+  ): Uint8Array => {
+    const key = new Uint8Array([0x12, 0x34, 0x56, 0x78]);
+    const header: number[] = [fin ? 0x80 | opcode : opcode];
+    if (payload.length < 126 && !forceLong) {
+      header.push(0x80 | payload.length);
+    } else if (payload.length < 0x10000 && !forceLong) {
+      header.push(0x80 | 126, (payload.length >> 8) & 0xff, payload.length & 0xff);
+    } else {
+      header.push(
+        0x80 | 127,
+        0,
+        0,
+        0,
+        0,
+        (payload.length >>> 24) & 0xff,
+        (payload.length >> 16) & 0xff,
+        (payload.length >> 8) & 0xff,
+        payload.length & 0xff,
+      );
+    }
+    header.push(...key);
+
+    const frame = new Uint8Array(header.length + payload.length);
+    frame.set(header, 0);
+    for (let i = 0; i < payload.length; i++) {
+      frame[header.length + i] = payload[i] ^ key[i % 4];
+    }
+    return frame;
+  };
+
+  const wireMessage: NetworkMessage = {
+    type: 'SECRET_INFO',
+    payload: { message: 'Le loup est déchaîné 🐺' },
+    timestamp: 42,
+  };
+  const wire = encodeMessage(wireMessage);
+  check('the wire stays ASCII', /^[\x00-\x7F]*$/.test(wire), wire);
+  check(
+    'accents and emoji survive the escape',
+    JSON.stringify(new MessageDecoder().push(wire)[0]) === JSON.stringify(wireMessage),
+  );
+
+  const reader = new WebSocketFrameReader();
+  const first = reader.push(maskedFrame(0x1, asciiBytes(wire)));
+  check('a masked text frame delivers its line', first.messages[0] === wire, first.messages[0]);
+
+  const split = new WebSocketFrameReader();
+  const frame = maskedFrame(0x1, asciiBytes(wire));
+  check('half a frame waits', split.push(frame.subarray(0, 5)).messages.length === 0);
+  check('the other half delivers', split.push(frame.subarray(5)).messages[0] === wire);
+
+  const fragmented = new WebSocketFrameReader();
+  fragmented.push(maskedFrame(0x1, asciiBytes('half'), false));
+  check(
+    'a fragmented message is put back together',
+    fragmented.push(maskedFrame(0x0, asciiBytes('two\n'))).messages[0] === 'halftwo\n',
+  );
+
+  const pinged = new WebSocketFrameReader();
+  const ping = pinged.push(maskedFrame(0x9, asciiBytes('hi')));
+  check(
+    'a ping is answered with a pong',
+    ping.replies.length === 1 && ping.replies[0][0] === 0x8a && ping.messages.length === 0,
+  );
+
+  const unmasked: number[] = [0x81, 4, 0x61, 0x62, 0x63, 0x64];
+  check(
+    'an unmasked frame is a protocol error',
+    new WebSocketFrameReader().push(new Uint8Array(unmasked)).closeCode === 1002,
+  );
+
+  check(
+    'a close frame ends the conversation politely',
+    new WebSocketFrameReader().push(maskedFrame(0x8, new Uint8Array(0))).closeCode === 1000,
+  );
+
+  const long = 'a'.repeat(200);
+  check(
+    'a long frame rides the 16-bit length',
+    new WebSocketFrameReader().push(maskedFrame(0x1, asciiBytes(long))).messages[0] === long,
+  );
+  check('as does the writer', encodeTextFrame(long)[1] === 126);
+  check('and 70k rides the 64-bit length', encodeTextFrame('a'.repeat(70000))[1] === 127);
+
+  const oversized = new WebSocketFrameReader();
+  check(
+    'a message over the cap is refused',
+    oversized.push(maskedFrame(0x1, new Uint8Array(messageLimit + 1))).closeCode === 1009,
   );
 }
 

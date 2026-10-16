@@ -1,6 +1,6 @@
 import { Player } from '../engine/types';
 import { NarratorServer } from './socketServer';
-import { PlayerClient } from './socketClient';
+import { GuestClient, createGuestClient } from './socketClient';
 import { createZeroconf } from './nativeModules';
 import { NetworkMessage } from './protocol';
 import { GameTransport } from '../engine/transport';
@@ -32,7 +32,7 @@ export class LobbyManager implements GameTransport {
   private roomCode: string = '';
   public players: Player[] = [];
   public server?: NarratorServer;
-  public client?: PlayerClient;
+  public client?: GuestClient;
 
   // The host can only talk to individual players through their socket, so the
   // join message is what establishes this mapping.
@@ -336,6 +336,12 @@ export class LobbyManager implements GameTransport {
     return !!this.server?.isStarted();
   }
 
+  // Hosting binds a TCP port, which only the phone build can do; a browser is
+  // a guest.
+  canHost(): boolean {
+    return Platform.OS !== 'web';
+  }
+
   // Join a host found over mDNS/Bonjour. Kept for the room-code flow.
   async joinGame(code: string, player: Player): Promise<boolean> {
     const zc = this.getZeroconf();
@@ -379,13 +385,10 @@ export class LobbyManager implements GameTransport {
   }
 
   private connect(host: string, player: Player, port: number = GAME_PORT): Promise<boolean> {
-    if (Platform.OS === 'web') {
-      console.warn('Networking not supported on web');
-      return Promise.resolve(false);
-    }
-
     this.disconnectClient();
-    const client = new PlayerClient(host, port);
+    // A phone guest speaks TCP, a browser guest WebSocket; both land on the
+    // host's one port.
+    const client = createGuestClient(host, port);
     this.client = client;
     this.lastHost = host;
     this.lastPort = port;
