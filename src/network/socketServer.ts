@@ -29,6 +29,11 @@ export class NarratorServer extends EventEmitter {
     }
 
     this.server = TcpSocket.createServer((socket: any) => {
+      // The bound socket only knows the wildcard 0.0.0.0; an accepted
+      // connection carries the phone's real address, which the waiting room
+      // shows when expo-network could not report one.
+      if (socket.localAddress) this.emit('local-address', socket.localAddress);
+
       const link = new ClientLink(socket, message => this.emit('message', message, link));
       this.clients.push(link);
 

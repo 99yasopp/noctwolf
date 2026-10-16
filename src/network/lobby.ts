@@ -5,6 +5,7 @@ import { createZeroconf } from './nativeModules';
 import { NetworkMessage } from './protocol';
 import { GameTransport } from '../engine/transport';
 import { Platform } from 'react-native';
+import * as Network from 'expo-network';
 
 type ZeroconfLike = any;
 
@@ -45,6 +46,10 @@ export class LobbyManager implements GameTransport {
 
   private discoveredHosts: any[] = [];
   private foundListenerAttached = false;
+
+  // The address the host reads out to players. Unknown until one of the two
+  // sources below reports it.
+  private hostAddress: string | null = null;
 
   // The last address this device joined, so a dropped guest can come back to
   // the same host without retyping it.
@@ -104,6 +109,29 @@ export class LobbyManager implements GameTransport {
 
   getRoomCode(): string {
     return this.roomCode;
+  }
+
+  // This phone's address on the Wi-Fi, or null while it is unknown. Both
+  // sources are best-effort, so the waiting room has to render a null.
+  getHostAddress(): string | null {
+    return this.hostAddress;
+  }
+
+  // The native call is the only source that can answer before a guest is
+  // connected; the accepted connection is the fallback.
+  private refreshHostAddress() {
+    if (Platform.OS === 'web') return;
+
+    Network.getIpAddressAsync()
+      .then(ip => {
+        // Android reads wifiInfo and returns "0.0.0.0" when the phone is not
+        // associated with an access point (hotspot mode, mobile data): unknown,
+        // not an address to read out. A connected guest's address wins too.
+        if (!ip || ip === '0.0.0.0' || this.hostAddress) return;
+        this.hostAddress = ip;
+        this.notifyRoster();
+      })
+      .catch(error => console.warn("Could not read this device's address", error));
   }
 
   // Returns the room code, or null when hosting could not be started.
@@ -195,6 +223,14 @@ export class LobbyManager implements GameTransport {
         console.error('Lobby server error', error);
       });
 
+      // Fill the display only when the native call reported nothing: an
+      // already-known address must not be replaced by a different interface.
+      this.server.on('local-address', (address: string) => {
+        if (this.hostAddress) return;
+        this.hostAddress = address;
+        this.notifyRoster();
+      });
+
       // A guest that goes away must not linger in the roster, otherwise the
       // host sees phantom players and can start a game with people who left.
       this.server.on('client-disconnected', (socket: any) => {
@@ -234,6 +270,11 @@ export class LobbyManager implements GameTransport {
 
     this.roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
 
+    // The network may have changed since the last session, so the address is
+    // re-read per room rather than kept.
+    this.hostAddress = null;
+    this.refreshHostAddress();
+
     // Advertising is best-effort: joining by IP still works without it, and a
     // discovery failure must never break hosting.
     const zc = this.getZeroconf();
@@ -268,6 +309,7 @@ export class LobbyManager implements GameTransport {
     this.gameMessageHandler = null;
     this.players = [];
     this.roomCode = '';
+    this.hostAddress = null;
     this.notifyRoster();
   }
 

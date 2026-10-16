@@ -199,31 +199,43 @@ export const LobbyScreen = () => {
   const joinGame = async () => {
     setError('');
 
-    if (WEB && !inputIp.trim()) {
-      setError('Enter the host address to join from a browser.');
+    const code = inputCode.trim().toUpperCase();
+    const ip = inputIp.trim();
+
+    // Nothing to try: an empty code would just spend the search window.
+    if (!code && !ip) {
+      setError(
+        WEB
+          ? 'Enter the host address to join.'
+          : 'Enter the room code, or the host address.',
+      );
       return;
     }
 
     setBusy(true);
 
-    const succeeded = inputIp.trim()
-      ? await lobby.joinGameByIp(inputIp, buildGuest(), GAME_PORT)
-      : await lobby.joinGame(inputCode.trim().toUpperCase(), buildGuest());
+    // The code is the phone's primary path, so it wins when both fields are
+    // filled; the IP is only there for when the search finds nothing. The IP
+    // field is pre-filled from the last session, so the reverse order would
+    // make the code field unusable on a returning device.
+    const succeeded = code
+      ? await lobby.joinGame(code, buildGuest())
+      : await lobby.joinGameByIp(ip, buildGuest(), GAME_PORT);
 
     setBusy(false);
 
     if (!succeeded) {
       setError(
-        inputIp.trim()
-          ? `Could not reach ${inputIp.trim()}:${GAME_PORT}. Check the address and that the host is hosting.`
-          : 'Could not find that room code. Try joining by IP instead.',
+        code
+          ? 'Could not find that room code. Check it, or clear it and join by the IP.'
+          : `Could not reach ${ip}:${GAME_PORT}. Check the address and that the host is hosting.`,
       );
       return;
     }
 
     setIsHost(false);
     setView('waiting');
-    if (inputIp.trim()) savePreferences({ lastHost: inputIp.trim() });
+    if (ip) savePreferences({ lastHost: ip });
   };
 
   const startGame = () => {
@@ -317,6 +329,16 @@ export const LobbyScreen = () => {
       case 'join':
         return (
           <View style={styles.menu}>
+            {!WEB && (
+              <TextInput
+                style={styles.input}
+                placeholder="Room code"
+                placeholderTextColor="#666"
+                value={inputCode}
+                onChangeText={setInputCode}
+                autoCapitalize="characters"
+              />
+            )}
             <TextInput
               style={styles.input}
               placeholder="Host IP (e.g. 192.168.0.42)"
@@ -329,19 +351,9 @@ export const LobbyScreen = () => {
             />
             <Text style={styles.hint}>
               {WEB
-                ? "Type the host's Wi-Fi address, the same one the phone app would use."
-                : 'Leave the IP empty to search for the room code instead.'}
+                ? 'Type the address shown in the waiting room on the host phone.'
+                : "The IP is the fallback: fill it only if the code search finds nothing."}
             </Text>
-            {!WEB && (
-              <TextInput
-                style={styles.input}
-                placeholder="Room code (optional)"
-                placeholderTextColor="#666"
-                value={inputCode}
-                onChangeText={setInputCode}
-                autoCapitalize="characters"
-              />
-            )}
             <BaseButton title={busy ? 'Joining...' : 'Join'} onPress={joinGame} />
             <BaseButton title="Back" onPress={() => setView('menu')} variant="danger" />
           </View>
@@ -352,9 +364,14 @@ export const LobbyScreen = () => {
           <ScrollView contentContainerStyle={styles.menu}>
             {isHost && <Text style={styles.text}>Room Code: {roomCode}</Text>}
             {isHost && (
+              <Text style={styles.text}>
+                Address: {lobby.getHostAddress() ?? 'unknown - check Wi-Fi settings'}
+              </Text>
+            )}
+            {isHost && (
               <Text style={styles.hint}>
-                Guests join by IP, from the app or from a browser on the same
-                Wi-Fi. Your address is in this phone's Wi-Fi settings.
+                Guests type one of the two: the code, or the address. Both work
+                from the app, the address also from a browser.
               </Text>
             )}
             <Text style={styles.title}>Waiting Room</Text>
