@@ -3,6 +3,8 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-nati
 import { theme } from '../theme/colors';
 import { BaseButton } from '../components/BaseButton';
 import { ActionPanel, OwnRole } from '../components/ActionPanel';
+import { TabBar } from '../components/TabBar';
+import { NotesTab } from '../components/NotesTab';
 import { formatRemaining, winnerText } from '../format';
 import { useGame } from '../GameContext';
 import { lobby } from '../../network/lobby';
@@ -16,6 +18,9 @@ export const NarratorDashboard = () => {
   // host who is playing the game has to ask for it on purpose.
   const [narratorView, setNarratorView] = useState(false);
   const [confirmingNarrator, setConfirmingNarrator] = useState(false);
+  // Which page of the dashboard is open: the running game, or the host's own
+  // notes about it.
+  const [tab, setTab] = useState<'play' | 'notes'>('play');
 
   useEffect(() => {
     if (!manager || !localPlayer) return;
@@ -232,6 +237,17 @@ export const NarratorDashboard = () => {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.header}>Narrator Dashboard</Text>
 
+      <TabBar
+        tabs={[
+          { id: 'play', label: 'Play' },
+          { id: 'notes', label: 'Notes' },
+        ]}
+        active={tab}
+        onSelect={id => setTab(id as 'play' | 'notes')}
+      />
+
+      {tab === 'play' && (
+        <>
       {isTestGame && (
         <View style={styles.testBanner}>
           <Text style={styles.bannerText}>
@@ -569,6 +585,16 @@ export const NarratorDashboard = () => {
         ))}
 
       <BaseButton title="Back to Lobby" onPress={returnToLobby} variant="danger" />
+        </>
+      )}
+
+      {tab === 'notes' && (
+        <NotesTab
+          gameKey={`host-${String(gameId)}`}
+          myRole={role?.name ?? 'Host'}
+          players={players.map(player => player.name)}
+        />
+      )}
     </ScrollView>
   );
 };

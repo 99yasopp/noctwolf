@@ -3,6 +3,7 @@ import * as SecureStore from 'expo-secure-store';
 import {
   GameNoteEntry,
   GameNotes,
+  emptyGameNotes,
   fitGameNotes,
   upsertEntry,
 } from './notes';
@@ -91,4 +92,32 @@ export const clearAllNotes = async (): Promise<void> => {
   const index = await loadNotesIndex();
   for (const entry of index) await remove(gameKey(entry.id));
   await remove(INDEX_KEY);
+};
+
+// The page being written right now, kept per game for the session: closing the
+// tab and coming back must not open a blank sheet.
+const openPages = new Map<string, GameNotes>();
+
+export const openPageFor = (gameKey: string, myRole: string): GameNotes => {
+  const existing = openPages.get(gameKey);
+  if (existing) return existing;
+
+  const page = emptyGameNotes(`${Date.now()}`, myRole);
+  openPages.set(gameKey, page);
+  return page;
+};
+
+// Stores the page and hands back the history list it now belongs to.
+export const rememberPage = async (
+  gameKey: string,
+  page: GameNotes,
+): Promise<GameNoteEntry[]> => {
+  openPages.set(gameKey, page);
+  await saveGameNotes(page);
+  return loadNotesIndex();
+};
+
+export const clearAllPages = async (): Promise<void> => {
+  openPages.clear();
+  await clearAllNotes();
 };

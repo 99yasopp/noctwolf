@@ -19,13 +19,14 @@ import {
 } from '../../network/protocol';
 import { SETTING_DEFS, Settings, settingLabel } from '../../engine/setup';
 import { TabBar } from '../components/TabBar';
+import { NotesTab } from '../components/NotesTab';
 import { formatRemaining, winnerText } from '../format';
 
 export const PlayerScreen = () => {
-  const { localPlayer, returnToLobby } = useGame();
+  const { localPlayer, returnToLobby, gameId } = useGame();
 
   // Which of the phone's pages is open. Play is the game itself.
-  const [tab, setTab] = useState<'play' | 'journal'>('play');
+  const [tab, setTab] = useState<'play' | 'journal' | 'notes'>('play');
   // The journal: every line the table heard, in order, with the round it
   // belonged to.
   const [publicLines, setPublicLines] = useState<PublicLogPayload[]>([]);
@@ -431,6 +432,7 @@ export const PlayerScreen = () => {
   const tabs = [
     { id: 'play', label: 'Play' },
     { id: 'journal', label: 'Journal' },
+    { id: 'notes', label: 'Notes' },
   ];
 
   // The journal reads by round: a heading whenever the round or the phase turns.
@@ -449,7 +451,11 @@ export const PlayerScreen = () => {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.header}>Werewolf</Text>
 
-      <TabBar tabs={tabs} active={tab} onSelect={id => setTab(id as 'play' | 'journal')} />
+      <TabBar
+        tabs={tabs}
+        active={tab}
+        onSelect={id => setTab(id as 'play' | 'journal' | 'notes')}
+      />
 
       {tab === 'play' && (
         <>
@@ -679,6 +685,14 @@ export const PlayerScreen = () => {
             )}
           </View>
         </>
+      )}
+
+      {tab === 'notes' && (
+        <NotesTab
+          gameKey={String(gameId)}
+          myRole={role?.roleName ?? 'Unknown'}
+          players={roster.map(entry => entry.name)}
+        />
       )}
     </ScrollView>
   );

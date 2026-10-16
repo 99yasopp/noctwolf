@@ -718,18 +718,47 @@ export class GameManager {
     return this.state.players.find(p => p.id === targetId) ?? null;
   }
 
-  // The pack's picks, counted once and read by both the tie window and the
-  // witch's victim, so the two can never disagree.
+  // Every block that lands tonight, in seating order. Seating order is what
+  // settles two wolves silencing each other: the earlier seat lands first and
+  // takes the later one's voice with it.
+  private blockChoices(): { actorId: string; targetId: string }[] {
+    const chosen: { actorId: string; targetId: string }[] = [];
+
+    this.state.players.forEach(actor => {
+      const role = this.assignments.get(actor.id);
+      const choices = this.nightChoices.get(actor.id);
+      if (!actor.isAlive || !role || !choices) return;
+      // A Red Wolf still under an earlier silence has no powers tonight.
+      if (this.isSilenced(actor.id)) return;
+      if (chosen.some(choice => choice.targetId === actor.id)) return;
+
+      choices.forEach((targetId, actionId) => {
+        const option = role.nightActions?.find(candidate => candidate.id === actionId);
+        if (option?.kind !== 'block' || targetId === PASSED) return;
+        chosen.push({ actorId: actor.id, targetId });
+      });
+    });
+
+    return chosen;
+  }
+
+  // The pack's picks, counted once and read by the tie window, the witch's
+  // victim and the resolution itself, so they can never disagree. Resolution
+  // drops a wolf the block catches tonight and the father's own kill vote when
+  // he is infecting instead, and those two filters are read here the same way.
   private attackTally(): Map<string, number> {
     const votes = new Map<string, number>();
+    const silenced = new Set(this.blockChoices().map(choice => choice.targetId));
+    const infection = this.pendingInfection();
 
     this.nightChoices.forEach((choices, playerId) => {
       const actor = this.state.players.find(p => p.id === playerId);
       const role = this.assignments.get(playerId);
       if (!actor?.isAlive || !role) return;
       // A player silenced on an earlier night has no powers tonight; tonight's
-      // silence is only settled when the night resolves.
-      if (this.isSilenced(playerId)) return;
+      // silence lands with the block above.
+      if (this.isSilenced(playerId) || silenced.has(playerId)) return;
+      if (infection?.playerId === playerId) return;
 
       choices.forEach((targetId, actionId) => {
         const option = role.nightActions?.find(candidate => candidate.id === actionId);
@@ -1202,6 +1231,8 @@ export class GameManager {
     const raven = this.state.players.find(p => p.id === playerId);
     const target = this.state.players.find(p => p.id === targetId);
     if (!raven?.isAlive || !target?.isAlive) return false;
+    // The mark names another player: a raven cannot curse himself.
+    if (targetId === playerId) return false;
     if (this.isSilenced(playerId)) return false;
     // Only the raven's own card knows the mark, and a spent or missing power
     // has nothing to place.
@@ -1458,6 +1489,15 @@ export class GameManager {
     const role = this.assignments.get(playerId);
     if (role) this.sendRoleAssign(playerId, role, true);
 
+    // The house rules, in case the deal's copy was sent before this screen was
+    // listening: without them a guest cannot read the table's rules back, and a
+    // raven in a before-the-vote game never sees his day panel.
+    this.transport.sendToPlayer(playerId, {
+      type: 'RULES_UPDATE',
+      payload: { settings: { ...this.settings } },
+      timestamp: Date.now(),
+    });
+
     this.transport.sendToPlayer(playerId, {
       type: 'PHASE_UPDATE',
       payload: this.buildPhasePayload(),
@@ -1667,6 +1707,11 @@ export class GameManager {
       stage: this.nightStage,
       victim: victim ? { id: victim.id, name: victim.name, isAlive: victim.isAlive } : null,
       healTargets: victim ? [victim.id] : [],
+      // A father whose phone woke up mid-tie is handed the tied names again,
+      // or the night waits on a player who cannot answer.
+      ...(this.hasOpenPackTie() && this.packTieBreaker()?.id === playerId
+        ? { tieTargets: this.getPackTieTargets() }
+        : {}),
     };
   }
 
@@ -1684,7 +1729,9 @@ export class GameManager {
 
     const breaker = this.packTieBreaker();
     if (!breaker && this.setting('wolfTieBreak') !== 'host') {
-      this.packTiePick = leaders[Math.floor(Math.random() * leaders.length)].id;
+      // One of the tied names, at random, and the narrator log hears about it
+      // like every other pick.
+      this.setPackTiePick(leaders[Math.floor(Math.random() * leaders.length)].id);
       return false;
     }
 
@@ -1935,39 +1982,27 @@ export class GameManager {
     const deaths: Player[] = [];
 
     // The Red Wolf's silence lands before anything else resolves, so a player
-    // silenced tonight loses a choice he may already have sent. Seating order
-    // settles two wolves silencing each other: the earlier seat lands first.
+    // silenced tonight loses a choice he may already have sent.
     const silenced = new Set<string>();
-    this.state.players.forEach(actor => {
-      const role = this.assignments.get(actor.id);
-      const choices = this.nightChoices.get(actor.id);
-      if (!actor.isAlive || !role || !choices) return;
-      // A Red Wolf still under an earlier silence has no powers tonight.
-      if (this.isSilenced(actor.id)) return;
+    this.blockChoices().forEach(({ actorId, targetId }) => {
+      silenced.add(targetId);
+      this.silencedUntil.set(targetId, this.round);
+      this.blockedTargets.add(`${actorId}:${targetId}`);
 
-      choices.forEach((targetId, actionId) => {
-        const option = role.nightActions?.find(candidate => candidate.id === actionId);
-        if (option?.kind !== 'block' || targetId === PASSED) return;
-
-        silenced.add(targetId);
-        this.silencedUntil.set(targetId, this.round);
-        this.blockedTargets.add(`${actor.id}:${targetId}`);
-
-        const target = this.state.players.find(p => p.id === targetId);
-        if (target) {
-          this.actionLog.push(`Night ${this.round}: the Red Wolf silenced ${target.name}.`);
-          // The player is told, not the table: a silenced role that says
-          // nothing looks like a broken app.
-          const message =
-            'You have been silenced: your powers fail until the end of the coming day.';
-          this.transport.sendToPlayer(targetId, {
-            type: 'SECRET_INFO',
-            payload: { message },
-            timestamp: Date.now(),
-          });
-          this.emit({ type: 'secret', playerId: targetId, message });
-        }
-      });
+      const target = this.state.players.find(p => p.id === targetId);
+      if (target) {
+        this.actionLog.push(`Night ${this.round}: the Red Wolf silenced ${target.name}.`);
+        // The player is told, not the table: a silenced role that says
+        // nothing looks like a broken app.
+        const message =
+          'You have been silenced: your powers fail until the end of the coming day.';
+        this.transport.sendToPlayer(targetId, {
+          type: 'SECRET_INFO',
+          payload: { message },
+          timestamp: Date.now(),
+        });
+        this.emit({ type: 'secret', playerId: targetId, message });
+      }
     });
 
     // Gather every choice made tonight, by kind of action.
@@ -1977,8 +2012,8 @@ export class GameManager {
     const healed = new Map<string, { playerId: string; actionId: string }>();
     const poisoned = new Map<string, { playerId: string; actionId: string }>();
     // Wolves hunt as a pack: their bite is the majority of the pack's picks,
-    // not whichever device happened to tap last.
-    const attackVotes = new Map<string, number>();
+    // not whichever device happened to tap last. attackTally reads the same
+    // block and infection filters this resolution does.
     // The two solo bites of the pack, each resolved on its own.
     const extraAttacks: string[] = [];
     const wolfAttacks: string[] = [];
@@ -2019,8 +2054,7 @@ export class GameManager {
             poisoned.set(targetId, { playerId, actionId });
             break;
           case 'attack':
-            if (infection?.playerId === playerId) break;
-            attackVotes.set(targetId, (attackVotes.get(targetId) ?? 0) + 1);
+            // Counted by attackTally, which reads the same filters.
             break;
           case 'extraAttack':
             if (!this.anyWolfDead()) extraAttacks.push(targetId);
@@ -2058,7 +2092,7 @@ export class GameManager {
 
     // Read once into locals: the values were assigned inside a callback, which
     // control-flow analysis cannot follow.
-    const biteTarget = this.packTiePick ?? this.pickMostVoted(attackVotes);
+    const biteTarget = this.packTiePick ?? this.pickMostVoted(this.attackTally());
     const peek = inspect as { sourceId: string; targetId: string } | null;
     const bond = link as { sourceId: string; targetId: string } | null;
     const sniff = fox as { sourceId: string; targetId: string } | null;
@@ -2704,8 +2738,14 @@ export class GameManager {
     });
 
     // The raven's two votes count like any others, without a ballot row of
-    // their own: the table sees the total, never who added to it.
-    if (this.ravenTarget && tally.has(this.ravenTarget)) {
+    // their own: the table sees the total, never who added to it. On a re-run
+    // only the tied names may be voted for, so the mark only lands when it is
+    // one of them.
+    if (
+      this.ravenTarget &&
+      tally.has(this.ravenTarget) &&
+      (this.revoteCandidates.length === 0 || this.revoteCandidates.includes(this.ravenTarget))
+    ) {
       tally.set(this.ravenTarget, (tally.get(this.ravenTarget) ?? 0) + 2);
     }
 

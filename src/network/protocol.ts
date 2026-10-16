@@ -1,4 +1,5 @@
 import { Phase, Player, Team } from '../engine/types';
+import { SettingValue } from '../engine/setup';
 
 // Define the message types for network communication
 export type MessageType =
@@ -53,7 +54,7 @@ export interface PlayerListPayload {
 // The house rules, sent to the whole table when the deal is made. Guests read
 // them; only the host can change them.
 export interface RulesUpdatePayload {
-  settings: Record<string, boolean | string | null>;
+  settings: Record<string, SettingValue>;
 }
 
 // One line of the table's journal: what everyone heard, and when. A phone that

@@ -42,9 +42,11 @@ import {
 } from '../src/engine/generatedRole';
 import {
   SETTING_DEFS,
+  RoleSetup,
   buildSetupRoles,
   defaultSettings,
   fillWithVillagers,
+  migrateSetup,
   nextSettingValue,
   settingLabel,
   setupFromRoles,
@@ -3261,6 +3263,16 @@ console.log('\n37. the pack splits its vote');
     'and nobody else is',
     !tieTransport.directs.some(d => d.playerId !== tieFather.id && d.message.payload?.tieTargets),
   );
+  tieTransport.directs = [];
+  tieGame.sendStateTo(tieFather.id);
+  check(
+    'a father whose phone just woke up is handed the names again',
+    tieTransport.directs.some(d => d.message.payload?.tieTargets?.length === 2),
+  );
+  check(
+    'and the table rules come with the state',
+    tieTransport.directs.some(d => d.message.type === 'RULES_UPDATE'),
+  );
   tieGame.advance();
   check('a second press changes nothing', tieGame.hasOpenPackTie());
   check('the wolf cannot answer for the father', !tieGame.handleTieBreak(tieWolf.id, tieVillagers[0].id));
@@ -3472,6 +3484,7 @@ console.log('\n39. the village powers keep their own rules');
   settleSuccession(ravenGame);
   check('the day comes', ravenGame.state.currentPhase === 'Day');
   check('and the raven marks', ravenGame.handleRavenMark(dayRaven.id, marked.id));
+  check('the raven cannot mark himself', !ravenGame.handleRavenMark(dayRaven.id, dayRaven.id));
   check('the mark moves when he changes his mind', ravenGame.handleRavenMark(dayRaven.id, ravenWolf.id));
   check(
     'the mark holds the last name',
@@ -3580,6 +3593,119 @@ console.log('\n40. the journal and the notes');
     'and a page written again moves to the front',
     upsertEntry(history, { id: 'g5', date: 'now', myRole: 'Wolf' })[0].id === 'g5',
   );
+}
+
+console.log('\n41. the count the night and the vote agree on');
+{
+  // One wolf is silenced by the Red Wolf tonight: his pick is not counted, so
+  // no tie window opens on a vote the resolution would have dropped.
+  const blockTable = makePlayers(6);
+  const blockTransport = new RecordingTransport();
+  const blockGame = new GameManager(blockTable, blockTransport);
+  blockGame.start(
+    [RedWolfRole, WerewolfRole, SeerRole, VillagerRole, VillagerRole, VillagerRole],
+    { ...defaultSettings(), wolfTieBreak: 'host' },
+  );
+  passElection(blockGame);
+
+  const blockRed = findRole(blockGame, blockTable, 'red-wolf')!;
+  const blockWolf = findRole(blockGame, blockTable, 'werewolf')!;
+  const blockVillagers = blockTable.filter(p => blockGame.getRoleOf(p.id)?.id === 'villager');
+
+  check(
+    'the Red Wolf silences a packmate',
+    blockGame.handleNightAction(blockRed.id, 'silence', blockWolf.id),
+  );
+  check(
+    'the silenced wolf still picks',
+    blockGame.handleNightAction(blockWolf.id, 'kill', blockVillagers[0].id),
+  );
+  check(
+    'and the Red Wolf picks elsewhere',
+    blockGame.handleNightAction(blockRed.id, 'kill', blockVillagers[1].id),
+  );
+  check(
+    'the blocked pick is not counted',
+    blockGame.getNightVictim()?.id === blockVillagers[1].id,
+  );
+  blockGame.advance();
+  check('so no tie window opens on it', !blockGame.hasOpenPackTie());
+  settleSuccession(blockGame);
+  check(
+    'and the counted victim is the one taken',
+    !blockVillagers[1].isAlive && blockVillagers[0].isAlive,
+  );
+
+  // The raven's two votes only count where the mark could stand: in a re-run
+  // between two names, they cannot kill a player the table may not vote for.
+  const revoteTable = makePlayers(8);
+  const revoteGame = new GameManager(revoteTable, new RecordingTransport());
+  revoteGame.start(
+    [
+      RavenRole,
+      WerewolfRole,
+      VillagerRole,
+      VillagerRole,
+      VillagerRole,
+      VillagerRole,
+      VillagerRole,
+      VillagerRole,
+    ],
+    { ...defaultSettings(), 'raven.timing': 'night' },
+  );
+  const revoteVillagers = revoteTable.filter(p => revoteGame.getRoleOf(p.id)?.id === 'villager');
+  const [mark, first, second, doomed, extra, mayor] = revoteVillagers;
+  // The mayor's ballot is worth two, so the mayor is a name of my choosing and
+  // the counts below are the ones I wrote.
+  passElection(revoteGame, mayor.id);
+
+  const revoteRaven = findRole(revoteGame, revoteTable, 'raven')!;
+  const revoteWolf = findRole(revoteGame, revoteTable, 'werewolf')!;
+
+  check('the raven marks by night', revoteGame.handleNightAction(revoteRaven.id, 'curse', mark.id));
+  revoteGame.handleNightAction(revoteWolf.id, 'kill', doomed.id);
+  revoteGame.advance();
+  settleSuccession(revoteGame);
+  revoteGame.advance();
+
+  // First vote: three ballots on each name, and the mark's two on top of none.
+  revoteGame.handleVote(mayor.id, first.id);
+  revoteGame.handleVote(revoteRaven.id, first.id);
+  revoteGame.handleVote(revoteWolf.id, second.id);
+  revoteGame.handleVote(mark.id, second.id);
+  revoteGame.handleVote(first.id, second.id);
+  revoteGame.advance();
+  check(
+    'the first vote is tied between two names',
+    revoteGame.lastVote?.tie === true &&
+      revoteGame.getRevoteCandidates().length === 2 &&
+      revoteGame.getRevoteCandidates().includes(first.id) &&
+      revoteGame.getRevoteCandidates().includes(second.id),
+  );
+
+  // The re-run: one mayor's ballot, and the mark stays out of it.
+  revoteGame.handleVote(mayor.id, second.id);
+  revoteGame.advance();
+  check('the tied name is voted out', !second.isAlive);
+  check('and the mark is not', mark.isAlive);
+
+  // An evening saved before every rule lived in one record keeps its own.
+  const migrated = migrateSetup({
+    counts: { werewolf: 2, villager: 5 },
+    witchHealCharges: 2,
+    witchPoisonCharges: 0,
+    options: { peacefulFirstNight: true, guardNoRepeat: false },
+  } as unknown as RoleSetup);
+  check(
+    'an old saved table keeps its seats and its rules',
+    migrated.counts.werewolf === 2 &&
+      migrated.counts.villager === 5 &&
+      migrated.settings['witch.healCharges'] === 2 &&
+      migrated.settings['witch.poisonCharges'] === 0 &&
+      migrated.settings.peacefulFirstNight === true &&
+      migrated.settings.guardNoRepeat === false,
+  );
+  check('and every rule it never set keeps its default', migrated.settings['raven.timing'] === 'night');
 }
 
 console.log(failures === 0 ? `\nAll checks passed.` : `\n${failures} check(s) failed.`);

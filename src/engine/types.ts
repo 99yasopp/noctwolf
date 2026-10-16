@@ -14,6 +14,19 @@ export type Phase =
 
 export type Team = 'Village' | 'Wolf' | 'Solitary';
 
+// The two private windows of the game: the wolves' whisper and the bond
+// between the lovers. Living members only, and whatever is said there stays
+// off the table's journal.
+export type ChatGroup = 'wolves' | 'lovers';
+
+export interface ChatLine {
+  group: ChatGroup;
+  senderId: string;
+  senderName: string;
+  message: string;
+  timestamp: number;
+}
+
 export interface Player {
   id: string;
   name: string;

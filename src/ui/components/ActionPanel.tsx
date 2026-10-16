@@ -466,17 +466,25 @@ export const ActionPanel: React.FC<Props> = ({
     return (
       <View style={styles.panel}>
         <Text style={styles.heading}>The pack is split</Text>
-        <Text style={styles.body}>
-          The wolves cannot agree on a victim. Point at the one you want, and
-          the pack takes them instead.
-        </Text>
-        {tieTargets.map(target => (
-          <BaseButton
-            key={target.id}
-            title={target.name}
-            onPress={() => onChoose('tieBreak', target.id)}
-          />
-        ))}
+        {submitted.includes('tieBreak') ? (
+          <Text style={styles.body}>
+            Your name is in. The pack waits for the night to move on.
+          </Text>
+        ) : (
+          <>
+            <Text style={styles.body}>
+              The wolves cannot agree on a victim. Point at the one you want, and
+              the pack takes them instead.
+            </Text>
+            {tieTargets.map(target => (
+              <BaseButton
+                key={target.id}
+                title={target.name}
+                onPress={() => onChoose('tieBreak', target.id)}
+              />
+            ))}
+          </>
+        )}
       </View>
     );
   }
@@ -494,6 +502,9 @@ export const ActionPanel: React.FC<Props> = ({
     if (quietNight && (option.kind === 'attack' || option.kind === 'extraAttack')) {
       return false;
     }
+    // In a before-the-vote game the raven marks during the day: the engine
+    // would refuse this night button, so it is not offered.
+    if (option.kind === 'curse' && ravenTiming === 'beforeVote') return false;
     if (option.chargesLeft === 0) return false;
     return true;
   });

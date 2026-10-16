@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
-import { RoleSetup } from '../engine/setup';
+import { RoleSetup, migrateSetup } from '../engine/setup';
 
 // Small conveniences that should survive a restart: the address of the last
 // host, and the setup this host likes. Kept in one record so a single read
@@ -38,6 +38,8 @@ export const loadPreferences = async (): Promise<Preferences> => {
 
     const parsed = JSON.parse(stored);
     const merged = { ...defaults, ...(parsed ?? {}) };
+    // A setup written before the rules moved into one record keeps its own.
+    if (merged.setup) merged.setup = migrateSetup(merged.setup);
 
     memory = merged;
     loaded = true;

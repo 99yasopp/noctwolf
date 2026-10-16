@@ -167,6 +167,32 @@ export const defaultRoleSetup = (): RoleSetup => ({
   settings: defaultSettings(),
 });
 
+// A setup saved before every rule lived in one record: its potion counts and
+// its old options fold into the settings, so an evening that was left set up
+// opens exactly as the host left it.
+export const migrateSetup = (
+  saved: RoleSetup & {
+    options?: Record<string, SettingValue>;
+    witchHealCharges?: number;
+    witchPoisonCharges?: number;
+  },
+): RoleSetup => {
+  const settings: Settings = {
+    ...defaultSettings(),
+    ...(saved.options ?? {}),
+    ...(saved.settings ?? {}),
+  };
+
+  if (typeof saved.witchHealCharges === 'number') {
+    settings['witch.healCharges'] = saved.witchHealCharges;
+  }
+  if (typeof saved.witchPoisonCharges === 'number') {
+    settings['witch.poisonCharges'] = saved.witchPoisonCharges;
+  }
+
+  return { counts: { ...(saved.counts ?? {}) }, settings };
+};
+
 // Every role a setup may name: the built-in list plus the host's own roles.
 export const setupRoleById = (id: string): PlayableRole | undefined =>
   ALL_ROLES.find(role => role.id === id) ?? getCustomRoles().find(role => role.id === id);
