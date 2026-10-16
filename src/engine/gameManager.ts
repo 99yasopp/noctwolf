@@ -112,6 +112,10 @@ export class GameManager {
   private ravenTarget: string | null = null;
   // Set by the host when the wolves spotted the little girl tonight.
   private girlCaught = false;
+  // The Thief's two spare cards, live only while the first night is.
+  private thiefCards = new Map<string, PlayableRole[]>();
+  // Who each Wild Child is watching.
+  private roleModels = new Map<string, string>();
   // Who won when 'Solitary' is not the lovers: the announcement text, also
   // carried to the screens.
   private winnerLabel: string | null = null;
@@ -199,6 +203,8 @@ export class GameManager {
     this.foxLost.clear();
     this.ravenTarget = null;
     this.girlCaught = false;
+    this.thiefCards.clear();
+    this.roleModels.clear();
     this.pendingRevenge = null;
     this.revengeChoice = null;
     this.revengeOrigin = null;
@@ -228,6 +234,22 @@ export class GameManager {
       player.isAlive = true;
       player.statusEffects = [];
       player.voteWeight = role.voteWeight ?? 1;
+    });
+
+    // Two spare cards land in front of every Thief. They are drawn from every
+    // role the app knows, his own among the exclusions, because the setup
+    // deals exactly one card per seat and keeps nothing back.
+    const deck = [...ALL_ROLES, ...getCustomRoles()];
+    players.forEach(player => {
+      if (this.assignments.get(player.id)?.id !== 'thief') return;
+      const own = this.assignments.get(player.id)!.id;
+      const pool = deck.filter(role => role.id !== own);
+      const drawn: PlayableRole[] = [];
+      while (drawn.length < 2 && pool.length > 0) {
+        const pick = Math.floor(Math.random() * pool.length);
+        drawn.push(pool.splice(pick, 1)[0]);
+      }
+      this.thiefCards.set(player.id, drawn);
     });
 
     players.forEach(player => {
@@ -381,6 +403,13 @@ export class GameManager {
     }
 
     this.round += 1;
+
+    // The Thief's spare cards were for the first night alone, and every card
+    // is sent again so the panels show tonight's powers rather than last
+    // night's.
+    this.thiefCards.clear();
+    this.state.players.forEach(player => this.resendRoleTo(player.id));
+
     this.setPhase('Night');
   }
 
@@ -441,6 +470,11 @@ export class GameManager {
     if (option.kind === 'infect' && this.isQuietNight()) return false;
     // A fox that once found nothing has lost his nose for good.
     if (option.kind === 'fox' && this.foxLost.has(playerId)) return false;
+    // First-night choices: the Wolf-Dog picks a camp and the Wild Child picks
+    // the player he watches. Neither can be taken later.
+    if ((option.kind === 'side' || option.kind === 'model') && this.round !== 1) {
+      return false;
+    }
     // Nothing to save means no potion to offer.
     if (option.kind === 'heal' && !this.healTarget()) return false;
     return true;
@@ -538,6 +572,15 @@ export class GameManager {
     return this.girlCaught;
   }
 
+  // The Thief's live spare cards, for the host's own panel: the guests get
+  // theirs with the role card.
+  getThiefCards(playerId: string): { id: string; name: string }[] {
+    return (this.thiefCards.get(playerId) ?? []).map(card => ({
+      id: card.id,
+      name: card.name,
+    }));
+  }
+
   // Who the wolves took tonight, as far as the choice alone says. Null when
   // they have not picked, or picked nobody.
   private victimOfNight(): Player | null {
@@ -617,7 +660,7 @@ export class GameManager {
       if (option.kind === 'wolfAttack' && this.assignments.get(target.id)?.team !== 'Wolf') {
         return false;
       }
-      if ((option.kind === 'infect' || option.kind === 'spy') && target.id !== player.id) {
+      if ((option.kind === 'infect' || option.kind === 'spy' || option.kind === 'side') && target.id !== player.id) {
         return false;
       }
       if (
@@ -851,6 +894,58 @@ export class GameManager {
     return true;
   }
 
+  // The Thief turns one of his two spare cards over, or keeps his own. Only
+  // the first night is open for it, and only the cards he was dealt.
+  handleThiefSwap(playerId: string, roleId: string | null): boolean {
+    if (this.winner) return false;
+    if (this.state.currentPhase !== 'Night' || this.round !== 1) return false;
+
+    const player = this.state.players.find(p => p.id === playerId);
+    if (!player?.isAlive) return false;
+
+    const cards = this.thiefCards.get(playerId);
+    if (!cards || cards.length === 0) return false;
+
+    const taken = roleId === null ? undefined : cards.find(card => card.id === roleId);
+    if (roleId !== null && !taken) return false;
+
+    this.thiefCards.delete(playerId);
+
+    if (taken) {
+      this.assignments.set(playerId, taken);
+      player.role = taken.name;
+      player.team = taken.team;
+      player.voteWeight = taken.voteWeight ?? 1;
+      this.actionLog.push(`Night 1: ${player.name} took the ${taken.name}.`);
+    } else {
+      this.actionLog.push(`Night 1: ${player.name} kept his own card.`);
+    }
+
+    this.sendRoleAssign(playerId, this.assignments.get(playerId)!);
+    const message = taken ? `You are the ${taken.name} now.` : 'You keep your own card.';
+    this.transport.sendToPlayer(playerId, {
+      type: 'SECRET_INFO',
+      payload: { message },
+      timestamp: Date.now(),
+    });
+    this.emit({ type: 'secret', playerId, message });
+
+    // A wolf card makes him one of the pack, and the pack learns a name.
+    if (taken?.team === 'Wolf') {
+      this.state.players
+        .filter(
+          other =>
+            other.isAlive &&
+            other.id !== playerId &&
+            this.assignments.get(other.id)?.team === 'Wolf',
+        )
+        .forEach(wolf => this.sendRoleAssign(wolf.id, this.assignments.get(wolf.id)!));
+    }
+
+    this.emit({ type: 'changed' });
+    return true;
+  }
+
   // The Alien went silent: the host may hand the day back himself rather than
   // let a disconnected phone hold the whole table.
   forceDayOn(): boolean {
@@ -949,6 +1044,11 @@ export class GameManager {
     if (option?.kind === 'wolfAttack') return this.round % 2 === 0 ? 1 : 0;
     if (option?.kind === 'extraAttack') return this.anyWolfDead() ? 0 : 1;
     if (option?.kind === 'fox') return this.foxLost.has(playerId) ? 0 : 1;
+    // Two first-night decisions the panel reads the same way: up while the
+    // first night lasts, gone after.
+    if (option?.kind === 'side' || option?.kind === 'model') {
+      return this.round === 1 ? 1 : 0;
+    }
     const limit = actionChargeLimit(option);
     if (!Number.isFinite(limit)) return null;
 
@@ -1130,6 +1230,7 @@ export class GameManager {
       revengeOnDeath: role.revengeOnDeath,
       linksLovers: role.linksLovers,
       guessesRoles: role.guessesRoles,
+      thiefCards: this.thiefCards.get(playerId)?.map(card => ({ id: card.id, name: card.name })),
     };
 
     this.transport.sendToPlayer(playerId, {
@@ -1247,6 +1348,10 @@ export class GameManager {
 
   private setPhase(phase: Phase, extra: Partial<PhaseUpdatePayload> = {}) {
     this.state.setPhase(phase);
+
+    // Deaths land in other phases; the Wild Child's turn is noticed here,
+    // whichever of them it was, before the new phase reports anything.
+    this.turnWildChildren();
 
     if (phase === 'Night') {
       this.nightChoices.clear();
@@ -1471,6 +1576,8 @@ export class GameManager {
     let link: { sourceId: string; targetId: string } | null = null;
     let fox: { sourceId: string; targetId: string } | null = null;
     let raven: { sourceId: string; targetId: string } | null = null;
+    let side: { playerId: string; actionId: string } | null = null;
+    let model: { sourceId: string; targetId: string } | null = null;
 
     // Read before the choices are tallied: the father's infection replaces the
     // pack's bite, so his own kill vote must not be counted.
@@ -1521,6 +1628,12 @@ export class GameManager {
           case 'curse':
             raven = { sourceId: playerId, targetId };
             break;
+          case 'side':
+            side = { playerId, actionId };
+            break;
+          case 'model':
+            model = { sourceId: playerId, targetId };
+            break;
         }
       });
     });
@@ -1532,6 +1645,8 @@ export class GameManager {
     const bond = link as { sourceId: string; targetId: string } | null;
     const sniff = fox as { sourceId: string; targetId: string } | null;
     const mark = raven as { sourceId: string; targetId: string } | null;
+    const pickedSide = side as { playerId: string; actionId: string } | null;
+    const watched = model as { sourceId: string; targetId: string } | null;
 
     // Every wolf kill takes the same path: the Alien shrugs it off, the
     // guard's shield stops it, the witch may already have saved the victim,
@@ -1698,6 +1813,37 @@ export class GameManager {
       );
     }
 
+    if (pickedSide) {
+      const chooser = this.state.players.find(p => p.id === pickedSide.playerId);
+      if (pickedSide.actionId === 'join') {
+        this.actionLog.push(`Night 1: ${chooser?.name} chose the wolves.`);
+        this.admitToPack(pickedSide.playerId, 'You run with the wolves now.');
+      } else {
+        this.actionLog.push(`Night 1: ${chooser?.name} chose the village.`);
+        const message = 'You stay with the village for good.';
+        this.transport.sendToPlayer(pickedSide.playerId, {
+          type: 'SECRET_INFO',
+          payload: { message },
+          timestamp: Date.now(),
+        });
+        this.emit({ type: 'secret', playerId: pickedSide.playerId, message });
+      }
+    }
+
+    if (watched) {
+      this.roleModels.set(watched.sourceId, watched.targetId);
+      const child = this.state.players.find(p => p.id === watched.sourceId);
+      const modelPlayer = this.state.players.find(p => p.id === watched.targetId);
+      this.actionLog.push(`Night 1: ${child?.name} watches over ${modelPlayer?.name}.`);
+      const message = `You watch over ${modelPlayer?.name}. The day they die, you become a werewolf.`;
+      this.transport.sendToPlayer(watched.sourceId, {
+        type: 'SECRET_INFO',
+        payload: { message },
+        timestamp: Date.now(),
+      });
+      this.emit({ type: 'secret', playerId: watched.sourceId, message });
+    }
+
     this.applyLoverDeaths(deaths);
 
     // Whoever dies leaves a parting shot for the hunter.
@@ -1718,6 +1864,53 @@ export class GameManager {
     return deaths;
   }
 
+  // The card stays, the team changes: whoever turns keeps every power he had,
+  // and the rest of the pack learns his name.
+  private admitToPack(playerId: string, message: string) {
+    const role = this.assignments.get(playerId);
+    if (!role) return;
+
+    this.assignments.set(playerId, { ...role, team: 'Wolf' });
+    this.sendRoleAssign(playerId, this.assignments.get(playerId)!);
+    this.transport.sendToPlayer(playerId, {
+      type: 'SECRET_INFO',
+      payload: { message },
+      timestamp: Date.now(),
+    });
+    this.emit({ type: 'secret', playerId, message });
+
+    this.state.players
+      .filter(
+        player =>
+          player.isAlive &&
+          player.id !== playerId &&
+          this.assignments.get(player.id)?.team === 'Wolf',
+      )
+      .forEach(wolf => this.sendRoleAssign(wolf.id, this.assignments.get(wolf.id)!));
+  }
+
+  // The Wild Child turns the moment his model dies, wherever the death came
+  // from: every phase change looks for a model who is gone.
+  private turnWildChildren() {
+    this.state.players.forEach(child => {
+      if (!child.isAlive) return;
+      const model = this.roleModels.get(child.id);
+      if (!model) return;
+
+      const modelPlayer = this.state.players.find(player => player.id === model);
+      if (modelPlayer?.isAlive) return;
+
+      const role = this.assignments.get(child.id);
+      if (!role || role.team === 'Wolf') return;
+
+      this.roleModels.delete(child.id);
+      this.actionLog.push(
+        `Round ${this.round}: ${child.name} lost ${modelPlayer?.name} and turned.`,
+      );
+      this.admitToPack(child.id, `${modelPlayer?.name} is dead. You are a werewolf now.`);
+    });
+  }
+
   // The Infectious Father's bite, converted: the victim keeps the card and its
   // powers but wakes up a wolf. The guard's shield and the Alien's nature stop
   // it, and the charge was spent either way.
@@ -1736,31 +1929,13 @@ export class GameManager {
       return;
     }
 
-    // The card stays, the team changes: the infected keeps every power.
-    this.assignments.set(target.id, { ...role, team: 'Wolf' });
     this.actionLog.push(
       `Night ${this.round}: ${target.name} was infected and is a werewolf now (${role.name}).`,
     );
-
-    this.sendRoleAssign(target.id, this.assignments.get(target.id)!);
-    const message =
-      'You have been infected: you are a werewolf now, and you keep your powers.';
-    this.transport.sendToPlayer(target.id, {
-      type: 'SECRET_INFO',
-      payload: { message },
-      timestamp: Date.now(),
-    });
-    this.emit({ type: 'secret', playerId: target.id, message });
-
-    // The rest of the pack has to know who just joined it.
-    this.state.players
-      .filter(
-        player =>
-          player.isAlive &&
-          player.id !== target.id &&
-          this.assignments.get(player.id)?.team === 'Wolf',
-      )
-      .forEach(wolf => this.sendRoleAssign(wolf.id, this.assignments.get(wolf.id)!));
+    this.admitToPack(
+      target.id,
+      'You have been infected: you are a werewolf now, and you keep your powers.',
+    );
   }
 
   // Lovers are tied together: one going takes the other along.

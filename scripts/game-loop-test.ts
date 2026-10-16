@@ -19,11 +19,14 @@ import {
   RavenRole,
   RedWolfRole,
   SeerRole,
+  ThiefRole,
   TwoSistersRole,
   VillagerRole,
   WerewolfRole,
   WhiteWerewolfRole,
+  WildChildRole,
   WitchRole,
+  WolfDogRole,
   buildClassicRoleSet,
   buildCustomRoleSet,
   getCustomRoles,
@@ -2655,6 +2658,174 @@ console.log('\n33. the village learns what it can');
   );
   const outsider = findRole(sistersGame, sistersTable, 'seer')!;
   check('nobody else is told', (assignOf(outsider.id)?.message.payload.allies?.length ?? 0) === 0);
+}
+
+console.log('\n34. the first night decides who people are');
+{
+  // The Wolf-Dog picks the pack.
+  const dogTable = makePlayers(6);
+  const dogTransport = new RecordingTransport();
+  const dogGame = new GameManager(dogTable, dogTransport);
+  dogGame.start([WolfDogRole, WerewolfRole, VillagerRole, VillagerRole, SeerRole, GuardRole]);
+  passElection(dogGame);
+
+  const dog = findRole(dogGame, dogTable, 'wolf-dog')!;
+  const dogWolf = findRole(dogGame, dogTable, 'werewolf')!;
+  const dogMeal = findRole(dogGame, dogTable, 'villager')!;
+
+  check('the camp is open on the first night', dogGame.getChargesLeft(dog.id, 'join') === 1);
+  check('the wolf-dog joins the wolves', dogGame.handleNightAction(dog.id, 'join', dog.id));
+  check('the pack still bites', dogGame.handleNightAction(dogWolf.id, 'kill', dogMeal.id));
+
+  dogGame.advance();
+  settleSuccession(dogGame);
+  check(
+    'he is a wolf now, with his own card',
+    dogGame.getRoleOf(dog.id)?.team === 'Wolf' && dogGame.getRoleOf(dog.id)?.id === 'wolf-dog',
+  );
+  check(
+    'and was told so',
+    dogTransport.directs.some(
+      d =>
+        d.playerId === dog.id &&
+        d.message.type === 'SECRET_INFO' &&
+        String(d.message.payload?.message).includes('wolves now'),
+    ),
+  );
+
+  dogGame.advance();
+  dogGame.advance();
+  settleSuccession(dogGame);
+  check('the camp is closed after night one', dogGame.getChargesLeft(dog.id, 'join') === 0);
+  check(
+    'and the choice cannot be made again',
+    !dogGame.handleNightAction(dog.id, 'join', dog.id) &&
+      !dogGame.handleNightAction(dog.id, 'stay', dog.id),
+  );
+
+  // The Wolf-Dog who stays is a villager for good.
+  const stayTable = makePlayers(5);
+  const stayTransport = new RecordingTransport();
+  const stayGame = new GameManager(stayTable, stayTransport);
+  stayGame.start([WolfDogRole, WerewolfRole, VillagerRole, SeerRole, GuardRole]);
+  passElection(stayGame);
+
+  const stayer = findRole(stayGame, stayTable, 'wolf-dog')!;
+  check('the other wolf-dog stays', stayGame.handleNightAction(stayer.id, 'stay', stayer.id));
+  stayGame.advance();
+  settleSuccession(stayGame);
+  check('and remains a villager', stayGame.getRoleOf(stayer.id)?.team === 'Village');
+  check(
+    'with his choice confirmed',
+    stayTransport.directs.some(
+      d =>
+        d.playerId === stayer.id &&
+        String(d.message.payload?.message ?? '').includes('stay with the village'),
+    ),
+  );
+
+  // The Wild Child turns the moment his model dies.
+  const childTable = makePlayers(6);
+  const childTransport = new RecordingTransport();
+  const childGame = new GameManager(childTable, childTransport);
+  childGame.start([
+    WildChildRole,
+    WerewolfRole,
+    VillagerRole,
+    VillagerRole,
+    SeerRole,
+    GuardRole,
+  ]);
+  passElection(childGame);
+
+  const child = findRole(childGame, childTable, 'wild-child')!;
+  const childWolf = findRole(childGame, childTable, 'werewolf')!;
+  const model = findRole(childGame, childTable, 'villager')!;
+  const modelTwin = childTable.filter(
+    p => p.id !== model.id && childGame.getRoleOf(p.id)?.id === 'villager',
+  )[0];
+
+  check('the child picks a model', childGame.handleNightAction(child.id, 'model', model.id));
+  childGame.advance();
+  settleSuccession(childGame);
+  check(
+    'and is told who he watches',
+    childTransport.directs.some(
+      d =>
+        d.playerId === child.id &&
+        String(d.message.payload?.message ?? '').includes(model.name),
+    ),
+  );
+  check('he is still a villager', childGame.getRoleOf(child.id)?.team === 'Village');
+
+  childGame.advance();
+  childGame.advance();
+  settleSuccession(childGame);
+  check('the second night comes', childGame.state.currentPhase === 'Night');
+  check('the model cannot be picked twice', !childGame.handleNightAction(child.id, 'model', modelTwin.id));
+
+  childGame.handleNightAction(childWolf.id, 'kill', model.id);
+  childGame.advance();
+  settleSuccession(childGame);
+  check('the model is dead', !model.isAlive);
+  check(
+    'and the child turned, keeping his card',
+    childGame.getRoleOf(child.id)?.team === 'Wolf' &&
+      childGame.getRoleOf(child.id)?.id === 'wild-child',
+  );
+  check(
+    'the pack was told',
+    childTransport.directs.some(
+      d => d.playerId === childWolf.id && d.message.type === 'ROLE_ASSIGN',
+    ),
+  );
+
+  // The Thief looks at two spare cards and may take one.
+  const thiefTable = makePlayers(6);
+  const thiefTransport = new RecordingTransport();
+  const thiefGame = new GameManager(thiefTable, thiefTransport);
+  thiefGame.start([ThiefRole, WerewolfRole, VillagerRole, VillagerRole, SeerRole, GuardRole]);
+  passElection(thiefGame);
+
+  const thief = findRole(thiefGame, thiefTable, 'thief')!;
+  const thiefCards =
+    thiefTransport.directs.find(d => d.playerId === thief.id && d.message.type === 'ROLE_ASSIGN')
+      ?.message.payload.thiefCards ?? [];
+
+  check('two cards lie in front of him', thiefCards.length === 2);
+  check('a card he was not dealt cannot be taken', !thiefGame.handleThiefSwap(thief.id, 'no-such-card'));
+  check('he can take one', thiefGame.handleThiefSwap(thief.id, thiefCards[0].id));
+  check(
+    'and the card is his',
+    thiefGame.getRoleOf(thief.id)?.id === thiefCards[0].id &&
+      thiefGame.getThiefCards(thief.id).length === 0,
+  );
+  check(
+    'the log names the card',
+    thiefGame.actionLog.some(line => line.includes(`the ${thiefCards[0].name}`)),
+  );
+
+  thiefGame.advance();
+  settleSuccession(thiefGame);
+  thiefGame.advance();
+  thiefGame.advance();
+  settleSuccession(thiefGame);
+  check('the window is the first night alone', thiefGame.round === 2);
+  check('no second swap', !thiefGame.handleThiefSwap(thief.id, thiefCards[1].id));
+
+  // Keeping the card is a real answer too.
+  const keepTable = makePlayers(5);
+  const keepTransport = new RecordingTransport();
+  const keepGame = new GameManager(keepTable, keepTransport);
+  keepGame.start([ThiefRole, WerewolfRole, VillagerRole, SeerRole, GuardRole]);
+  passElection(keepGame);
+
+  const keeper = findRole(keepGame, keepTable, 'thief')!;
+  check('the thief keeps his own card', keepGame.handleThiefSwap(keeper.id, null));
+  check(
+    'and stays the thief',
+    keepGame.getRoleOf(keeper.id)?.id === 'thief' && keepGame.getThiefCards(keeper.id).length === 0,
+  );
 }
 
 console.log(failures === 0 ? `\nAll checks passed.` : `\n${failures} check(s) failed.`);

@@ -261,6 +261,7 @@ export const PlayerScreen = () => {
         revengeOnDeath: role.revengeOnDeath,
         linksLovers: role.linksLovers,
         guessesRoles: role.guessesRoles,
+        thiefCards: role.thiefCards,
         allies: role.allies ?? [],
       }
     : null;
@@ -280,6 +281,20 @@ export const PlayerScreen = () => {
       client.sendMessage({
         type: 'ALIEN_RESUME',
         payload: {},
+        senderId: localPlayer.id,
+        timestamp: Date.now(),
+      });
+    } else if (actionId === 'thiefSwap') {
+      client.sendMessage({
+        type: 'THIEF_SWAP',
+        payload: { roleId: targetId },
+        senderId: localPlayer.id,
+        timestamp: Date.now(),
+      });
+    } else if (actionId === 'thiefKeep') {
+      client.sendMessage({
+        type: 'THIEF_SWAP',
+        payload: { roleId: null },
         senderId: localPlayer.id,
         timestamp: Date.now(),
       });

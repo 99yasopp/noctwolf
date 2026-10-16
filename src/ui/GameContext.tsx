@@ -107,6 +107,11 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
+      if (message.type === 'THIEF_SWAP') {
+        current.handleThiefSwap(playerId, message.payload?.roleId ?? null);
+        return;
+      }
+
       if (message.type === 'STATE_REQUEST') {
         current.sendStateTo(playerId);
       }

@@ -23,7 +23,8 @@ export type MessageType =
   | 'MAYOR_ELECTED'
   | 'TIME_SYNC'
   | 'ALIEN_GUESS'
-  | 'ALIEN_RESUME';
+  | 'ALIEN_RESUME'
+  | 'THIEF_SWAP';
 
 export interface NetworkMessage {
   type: MessageType;
@@ -77,6 +78,8 @@ export interface RoleAssignPayload {
   linksLovers?: boolean;
   // The Alien's day power, so his panel can offer it.
   guessesRoles?: boolean;
+  // The Thief's two spare cards, only while the first night is still open.
+  thiefCards?: { id: string; name: string }[];
 }
 
 export interface NightActionPayload {

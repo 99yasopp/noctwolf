@@ -16,7 +16,9 @@ export type ActionKind =
   | 'block'
   | 'fox'
   | 'spy'
-  | 'curse';
+  | 'curse'
+  | 'side'
+  | 'model';
 
 // One choice a role gets to make at night.
 export interface NightActionOption {
@@ -245,6 +247,37 @@ export const ThreeBrothersRole: PlayableRole = {
   alliance: 'brothers',
 };
 
+export const WolfDogRole: PlayableRole = {
+  id: 'wolf-dog',
+  name: 'Wolf-Dog',
+  team: 'Village',
+  description:
+    'On the first night you choose your camp once and for all: the village, or the wolves. Stay undecided and you stay a villager.',
+  nightActions: [
+    { id: 'stay', label: 'Stay with the village', kind: 'side', allowSelf: true, charges: 1 },
+    { id: 'join', label: 'Join the wolves', kind: 'side', allowSelf: true, charges: 1 },
+  ],
+};
+
+export const WildChildRole: PlayableRole = {
+  id: 'wild-child',
+  name: 'Wild Child',
+  team: 'Village',
+  description:
+    'On the first night you pick a role model. The moment your model dies you become a Werewolf, keeping your own card.',
+  nightActions: [{ id: 'model', label: 'Choose a role model', kind: 'model', charges: 1 }],
+};
+
+// He acts through THIEF_SWAP rather than a night action: the two spare cards
+// only exist once the deal is done.
+export const ThiefRole: PlayableRole = {
+  id: 'thief',
+  name: 'Thief',
+  team: 'Village',
+  description:
+    'On the first night two spare cards lie face down in front of you. You may keep yours or take one of them, whatever it turns out to be.',
+};
+
 
 export const CupidRole: PlayableRole = {
   id: 'cupid',
@@ -274,6 +307,9 @@ export const ALL_ROLES: PlayableRole[] = [
   RavenRole,
   TwoSistersRole,
   ThreeBrothersRole,
+  WolfDogRole,
+  WildChildRole,
+  ThiefRole,
 ];
 
 export const getRoleById = (id: string): PlayableRole | undefined =>

@@ -92,10 +92,19 @@ export const NarratorDashboard = () => {
         revengeOnDeath: role.revengeOnDeath,
         linksLovers: role.linksLovers,
         guessesRoles: role.guessesRoles,
+        thiefCards: manager.getThiefCards(localPlayer.id),
         allies:
           role.team === 'Wolf'
             ? players
                 .filter(p => p.id !== localPlayer.id && manager.getRoleOf(p.id)?.team === 'Wolf')
+                .map(p => ({ id: p.id, name: p.name }))
+            : role.alliance
+            ? players
+                .filter(
+                  p =>
+                    p.id !== localPlayer.id &&
+                    manager.getRoleOf(p.id)?.alliance === role.alliance,
+                )
                 .map(p => ({ id: p.id, name: p.name }))
             : [],
       }
@@ -181,6 +190,10 @@ export const NarratorDashboard = () => {
         ? manager.handleAlienGuess(localPlayer.id, targetId, roleId)
         : actionId === 'alienResume'
         ? manager.handleAlienResume(localPlayer.id)
+        : actionId === 'thiefSwap'
+        ? manager.handleThiefSwap(localPlayer.id, targetId)
+        : actionId === 'thiefKeep'
+        ? manager.handleThiefSwap(localPlayer.id, null)
         : actionId === 'vote'
         ? manager.handleVote(localPlayer.id, targetId)
         : actionId === 'mayor-vote'

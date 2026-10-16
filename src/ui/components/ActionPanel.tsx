@@ -18,6 +18,8 @@ export interface OwnRole {
   allies?: { id: string; name: string }[];
   // The Alien's daylight power.
   guessesRoles?: boolean;
+  // The Thief's two spare cards, only while the first night is open.
+  thiefCards?: { id: string; name: string }[];
 }
 
 export interface ActionTarget {
@@ -64,7 +66,11 @@ const wantsPack = (kind: string) => kind === 'wolfAttack';
 // These report 0/1 for "up right now" rather than uses left, so the count
 // would read as a lie.
 const upNow = (kind: string) =>
-  kind === 'wolfAttack' || kind === 'extraAttack' || kind === 'fox';
+  kind === 'wolfAttack' ||
+  kind === 'extraAttack' ||
+  kind === 'fox' ||
+  kind === 'side' ||
+  kind === 'model';
 // A wolf never eats its own pack.
 const excludesPack = (kind: string) => kind === 'attack';
 
@@ -353,7 +359,7 @@ export const ActionPanel: React.FC<Props> = ({
     return true;
   });
 
-  if (offered.length === 0) {
+  if (offered.length === 0 && !(role.thiefCards && role.thiefCards.length > 0)) {
     const peaceful = quietNight && declared.some(option => option.kind === 'attack');
     // The witch still holds a potion but the night has not reached her yet.
     const stillToCome = declared.some(
@@ -379,13 +385,35 @@ export const ActionPanel: React.FC<Props> = ({
 
   return (
     <View style={styles.panel}>
+      {role.thiefCards && role.thiefCards.length > 0 && (
+        <View>
+          <Text style={styles.heading}>Two cards lie face down</Text>
+          <Text style={styles.body}>
+            Take one and it is yours for the rest of the game, whatever it
+            turns out to be. Or keep your own card.
+          </Text>
+          {role.thiefCards.map(card => (
+            <BaseButton
+              key={card.id}
+              title={`Take the ${card.name}`}
+              onPress={() => onChoose('thiefSwap', card.id)}
+              variant="secondary"
+            />
+          ))}
+          <BaseButton
+            title="Keep your own card"
+            onPress={() => onChoose('thiefKeep', '')}
+            variant="secondary"
+          />
+        </View>
+      )}
       {offered.map(option => {
         const candidates =
           option.kind === 'heal'
             ? victim
               ? alive.filter(target => target.id === victim.id)
               : []
-            : option.kind === 'infect' || option.kind === 'spy'
+            : option.kind === 'infect' || option.kind === 'spy' || option.kind === 'side'
             ? alive.filter(target => target.id === selfId)
             : alive.filter(target => {
                 if (target.id === selfId && !allowsSelf(option.kind)) return false;
@@ -422,6 +450,8 @@ export const ActionPanel: React.FC<Props> = ({
                         ? "Infect the pack's victim"
                         : option.kind === 'spy'
                         ? 'Spy on the wolves tonight'
+                        : option.kind === 'side'
+                        ? 'Decide tonight'
                         : target.name
                     }
                     onPress={() => onChoose(option.id, target.id)}
