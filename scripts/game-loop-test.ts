@@ -7,6 +7,7 @@
 import { GameManager } from '../src/engine/gameManager';
 import {
   AlienRole,
+  AngelRole,
   BearTamerRole,
   BigBadWolfRole,
   CupidRole,
@@ -18,9 +19,12 @@ import {
   PlayableRole,
   RavenRole,
   RedWolfRole,
+  ScapegoatRole,
   SeerRole,
+  StutteringJudgeRole,
   ThiefRole,
   TwoSistersRole,
+  VillageIdiotRole,
   VillagerRole,
   WerewolfRole,
   WhiteWerewolfRole,
@@ -2826,6 +2830,245 @@ console.log('\n34. the first night decides who people are');
     'and stays the thief',
     keepGame.getRoleOf(keeper.id)?.id === 'thief' && keepGame.getThiefCards(keeper.id).length === 0,
   );
+}
+
+console.log('\n35. the village settles its debts');
+{
+  // The Village Idiot is unmasked, survives, and loses his ballot.
+  const foolTable = makePlayers(6);
+  const foolTransport = new RecordingTransport();
+  const foolGame = new GameManager(foolTable, foolTransport);
+  foolGame.start([
+    VillageIdiotRole,
+    WerewolfRole,
+    VillagerRole,
+    VillagerRole,
+    SeerRole,
+    GuardRole,
+  ]);
+  passElection(foolGame);
+
+  const fool = findRole(foolGame, foolTable, 'village-idiot')!;
+  const foolWolf = findRole(foolGame, foolTable, 'werewolf')!;
+
+  foolGame.advance();
+  settleSuccession(foolGame);
+  check('the first day runs', foolGame.state.currentPhase === 'Day');
+  foolGame.advance();
+  const foolVoters = foolTable.filter(p => p.isAlive && p.id !== fool.id).slice(0, 3);
+  check(
+    'the village votes him out',
+    foolVoters.every(voter => foolGame.handleVote(voter.id, fool.id)),
+  );
+  foolGame.advance();
+  check('he survives the vote', fool.isAlive);
+  check('nobody was eliminated', foolGame.lastVote?.eliminatedId === null);
+  check(
+    'and the table saw the idiot',
+    foolGame.getPublicLog().some(line => line.includes(fool.name) && line.includes('idiot')),
+  );
+  check('he may not vote again', foolGame.getBarredVoters().includes(fool.id));
+
+  foolGame.advance();
+  settleSuccession(foolGame);
+  foolGame.advance();
+  check('the second vote starts', foolGame.state.currentPhase === 'Vote');
+  check('and his ballot is refused', !foolGame.handleVote(fool.id, foolWolf.id));
+  check(
+    'he is not awaited',
+    foolGame.getPendingVoters().every(player => player.id !== fool.id),
+  );
+
+  // A vote that stays tied hands the scapegoat to the village.
+  const goatTable = makePlayers(6);
+  const goatGame = new GameManager(goatTable, new RecordingTransport());
+  goatGame.start([
+    ScapegoatRole,
+    WerewolfRole,
+    VillagerRole,
+    VillagerRole,
+    SeerRole,
+    GuardRole,
+  ]);
+  passElection(goatGame);
+
+  const goat = findRole(goatGame, goatTable, 'scapegoat')!;
+  const goatVillagers = goatTable.filter(p => goatGame.getRoleOf(p.id)?.id === 'villager');
+  const sideA = goatVillagers[0];
+  const sideB = goatVillagers[1];
+  const goatMayor = goatGame.state.presidentManager.getPresidentId();
+  const goatVoters = goatTable.filter(p => p.id !== goatMayor).slice(0, 4);
+
+  goatGame.advance();
+  settleSuccession(goatGame);
+  goatGame.advance();
+  check(
+    'a tie is laid on the table',
+    goatVoters.slice(0, 2).every(voter => goatGame.handleVote(voter.id, sideA.id)) &&
+      goatVoters.slice(2).every(voter => goatGame.handleVote(voter.id, sideB.id)),
+  );
+  goatGame.advance();
+  check(
+    'and the table votes again',
+    goatGame.state.currentPhase === 'Vote' && goatGame.getRevoteCandidates().length === 2,
+  );
+  check(
+    'the second tie stands',
+    goatVoters.slice(0, 2).every(voter => goatGame.handleVote(voter.id, sideA.id)) &&
+      goatVoters.slice(2).every(voter => goatGame.handleVote(voter.id, sideB.id)),
+  );
+  goatGame.advance();
+  check(
+    'the scapegoat is called',
+    goatGame.state.currentPhase === 'Scapegoat' && goat.isAlive,
+  );
+
+  const goatBanned = goatTable.find(p => p.isAlive && p.id !== goat.id && p.id !== goatMayor)!;
+  check('only he bars a voter', !goatGame.handleScapegoatBan(sideA.id, goatBanned.id));
+  check('he bars one', goatGame.handleScapegoatBan(goat.id, goatBanned.id));
+  check('and not twice', !goatGame.handleScapegoatBan(goat.id, goatBanned.id));
+
+  goatGame.advance();
+  settleSuccession(goatGame);
+  check('the scapegoat dies', !goat.isAlive && goatGame.state.currentPhase === 'Night');
+  check('his ban outlives him', goatGame.getBarredVoters().includes(goatBanned.id));
+
+  goatGame.advance();
+  settleSuccession(goatGame);
+  goatGame.advance();
+  check('the next vote starts', goatGame.state.currentPhase === 'Vote');
+  check('and the barred player holds no ballot', !goatGame.handleVote(goatBanned.id, sideA.id));
+  const goatFree = goatTable.find(p => p.isAlive && p.id !== goatBanned.id)!;
+  check('while anyone else votes', goatGame.handleVote(goatFree.id, sideA.id));
+
+  // The Stuttering Judge gets one more vote out of an execution.
+  const judgeTable = makePlayers(6);
+  const judgeGame = new GameManager(judgeTable, new RecordingTransport());
+  judgeGame.start([
+    StutteringJudgeRole,
+    WerewolfRole,
+    VillagerRole,
+    VillagerRole,
+    SeerRole,
+    GuardRole,
+  ]);
+  passElection(judgeGame);
+
+  const judge = findRole(judgeGame, judgeTable, 'stuttering-judge')!;
+  const judgeVillagers = judgeTable.filter(p => judgeGame.getRoleOf(p.id)?.id === 'villager');
+  const firstVictim = judgeVillagers[0];
+  const secondVictim = judgeVillagers[1];
+
+  judgeGame.advance();
+  settleSuccession(judgeGame);
+  judgeGame.advance();
+  judgeTable
+    .filter(p => p.isAlive && p.id !== judge.id)
+    .slice(0, 3)
+    .forEach(voter => judgeGame.handleVote(voter.id, firstVictim.id));
+  judgeGame.advance();
+  check('an execution calls the judge', judgeGame.state.currentPhase === 'Judge');
+  check('nobody else may bang the table', !judgeGame.handleJudgeRepeat(firstVictim.id));
+  check('and the judge does', judgeGame.handleJudgeRepeat(judge.id));
+  check(
+    'the second vote is fresh',
+    judgeGame.state.currentPhase === 'Vote' && judgeGame.lastVote === null,
+  );
+
+  judgeTable
+    .filter(p => p.isAlive && p.id !== judge.id)
+    .slice(0, 3)
+    .forEach(voter => judgeGame.handleVote(voter.id, secondVictim.id));
+  judgeGame.advance();
+  settleSuccession(judgeGame);
+  check("both of the day's victims are gone", !firstVictim.isAlive && !secondVictim.isAlive);
+  check('and the night comes after them', judgeGame.state.currentPhase === 'Night');
+  check('the judge is spent', !judgeGame.handleJudgeRepeat(judge.id));
+
+  // A judge who stays silent lets the night come on the first vote alone.
+  const muteTable = makePlayers(5);
+  const muteGame = new GameManager(muteTable, new RecordingTransport());
+  muteGame.start([StutteringJudgeRole, WerewolfRole, VillagerRole, SeerRole, GuardRole]);
+  passElection(muteGame);
+
+  const muteJudge = findRole(muteGame, muteTable, 'stuttering-judge')!;
+  const muteVictim = findRole(muteGame, muteTable, 'villager')!;
+  muteGame.advance();
+  settleSuccession(muteGame);
+  muteGame.advance();
+  muteTable
+    .filter(p => p.isAlive && p.id !== muteJudge.id)
+    .slice(0, 3)
+    .forEach(voter => muteGame.handleVote(voter.id, muteVictim.id));
+  muteGame.advance();
+  check('the judge is asked again', muteGame.state.currentPhase === 'Judge');
+  muteGame.advance();
+  settleSuccession(muteGame);
+  check('silence ends the day', muteGame.state.currentPhase === 'Night' && !muteVictim.isAlive);
+
+  // The Angel takes the game with the first night's bite.
+  const nightAngelTable = makePlayers(5);
+  const nightAngelGame = new GameManager(nightAngelTable, new RecordingTransport());
+  nightAngelGame.start([AngelRole, WerewolfRole, VillagerRole, SeerRole, GuardRole]);
+  passElection(nightAngelGame);
+
+  const nightAngel = findRole(nightAngelGame, nightAngelTable, 'angel')!;
+  const nightWolf = findRole(nightAngelGame, nightAngelTable, 'werewolf')!;
+  check('the first bite lands', nightAngelGame.handleNightAction(nightWolf.id, 'kill', nightAngel.id));
+  nightAngelGame.advance();
+  settleSuccession(nightAngelGame);
+  check('the angel wins on the spot', nightAngelGame.winner === 'Solitary' && !nightAngel.isAlive);
+  check('and the label says so', nightAngelGame.getWinnerLabel() === 'The Angel wins.');
+
+  // And with the first day's vote.
+  const voteAngelTable = makePlayers(5);
+  const voteAngelGame = new GameManager(voteAngelTable, new RecordingTransport());
+  voteAngelGame.start([AngelRole, WerewolfRole, VillagerRole, SeerRole, GuardRole]);
+  passElection(voteAngelGame);
+
+  const voteAngel = findRole(voteAngelGame, voteAngelTable, 'angel')!;
+  voteAngelGame.advance();
+  settleSuccession(voteAngelGame);
+  voteAngelGame.advance();
+  voteAngelTable
+    .filter(p => p.isAlive && p.id !== voteAngel.id)
+    .slice(0, 3)
+    .forEach(voter => voteAngelGame.handleVote(voter.id, voteAngel.id));
+  voteAngelGame.advance();
+  check(
+    'the first vote hands the angel the game',
+    voteAngelGame.winner === 'Solitary' && voteAngelGame.lastVote?.eliminatedId === voteAngel.id,
+  );
+
+  // An angel who lives through it is only a villager, and dies like one.
+  const plainAngelTable = makePlayers(6);
+  const plainAngelGame = new GameManager(plainAngelTable, new RecordingTransport());
+  plainAngelGame.start([
+    AngelRole,
+    WerewolfRole,
+    VillagerRole,
+    VillagerRole,
+    SeerRole,
+    GuardRole,
+  ]);
+  passElection(plainAngelGame);
+
+  const plainAngel = findRole(plainAngelGame, plainAngelTable, 'angel')!;
+  const plainWolf = findRole(plainAngelGame, plainAngelTable, 'werewolf')!;
+  plainAngelGame.advance();
+  settleSuccession(plainAngelGame);
+  plainAngelGame.advance();
+  plainAngelGame.advance();
+  settleSuccession(plainAngelGame);
+  check('the second night comes', plainAngelGame.state.currentPhase === 'Night');
+  check(
+    'the wolf bites in the second night',
+    plainAngelGame.handleNightAction(plainWolf.id, 'kill', plainAngel.id),
+  );
+  plainAngelGame.advance();
+  settleSuccession(plainAngelGame);
+  check('the angel is dead', !plainAngel.isAlive);
+  check('and the game runs on', plainAngelGame.winner === null);
 }
 
 console.log(failures === 0 ? `\nAll checks passed.` : `\n${failures} check(s) failed.`);

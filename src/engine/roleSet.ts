@@ -69,6 +69,14 @@ export interface PlayableRole {
   bearTamer?: boolean;
   // Players carrying the same tag know each other: sisters, brothers.
   alliance?: string;
+  // Voted out, he is unmasked, survives, and never votes again.
+  survivesVote?: boolean;
+  // Pays for a vote that stays tied, and bans tomorrow's voters on his way out.
+  scapegoat?: boolean;
+  // Once per game: one more vote right after an execution.
+  judge?: boolean;
+  // Wins outright by the first night's bite or the first day's vote.
+  angel?: boolean;
 }
 
 export const WerewolfRole: PlayableRole = {
@@ -278,6 +286,42 @@ export const ThiefRole: PlayableRole = {
     'On the first night two spare cards lie face down in front of you. You may keep yours or take one of them, whatever it turns out to be.',
 };
 
+export const ScapegoatRole: PlayableRole = {
+  id: 'scapegoat',
+  name: 'Scapegoat',
+  team: 'Village',
+  description:
+    'When a vote stays tied after the re-vote, you die in the village\'s place. Before you go you may bar players from voting the next day.',
+  scapegoat: true,
+};
+
+export const VillageIdiotRole: PlayableRole = {
+  id: 'village-idiot',
+  name: 'Village Idiot',
+  team: 'Village',
+  description:
+    'The village cannot get rid of you: voted out, you are unmasked and survive, but you never vote again.',
+  survivesVote: true,
+};
+
+export const StutteringJudgeRole: PlayableRole = {
+  id: 'stuttering-judge',
+  name: 'Stuttering Judge',
+  team: 'Village',
+  description:
+    'Once per game, right after an execution, you may demand a second vote before the night falls.',
+  judge: true,
+};
+
+export const AngelRole: PlayableRole = {
+  id: 'angel',
+  name: 'Angel',
+  team: 'Village',
+  description:
+    'You win outright if the first night attack or the first day vote takes you. Survive it and you are a simple villager.',
+  angel: true,
+};
+
 
 export const CupidRole: PlayableRole = {
   id: 'cupid',
@@ -310,6 +354,10 @@ export const ALL_ROLES: PlayableRole[] = [
   WolfDogRole,
   WildChildRole,
   ThiefRole,
+  ScapegoatRole,
+  VillageIdiotRole,
+  StutteringJudgeRole,
+  AngelRole,
 ];
 
 export const getRoleById = (id: string): PlayableRole | undefined =>

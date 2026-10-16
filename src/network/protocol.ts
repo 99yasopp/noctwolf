@@ -24,7 +24,9 @@ export type MessageType =
   | 'TIME_SYNC'
   | 'ALIEN_GUESS'
   | 'ALIEN_RESUME'
-  | 'THIEF_SWAP';
+  | 'THIEF_SWAP'
+  | 'JUDGE_REPEAT'
+  | 'SCAPEGOAT_BAN';
 
 export interface NetworkMessage {
   type: MessageType;
@@ -63,6 +65,8 @@ export interface PhaseUpdatePayload {
   // Set while the Alien still owes the table an answer: the day cannot move on
   // to the vote until he stops guessing.
   dayFrozen?: boolean;
+  // The unmasked idiot and the players a scapegoat barred: no ballot for them.
+  barredVoters?: string[];
 }
 
 export interface RoleAssignPayload {
@@ -80,6 +84,9 @@ export interface RoleAssignPayload {
   guessesRoles?: boolean;
   // The Thief's two spare cards, only while the first night is still open.
   thiefCards?: { id: string; name: string }[];
+  // The scapegoat and the judge are asked to act in their own phases.
+  scapegoat?: boolean;
+  judge?: boolean;
 }
 
 export interface NightActionPayload {

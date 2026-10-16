@@ -112,6 +112,16 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
+      if (message.type === 'JUDGE_REPEAT') {
+        current.handleJudgeRepeat(playerId);
+        return;
+      }
+
+      if (message.type === 'SCAPEGOAT_BAN') {
+        current.handleScapegoatBan(playerId, message.payload?.targetId);
+        return;
+      }
+
       if (message.type === 'STATE_REQUEST') {
         current.sendStateTo(playerId);
       }

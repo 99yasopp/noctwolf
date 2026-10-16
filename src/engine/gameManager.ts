@@ -116,6 +116,19 @@ export class GameManager {
   private thiefCards = new Map<string, PlayableRole[]>();
   // Who each Wild Child is watching.
   private roleModels = new Map<string, string>();
+  // Players who have lost the vote: the unmasked idiot, and whoever a dying
+  // scapegoat barred.
+  private noVote = new Set<string>();
+  private voteBanned = new Set<string>();
+  // The scapegoat who must die when the next advance comes, and the players he
+  // is barring on his way out.
+  private scapegoatPending: string | null = null;
+  private scapegoatBans = new Set<string>();
+  // Judges who already spent their one second vote.
+  private judgeUsed = new Set<string>();
+  // The first vote's deaths, kept while a judge decides whether the day gets
+  // another one, so the mayor and the hunter still get their due.
+  private judgeDeaths: Player[] = [];
   // Who won when 'Solitary' is not the lovers: the announcement text, also
   // carried to the screens.
   private winnerLabel: string | null = null;
@@ -205,6 +218,12 @@ export class GameManager {
     this.girlCaught = false;
     this.thiefCards.clear();
     this.roleModels.clear();
+    this.noVote.clear();
+    this.voteBanned.clear();
+    this.scapegoatPending = null;
+    this.scapegoatBans.clear();
+    this.judgeUsed.clear();
+    this.judgeDeaths = [];
     this.pendingRevenge = null;
     this.revengeChoice = null;
     this.revengeOrigin = null;
@@ -318,6 +337,37 @@ export class GameManager {
         this.resolveSuccession();
         return;
 
+      case 'Scapegoat': {
+        // He pays for the tie now, and the voters he barred keep their ban for
+        // tomorrow's vote.
+        const goat = this.state.players.find(p => p.id === this.scapegoatPending);
+        this.scapegoatPending = null;
+        this.voteBanned = new Set(this.scapegoatBans);
+        this.scapegoatBans.clear();
+
+        const deaths: Player[] = [];
+        if (goat?.isAlive) {
+          goat.isAlive = false;
+          deaths.push(goat);
+          this.applyLoverDeaths(deaths);
+          this.pendingRevenge =
+            deaths.find(
+              dead =>
+                this.assignments.get(dead.id)?.revengeOnDeath &&
+                this.state.players.some(other => other.isAlive),
+            )?.id ?? null;
+          this.announce(`Day ${this.round}: ${goat.name}, the scapegoat, is dead.`);
+        }
+        this.enterAfterDeaths('Vote', deaths);
+        return;
+      }
+
+      case 'Judge':
+        // He said nothing, so the day ends on the vote that already happened.
+        this.enterAfterDeaths('Vote', this.judgeDeaths);
+        this.judgeDeaths = [];
+        return;
+
       default:
         this.setPhase('Night');
     }
@@ -379,6 +429,14 @@ export class GameManager {
         ? `Day ${this.round}: ${deaths.map(p => p.name).join(', ')} did not survive the night.`
         : `Day ${this.round}: nobody died in the night.`,
     );
+
+    // The Angel wanted the first night's attack to be theirs, and takes the
+    // game with it instead of a villager's life.
+    if (this.round === 1 && deaths.some(dead => this.assignments.get(dead.id)?.angel)) {
+      this.winnerLabel = 'The Angel wins.';
+      this.finish('Solitary');
+      return;
+    }
 
     // A bear growls when a wolf is sitting next to its tamer. Nobody is named,
     // but the table hears it.
@@ -795,6 +853,9 @@ export class GameManager {
     const voter = this.state.players.find(p => p.id === voterId);
     if (!voter || !voter.isAlive) return false;
 
+    // The unmasked idiot and the scapegoat's bans have no ballot to cast.
+    if (this.noVote.has(voterId) || this.voteBanned.has(voterId)) return false;
+
     const target = this.state.players.find(p => p.id === targetId);
     if (!target || !target.isAlive) return false;
 
@@ -942,6 +1003,46 @@ export class GameManager {
         .forEach(wolf => this.sendRoleAssign(wolf.id, this.assignments.get(wolf.id)!));
     }
 
+    this.emit({ type: 'changed' });
+    return true;
+  }
+
+  // Once per game the judge bangs the table for one more vote, right after an
+  // execution and before the night falls.
+  handleJudgeRepeat(playerId: string): boolean {
+    if (this.winner) return false;
+    if (this.state.currentPhase !== 'Judge') return false;
+
+    const judge = this.state.players.find(p => p.id === playerId);
+    const role = this.assignments.get(playerId);
+    if (!judge?.isAlive || !role?.judge || this.judgeUsed.has(playerId)) return false;
+    // Only an execution earns a second vote.
+    if (this.judgeDeaths.length === 0) return false;
+
+    this.judgeUsed.add(playerId);
+    this.actionLog.push(`Day ${this.round}: the judge demanded one more vote.`);
+    this.announce(
+      `Day ${this.round}: the judge bangs the table. One more vote, then night falls.`,
+    );
+
+    this.setPhase('Vote');
+    return true;
+  }
+
+  // While he is dying the scapegoat points at players one at a time: each name
+  // may not vote tomorrow. He may point at nobody at all.
+  handleScapegoatBan(playerId: string, targetId: string): boolean {
+    if (this.winner) return false;
+    if (this.state.currentPhase !== 'Scapegoat') return false;
+    if (this.scapegoatPending !== playerId) return false;
+
+    const goat = this.state.players.find(p => p.id === playerId);
+    const target = this.state.players.find(p => p.id === targetId);
+    if (!goat?.isAlive || !target?.isAlive || target.id === playerId) return false;
+    if (this.scapegoatBans.has(targetId)) return false;
+
+    this.scapegoatBans.add(targetId);
+    this.announce(`Day ${this.round}: the scapegoat bars ${target.name} from voting tomorrow.`);
     this.emit({ type: 'changed' });
     return true;
   }
@@ -1125,9 +1226,18 @@ export class GameManager {
   }
 
   // Players who have not voted yet.
+  // Players who hold no ballot: the unmasked idiot, and whoever the last
+  // scapegoat barred. Public: the table heard both announcements.
+  getBarredVoters(): string[] {
+    return [...new Set([...this.noVote, ...this.voteBanned])];
+  }
+
   getPendingVoters(): Player[] {
     if (this.state.currentPhase !== 'Vote') return [];
-    return this.state.players.filter(p => p.isAlive && !this.votes.has(p.id));
+    return this.state.players.filter(
+      p =>
+        p.isAlive && !this.votes.has(p.id) && !this.noVote.has(p.id) && !this.voteBanned.has(p.id),
+    );
   }
 
   hasActed(playerId: string): boolean {
@@ -1231,6 +1341,8 @@ export class GameManager {
       linksLovers: role.linksLovers,
       guessesRoles: role.guessesRoles,
       thiefCards: this.thiefCards.get(playerId)?.map(card => ({ id: card.id, name: card.name })),
+      scapegoat: role.scapegoat,
+      judge: role.judge,
     };
 
     this.transport.sendToPlayer(playerId, {
@@ -1272,6 +1384,7 @@ export class GameManager {
       // from the round number, which the election can throw off.
       quietNight: this.isQuietNight(),
       ...(phase === 'Day' ? { dayFrozen: this.isDayFrozen() } : {}),
+      ...(phase === 'Vote' ? { barredVoters: this.getBarredVoters() } : {}),
       ...extra,
     };
   }
@@ -2294,17 +2407,38 @@ export class GameManager {
     if (topVotes > 0 && !tie) {
       const target = this.state.players.find(p => p.id === leaders[0]);
       if (target) {
-        target.isAlive = false;
-        eliminatedId = target.id;
-        eliminatedName = target.name;
-        deaths.push(target);
-        this.announce(`Day ${this.round}: ${target.name} was voted out.`);
-        this.applyLoverDeaths(deaths);
+        const role = this.assignments.get(target.id);
+        if (role?.survivesVote) {
+          // The village unmasked the idiot. He lives, and never votes again.
+          this.noVote.add(target.id);
+          this.announce(
+            `Day ${this.round}: ${target.name} was voted out and turned out to be the village idiot. He survives, and may never vote again.`,
+          );
+        } else {
+          target.isAlive = false;
+          eliminatedId = target.id;
+          eliminatedName = target.name;
+          deaths.push(target);
+          this.announce(`Day ${this.round}: ${target.name} was voted out.`);
+          this.applyLoverDeaths(deaths);
+        }
       }
     } else if (topVotes > 0) {
-      this.announce(
-        `Day ${this.round}: the vote was tied again, nobody was eliminated.`,
+      const goat = this.state.players.find(
+        p => p.isAlive && this.assignments.get(p.id)?.scapegoat,
       );
+      if (goat) {
+        // The tie is nobody's fault, and the scapegoat pays for it: he dies
+        // when the host moves the phase on, after naming tomorrow's voters.
+        this.scapegoatPending = goat.id;
+        this.announce(
+          `Day ${this.round}: the vote was tied again. ${goat.name} was the scapegoat, and pays for it.`,
+        );
+      } else {
+        this.announce(
+          `Day ${this.round}: the vote was tied again, nobody was eliminated.`,
+        );
+      }
     } else {
       this.announce(`Day ${this.round}: nobody voted.`);
     }
@@ -2321,6 +2455,8 @@ export class GameManager {
 
     // The raven's votes were for this vote and the re-votes it took to settle.
     this.ravenTarget = null;
+    // So were the scapegoat's bans: the next day's voters start clean.
+    this.voteBanned.clear();
 
     this.transport.broadcast({
       type: 'VOTE_RESULT',
@@ -2328,17 +2464,48 @@ export class GameManager {
       timestamp: Date.now(),
     });
 
-    this.pendingRevenge =
-      deaths.find(
-        dead =>
-          this.assignments.get(dead.id)?.revengeOnDeath &&
-          this.state.players.some(other => other.isAlive),
-      )?.id ?? null;
+    // A hunter from an earlier vote of the same day keeps his shot.
+    if (!this.pendingRevenge) {
+      this.pendingRevenge =
+        deaths.find(
+          dead =>
+            this.assignments.get(dead.id)?.revengeOnDeath &&
+            this.state.players.some(other => other.isAlive),
+        )?.id ?? null;
+    }
 
     this.emit({ type: 'changed' });
 
+    // The Angel wanted the first vote to be theirs, and takes the game with it.
+    if (this.round === 1 && deaths.some(dead => this.assignments.get(dead.id)?.angel)) {
+      this.winnerLabel = 'The Angel wins.';
+      this.finish('Solitary');
+      return;
+    }
+
+    // The scapegoat's turn to act comes before the night.
+    if (this.scapegoatPending) {
+      this.setPhase('Scapegoat');
+      return;
+    }
+
+    // This vote's deaths and any earlier one from the same day, so the judge's
+    // second vote does not bury the mayor or the hunter of the first.
+    const allDeaths = [...this.judgeDeaths, ...deaths];
+    this.judgeDeaths = [];
+
+    // The judge may force one more vote before the day is over.
+    const judge = this.state.players.find(
+      p => p.isAlive && this.assignments.get(p.id)?.judge && !this.judgeUsed.has(p.id),
+    );
+    if (allDeaths.length > 0 && judge) {
+      this.judgeDeaths = allDeaths;
+      this.setPhase('Judge');
+      return;
+    }
+
     // The hunter may still owe a shot before the round can close.
-    this.enterAfterDeaths('Vote', deaths);
+    this.enterAfterDeaths('Vote', allDeaths);
   }
 
   // The players the current re-vote is limited to, or an empty list.

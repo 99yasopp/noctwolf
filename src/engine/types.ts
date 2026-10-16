@@ -6,7 +6,11 @@ export type Phase =
   | 'Debate'
   | 'Election'
   // The dying mayor names the player who takes the double vote.
-  | 'Succession';
+  | 'Succession'
+  // The scapegoat pays for a tied vote and bans the voters of tomorrow.
+  | 'Scapegoat'
+  // The stuttering judge decides whether the day gets one more vote.
+  | 'Judge';
 
 export type Team = 'Village' | 'Wolf' | 'Solitary';
 

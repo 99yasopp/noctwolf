@@ -20,6 +20,9 @@ export interface OwnRole {
   guessesRoles?: boolean;
   // The Thief's two spare cards, only while the first night is open.
   thiefCards?: { id: string; name: string }[];
+  // The phases where this card is asked for something of its own.
+  scapegoat?: boolean;
+  judge?: boolean;
 }
 
 export interface ActionTarget {
@@ -54,6 +57,8 @@ interface Props {
   successionMayorId?: string | null;
   // The Alien still owes an answer, so the day cannot reach its vote.
   dayFrozen?: boolean;
+  // Who holds no ballot this vote: the unmasked idiot, the barred players.
+  barredVoters?: string[];
   // `roleId` rides along for the Alien's guess: he names a role, not a player.
   onChoose: (actionId: string, targetId: string, roleId?: string) => void;
 }
@@ -95,6 +100,7 @@ export const ActionPanel: React.FC<Props> = ({
   mayorCandidates = [],
   successionMayorId = null,
   dayFrozen = false,
+  barredVoters = [],
   onChoose,
 }) => {
   // The Alien points at a player first, then at a role.
@@ -319,6 +325,18 @@ export const ActionPanel: React.FC<Props> = ({
 
   if (phase === 'Vote') {
     const voted = submitted.includes('vote');
+
+    if (barredVoters.includes(selfId)) {
+      return (
+        <View style={styles.panel}>
+          <Text style={styles.heading}>You may not vote</Text>
+          <Text style={styles.body}>
+            The table took your ballot. Watch the vote, and say nothing.
+          </Text>
+        </View>
+      );
+    }
+
     const onBallot =
       candidates && candidates.length > 0
         ? alive.filter(target => candidates.includes(target.id))
@@ -340,6 +358,62 @@ export const ActionPanel: React.FC<Props> = ({
               variant="secondary"
             />
           ))
+        )}
+      </View>
+    );
+  }
+
+  // The scapegoat pays for a vote that stayed tied, and bans tomorrow's
+  // voters on his way out.
+  if (phase === 'Scapegoat') {
+    return (
+      <View style={styles.panel}>
+        <Text style={styles.heading}>
+          {role.scapegoat ? 'You are the scapegoat' : 'The scapegoat pays for the tie'}
+        </Text>
+        {role.scapegoat ? (
+          <>
+            <Text style={styles.body}>
+              You die for the tied vote. Point at the players who may not vote
+              tomorrow, as many as you like, or at nobody. Then let the host
+              move the day on.
+            </Text>
+            {alive
+              .filter(target => target.id !== selfId)
+              .map(target => (
+                <BaseButton
+                  key={target.id}
+                  title={`${target.name} may not vote`}
+                  onPress={() => onChoose('scapegoatBan', target.id)}
+                  variant="secondary"
+                />
+              ))}
+          </>
+        ) : (
+          <Text style={styles.body}>
+            The vote was tied again and he dies for it. He is choosing who may
+            not vote tomorrow.
+          </Text>
+        )}
+      </View>
+    );
+  }
+
+  // One more vote, once per game, when the judge says so.
+  if (phase === 'Judge') {
+    return (
+      <View style={styles.panel}>
+        <Text style={styles.heading}>The judge may demand one more vote</Text>
+        {role.judge ? (
+          <>
+            <Text style={styles.body}>
+              Once per game, right after an execution: one more vote before the
+              night falls.
+            </Text>
+            <BaseButton title="One more vote" onPress={() => onChoose('judgeRepeat', '')} />
+          </>
+        ) : (
+          <Text style={styles.body}>Wait for the judge's word.</Text>
         )}
       </View>
     );

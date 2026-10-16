@@ -93,6 +93,8 @@ export const NarratorDashboard = () => {
         linksLovers: role.linksLovers,
         guessesRoles: role.guessesRoles,
         thiefCards: manager.getThiefCards(localPlayer.id),
+        scapegoat: role.scapegoat,
+        judge: role.judge,
         allies:
           role.team === 'Wolf'
             ? players
@@ -168,6 +170,10 @@ export const NarratorDashboard = () => {
     ? 'Start the vote for mayor'
     : phase === 'Succession'
     ? 'Carry out the succession'
+    : phase === 'Scapegoat'
+    ? 'The scapegoat dies → night'
+    : phase === 'Judge'
+    ? 'No second vote → night'
     : phase === 'Night'
     ? manager.isWakingTheWitchNext()
       ? 'Wake the witch'
@@ -194,6 +200,10 @@ export const NarratorDashboard = () => {
         ? manager.handleThiefSwap(localPlayer.id, targetId)
         : actionId === 'thiefKeep'
         ? manager.handleThiefSwap(localPlayer.id, null)
+        : actionId === 'judgeRepeat'
+        ? manager.handleJudgeRepeat(localPlayer.id)
+        : actionId === 'scapegoatBan'
+        ? manager.handleScapegoatBan(localPlayer.id, targetId)
         : actionId === 'vote'
         ? manager.handleVote(localPlayer.id, targetId)
         : actionId === 'mayor-vote'
@@ -401,6 +411,7 @@ export const NarratorDashboard = () => {
         gameOver={!!manager.winner}
         quietNight={manager.isQuietNight()}
         dayFrozen={manager.isDayFrozen()}
+        barredVoters={manager.getBarredVoters()}
         selfAlive={localPlayer.isAlive}
         nightStage={manager.getNightStage()}
         victim={manager.getHealTarget()}

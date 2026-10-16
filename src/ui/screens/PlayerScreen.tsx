@@ -42,6 +42,7 @@ export const PlayerScreen = () => {
   const [quietNight, setQuietNight] = useState(false);
   // The Alien still owes the table an answer, so the day cannot reach its vote.
   const [dayFrozen, setDayFrozen] = useState(false);
+  const [barredVoters, setBarredVoters] = useState<string[]>([]);
   // Whether the role card is covered, for when phones are handed around.
   const [roleHidden, setRoleHidden] = useState(false);
   // The public story of the game, built from what the host already tells us.
@@ -93,6 +94,7 @@ export const PlayerScreen = () => {
           setSuccessionMayorId(payload.successionMayorId ?? null);
           setQuietNight(!!payload.quietNight);
           setDayFrozen(!!payload.dayFrozen);
+          setBarredVoters(payload.barredVoters ?? []);
           if (payload.electionStage) setElectionStage(payload.electionStage);
           if (phaseChanged) {
             // Submissions and the phase clock belong to the phase that just
@@ -262,6 +264,8 @@ export const PlayerScreen = () => {
         linksLovers: role.linksLovers,
         guessesRoles: role.guessesRoles,
         thiefCards: role.thiefCards,
+        scapegoat: role.scapegoat,
+        judge: role.judge,
         allies: role.allies ?? [],
       }
     : null;
@@ -295,6 +299,20 @@ export const PlayerScreen = () => {
       client.sendMessage({
         type: 'THIEF_SWAP',
         payload: { roleId: null },
+        senderId: localPlayer.id,
+        timestamp: Date.now(),
+      });
+    } else if (actionId === 'judgeRepeat') {
+      client.sendMessage({
+        type: 'JUDGE_REPEAT',
+        payload: {},
+        senderId: localPlayer.id,
+        timestamp: Date.now(),
+      });
+    } else if (actionId === 'scapegoatBan') {
+      client.sendMessage({
+        type: 'SCAPEGOAT_BAN',
+        payload: { targetId },
         senderId: localPlayer.id,
         timestamp: Date.now(),
       });
@@ -491,6 +509,7 @@ export const PlayerScreen = () => {
           mayorCandidates={mayorCandidates}
           successionMayorId={successionMayorId}
           dayFrozen={dayFrozen}
+          barredVoters={barredVoters}
           onChoose={submit}
         />
       )}
