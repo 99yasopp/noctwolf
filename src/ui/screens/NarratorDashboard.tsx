@@ -12,6 +12,10 @@ export const NarratorDashboard = () => {
   const [, forceRender] = useState(0);
   const [secrets, setSecrets] = useState<string[]>([]);
   const [submitted, setSubmitted] = useState<string[]>([]);
+  // The narrator view prints every role and every secret on this screen, so a
+  // host who is playing the game has to ask for it on purpose.
+  const [narratorView, setNarratorView] = useState(false);
+  const [confirmingNarrator, setConfirmingNarrator] = useState(false);
 
   useEffect(() => {
     if (!manager || !localPlayer) return;
@@ -31,6 +35,10 @@ export const NarratorDashboard = () => {
   // would otherwise open with the notes from the game before.
   useEffect(() => {
     setSecrets([]);
+    // A host who opened the narrator view once does not stay in it for the
+    // next game.
+    setNarratorView(false);
+    setConfirmingNarrator(false);
   }, [gameId]);
 
   // Roster changes (a guest joining, dropping or being removed) are not game
@@ -61,6 +69,14 @@ export const NarratorDashboard = () => {
 
   const players = manager.state.players;
   const role = manager.getRoleOf(localPlayer.id);
+
+  // A table with test players in the seats is a test game: there is nothing to
+  // keep from the host, because he is the only real player in it.
+  const isTestGame = players.some(player => player.isBot);
+  const seeEverything = isTestGame || narratorView;
+  // The pack's aim is the host's business when he is in the pack, and nobody
+  // else's.
+  const hostIsWolf = role?.team === 'Wolf';
 
   const ownRole: OwnRole | null = role
     ? {
@@ -167,14 +183,34 @@ export const NarratorDashboard = () => {
         ? manager.handleSuccession(localPlayer.id, targetId)
         : actionId === 'revenge'
         ? manager.handleRevenge(localPlayer.id, targetId)
+        : actionId === 'pass'
+        ? manager.passNightAction(localPlayer.id, targetId)
         : manager.handleNightAction(localPlayer.id, actionId, targetId);
 
-    if (ok) setSubmitted(prev => [...prev, actionId]);
+    if (ok) setSubmitted(prev => [...prev, actionId === 'pass' ? targetId : actionId]);
   };
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.header}>Narrator Dashboard</Text>
+
+      {isTestGame && (
+        <View style={styles.testBanner}>
+          <Text style={styles.bannerText}>
+            TEST GAME — roles visible. The seats filled by test players are not
+            real players, so nothing here has to be hidden from the table.
+          </Text>
+        </View>
+      )}
+
+      {!isTestGame && narratorView && (
+        <View style={styles.godBanner}>
+          <Text style={styles.bannerText}>
+            NARRATOR VIEW — every role and every secret is printed on this
+            screen. Only open it while the phone is out of the table's sight.
+          </Text>
+        </View>
+      )}
 
       {/* The host plays too, so his own role must be as visible to him as a
           guest's role card is to a guest. */}
@@ -205,25 +241,34 @@ export const NarratorDashboard = () => {
         )}
         <Text style={styles.statusText}>You are: {localPlayer.name}</Text>
 
+        {/* The host plays too: a blind host is told how many players still
+            have to act, not which ones. */}
         {pendingActors.length > 0 && (
           <Text style={styles.pending}>
-            Waiting on night actions: {pendingActors.map(p => p.name).join(', ')}
+            {seeEverything
+              ? `Waiting on night actions: ${pendingActors.map(p => p.name).join(', ')}`
+              : `${pendingActors.length} player${pendingActors.length > 1 ? 's' : ''} still to act tonight.`}
           </Text>
         )}
         {pendingVoters.length > 0 && (
           <Text style={styles.pending}>
-            Waiting on votes: {pendingVoters.map(p => p.name).join(', ')}
+            {seeEverything
+              ? `Waiting on votes: ${pendingVoters.map(p => p.name).join(', ')}`
+              : `${pendingVoters.length} player${pendingVoters.length > 1 ? 's' : ''} still to vote.`}
           </Text>
         )}
         {pendingHunter && (
           <Text style={styles.pending}>
-            {pendingHunter.name} is choosing who to take down.
+            {seeEverything
+              ? `${pendingHunter.name} is choosing who to take down.`
+              : 'A dying player is choosing who to take down.'}
           </Text>
         )}
 
-        {/* Wolves hunt as a pack, and the engine settles the bite by a majority
-            of their picks: the host needs to see the picks to relay them. */}
-        {phase === 'Night' && packPicks.length > 0 && (
+        {/* Wolves hunt as a pack, and the engine settles the bite by a
+            majority of their picks: a host who is in the pack sees them, and
+            a narrator sees everything. Nobody else does. */}
+        {phase === 'Night' && (hostIsWolf || seeEverything) && packPicks.length > 0 && (
           <Text style={styles.pending}>
             The pack is aiming at: {packPicks.join(', ')}
           </Text>
@@ -290,11 +335,14 @@ export const NarratorDashboard = () => {
                 {entry.name}: {entry.count}
               </Text>
             ))}
-          {manager.lastVote.ballots?.map(ballot => (
-            <Text key={ballot.voterId} style={styles.ballotText}>
-              {ballot.voterName} → {ballot.targetName}
-            </Text>
-          ))}
+          {/* Who voted for whom is the narrator's detail; the tally is what
+              the table hears. */}
+          {seeEverything &&
+            manager.lastVote.ballots?.map(ballot => (
+              <Text key={ballot.voterId} style={styles.ballotText}>
+                {ballot.voterName} → {ballot.targetName}
+              </Text>
+            ))}
         </View>
       )}
 
@@ -351,9 +399,16 @@ export const NarratorDashboard = () => {
                 {player.id === localPlayer.id ? ' (you)' : ''}
                 {player.isBot ? ' [bot]' : ''}
               </Text>
+              {/* A blind host sees who is alive and who has voted, nothing
+                  more: the roles belong to the narrator view. */}
               <Text style={styles.playerRole}>
-                {manager.getRoleOf(player.id)?.name ?? 'unknown'}
-                {player.isAlive ? '' : ' — dead'}
+                {seeEverything
+                  ? `${manager.getRoleOf(player.id)?.name ?? 'unknown'}${
+                      player.isAlive ? '' : ' — dead'
+                    }`
+                  : player.isAlive
+                  ? 'alive'
+                  : 'dead'}
                 {dropped ? ' — no connection' : ''}
                 {manager.state.currentPhase === 'Vote' && player.isAlive && manager.hasVoted(player.id)
                   ? ' — voted'
@@ -375,7 +430,15 @@ export const NarratorDashboard = () => {
       })}
 
       <Text style={styles.subHeader}>Log</Text>
-      {manager.actionLog.map((entry, index) => (
+      {isTestGame && (
+        <Text style={styles.hint}>Everything the narrator saw, test game or not.</Text>
+      )}
+      {!isTestGame && !narratorView && (
+        <Text style={styles.hint}>
+          What the table has been told so far. The narrator view has the rest.
+        </Text>
+      )}
+      {(seeEverything ? manager.actionLog : manager.getPublicLog()).map((entry, index) => (
         <Text key={index} style={styles.logText}>
           {entry}
         </Text>
@@ -385,6 +448,42 @@ export const NarratorDashboard = () => {
         Guests connected: {guests.length - droppedGuests} / {guests.length}
         {droppedGuests > 0 ? ' — a dropped guest keeps their seat and can rejoin' : ''}
       </Text>
+
+      {!isTestGame &&
+        (narratorView ? (
+          <BaseButton
+            title="Hide the narrator view"
+            variant="secondary"
+            onPress={() => setNarratorView(false)}
+          />
+        ) : confirmingNarrator ? (
+          <>
+            <Text style={styles.hint}>
+              The narrator view prints every player's role, the pack's aim and
+              the secret half of the log on this screen. Only open it while the
+              phone is out of the table's sight.
+            </Text>
+            <BaseButton
+              title="Yes — show every role"
+              variant="danger"
+              onPress={() => {
+                setNarratorView(true);
+                setConfirmingNarrator(false);
+              }}
+            />
+            <BaseButton
+              title="Cancel"
+              variant="secondary"
+              onPress={() => setConfirmingNarrator(false)}
+            />
+          </>
+        ) : (
+          <BaseButton
+            title="Narrator view"
+            variant="secondary"
+            onPress={() => setConfirmingNarrator(true)}
+          />
+        ))}
 
       <BaseButton title="Back to Lobby" onPress={returnToLobby} variant="danger" />
     </ScrollView>
@@ -554,6 +653,23 @@ const styles = StyleSheet.create({
   logText: {
     color: '#888',
     fontSize: 14,
+  },
+  testBanner: {
+    backgroundColor: '#1F3A2A',
+    padding: theme.spacing.medium,
+    borderRadius: theme.borderRadius,
+    marginBottom: theme.spacing.medium,
+  },
+  godBanner: {
+    backgroundColor: '#3A1E1E',
+    padding: theme.spacing.medium,
+    borderRadius: theme.borderRadius,
+    marginBottom: theme.spacing.medium,
+  },
+  bannerText: {
+    color: theme.colors.text,
+    fontSize: 14,
+    textAlign: 'center',
   },
   hint: {
     color: '#888',

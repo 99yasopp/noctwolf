@@ -37,6 +37,9 @@ export const PlayerScreen = () => {
   const [mayorCandidates, setMayorCandidates] = useState<{ id: string; name: string }[]>([]);
   const [mayorId, setMayorId] = useState<string | null>(null);
   const [successionMayorId, setSuccessionMayorId] = useState<string | null>(null);
+  // The engine decides which nights are peaceful; the round number alone would
+  // lie as soon as the election runs late or a rematch re-deals.
+  const [quietNight, setQuietNight] = useState(false);
   // Whether the role card is covered, for when phones are handed around.
   const [roleHidden, setRoleHidden] = useState(false);
   // The public story of the game, built from what the host already tells us.
@@ -80,6 +83,7 @@ export const PlayerScreen = () => {
           setMayorCandidates(payload.mayorCandidates ?? []);
           setMayorId(payload.mayorId ?? null);
           setSuccessionMayorId(payload.successionMayorId ?? null);
+          setQuietNight(!!payload.quietNight);
           if (payload.electionStage) setElectionStage(payload.electionStage);
           setSubmitted([]);
           if (payload.phase === 'Debate') {
@@ -291,6 +295,15 @@ export const PlayerScreen = () => {
         senderId: localPlayer.id,
         timestamp: Date.now(),
       });
+    } else if (actionId === 'pass') {
+      // A declined potion is a decision the host has to see, or he keeps
+      // waiting on a player who is done. The option id rides in targetId.
+      client.sendMessage({
+        type: 'NIGHT_PASS',
+        payload: { action: targetId },
+        senderId: localPlayer.id,
+        timestamp: Date.now(),
+      });
     } else {
       client.sendMessage({
         type: 'NIGHT_ACTION',
@@ -300,7 +313,7 @@ export const PlayerScreen = () => {
       });
     }
 
-    setSubmitted(prev => [...prev, actionId]);
+    setSubmitted(prev => [...prev, actionId === 'pass' ? targetId : actionId]);
   };
 
   return (
@@ -374,6 +387,12 @@ export const PlayerScreen = () => {
           <Text style={styles.statusText}>
             Phase: {phase} (round {round})
           </Text>
+          {mayorId && (
+            <Text style={styles.statusText}>
+              Mayor:{' '}
+              {roster.find(entry => entry.id === mayorId)?.name ?? 'a player'} (double vote)
+            </Text>
+          )}
           {clock && (
             <Text style={styles.timerText}>
               {formatRemaining(clock.remainingMs - (tickNow - clock.receivedAt))} left
@@ -429,7 +448,7 @@ export const PlayerScreen = () => {
           targets={roster}
           submitted={submitted}
           gameOver={!!outcome}
-          quietNight={round === 1}
+          quietNight={quietNight}
           selfAlive={roster.find(entry => entry.id === localPlayer?.id)?.isAlive ?? true}
           candidates={voteResult?.revote ? voteResult.candidates?.map(c => c.id) : undefined}
           nightStage={nightStage}

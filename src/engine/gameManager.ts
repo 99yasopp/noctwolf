@@ -68,7 +68,12 @@ export class GameManager {
   public round: number = 1;
   public winner: Team | null = null;
   public lastVote: VoteResultPayload | null = null;
+  // What happened, in the order it happened. The narrator reads this, secrets
+  // and all.
   public actionLog: string[] = [];
+  // The part of it the whole table was told: deaths in the morning, votes,
+  // elections. A host who is playing the game sees only this.
+  private publicLog: { message: string; phase: Phase; round: number }[] = [];
 
   private transport: GameTransport;
   private roles: Role[] = [];
@@ -130,6 +135,16 @@ export class GameManager {
     };
   }
 
+  // A line the whole table hears, so it belongs in the public log too.
+  private announce(message: string) {
+    this.publicLog.push({
+      message,
+      phase: this.state.currentPhase,
+      round: this.round,
+    });
+    this.actionLog.push(message);
+  }
+
   private emit(event: GameEvent) {
     this.listeners.forEach(listener => listener(event));
   }
@@ -169,6 +184,7 @@ export class GameManager {
     this.successionDeaths = [];
     this.state.presidentManager.reset(this.state.players);
     this.actionLog = [];
+    this.publicLog = [];
     this.lastVote = null;
     this.round = 1;
     this.winner = null;
@@ -188,9 +204,9 @@ export class GameManager {
       if (role) this.sendRoleAssign(player.id, role);
     });
 
-    this.actionLog.push(`${players.length} players were dealt their roles.`);
+    this.announce(`${players.length} players were dealt their roles.`);
     // The mayor is chosen before the first night, and a wolf may win the seat.
-    this.actionLog.push('The table elects a mayor before the first night.');
+    this.announce('The table elects a mayor before the first night.');
     this.setPhase('Election');
   }
 
@@ -287,6 +303,13 @@ export class GameManager {
 
   private enterDay(deaths: Player[]) {
     this.setPhase('Day', { deaths: this.toRefs(deaths) });
+
+    // The table is told who died, not how: the cause is the narrator's detail.
+    this.announce(
+      deaths.length > 0
+        ? `Day ${this.round}: ${deaths.map(p => p.name).join(', ')} did not survive the night.`
+        : `Day ${this.round}: nobody died in the night.`,
+    );
 
     const winner = this.checkWin();
     if (winner) this.finish(winner);
@@ -514,7 +537,7 @@ export class GameManager {
           successor.id,
           this.state.players,
         );
-        this.actionLog.push(`${successor.name} takes the mayor's seat.`);
+        this.announce(`${successor.name} takes the mayor's seat.`);
 
         this.transport.broadcast({
           type: 'MAYOR_ELECTED',
@@ -527,7 +550,7 @@ export class GameManager {
       const mayor = this.state.players.find(p => p.id === dyingMayorId);
       if (mayor) mayor.voteWeight = 1;
 
-      this.actionLog.push('The mayor died without naming anyone: the seat stays empty.');
+      this.announce('The mayor died without naming anyone: the seat stays empty.');
       // No successor means nobody wears the double vote until a new election.
       this.state.presidentManager.clearPresident(this.state.players);
     }
@@ -623,6 +646,16 @@ export class GameManager {
   hasChargeLeft(playerId: string, actionId: string): boolean {
     const left = this.getChargesLeft(playerId, actionId);
     return left === null || left > 0;
+  }
+
+  // What the table already knows. A death written during the night is only
+  // announced in the morning, so it is left out until then.
+  getPublicLog(): string[] {
+    const hiddenNight = this.state.currentPhase === 'Night' ? this.round : null;
+
+    return this.publicLog
+      .filter(entry => !(entry.phase === 'Night' && entry.round === hiddenNight))
+      .map(entry => entry.message);
   }
 
   // The rules this table was started with.
@@ -785,6 +818,16 @@ export class GameManager {
     });
   }
 
+  // The election is public and its own broadcasts go out between phases, so
+  // they share this one sender with setPhase.
+  private broadcastPhase(extra: Partial<PhaseUpdatePayload> = {}) {
+    this.transport.broadcast({
+      type: 'PHASE_UPDATE',
+      payload: this.buildPhasePayload(extra),
+      timestamp: Date.now(),
+    });
+  }
+
   private buildPhasePayload(extra: Partial<PhaseUpdatePayload> = {}): PhaseUpdatePayload {
     const phase = this.state.currentPhase;
 
@@ -803,6 +846,9 @@ export class GameManager {
           }
         : { mayorId: this.state.presidentManager.getPresidentId() }),
       ...(phase === 'Succession' ? { successionMayorId: this.pendingSuccession } : {}),
+      // The panels must be able to say "Night 1 is peaceful" without guessing
+      // from the round number, which the election can throw off.
+      quietNight: this.isQuietNight(),
       ...extra,
     };
   }
@@ -894,11 +940,7 @@ export class GameManager {
     // Any phase change retires the clock: the next phase needs its own.
     this.timer = null;
 
-    this.transport.broadcast({
-      type: 'PHASE_UPDATE',
-      payload: this.buildPhasePayload(extra),
-      timestamp: Date.now(),
-    });
+    this.broadcastPhase(extra);
 
     // Night falls in the first stage; the witch is woken from advance().
     if (phase === 'Night') this.broadcastNightStage();
@@ -1076,7 +1118,7 @@ export class GameManager {
     const bond = link as { sourceId: string; targetId: string } | null;
 
     if (this.isQuietNight()) {
-      this.actionLog.push('Night 1 was peaceful: the wolves only looked around.');
+      this.announce('Night 1 was peaceful: the wolves only looked around.');
     } else if (biteTarget) {
       const target = this.state.players.find(p => p.id === biteTarget);
       if (target?.isAlive) {
@@ -1187,11 +1229,11 @@ export class GameManager {
       if (target?.isAlive) {
         target.isAlive = false;
         deaths.push(target);
-        this.actionLog.push(`${hunter?.name ?? 'The Hunter'} took ${target.name} down.`);
+        this.announce(`${hunter?.name ?? 'The Hunter'} took ${target.name} down.`);
         this.applyLoverDeaths(deaths);
       }
     } else if (hunter) {
-      this.actionLog.push(`${hunter.name} took nobody down.`);
+      this.announce(`${hunter.name} took nobody down.`);
     }
 
     this.pendingRevenge = null;
@@ -1214,6 +1256,8 @@ export class GameManager {
     if (this.mayorVolunteers.length >= 3) return false;
 
     this.mayorVolunteers.push(playerId);
+    // The nomination list is public: every device redraws it as names come in.
+    this.broadcastPhase();
     this.emit({ type: 'changed' });
     return true;
   }
@@ -1291,7 +1335,7 @@ export class GameManager {
 
     this.state.presidentManager.startElection(this.state.players, 3, standing);
 
-    this.actionLog.push(
+    this.announce(
       `The candidates are ${this.getMayorCandidates().map(candidate => candidate.name).join(', ')}.`,
     );
 
@@ -1303,6 +1347,10 @@ export class GameManager {
   }
 
   private resolveMayorVote() {
+    // The ballots are being counted, so the clock that was running for them is
+    // over. Without this a re-vote would inherit a clock already past due.
+    this.timer = null;
+
     const candidates = this.getElectionList().map(candidate => candidate.id);
     const tally = new Map<string, number>();
     const ballots: VoteBallot[] = [];
@@ -1353,11 +1401,14 @@ export class GameManager {
       };
 
       this.lastVote = redo;
-      this.actionLog.push(
+      this.announce(
         `The mayor vote is tied between ${leaders.map(nameOf).join(' and ')}. They vote again.`,
       );
 
       this.transport.broadcast({ type: 'VOTE_RESULT', payload: redo, timestamp: Date.now() });
+      // The re-vote has a shorter ballot, and every guest's panel has to show
+      // the tied few and let them vote again.
+      this.broadcastPhase();
       this.autoPlayBots();
       this.emit({ type: 'changed' });
       return;
@@ -1380,7 +1431,7 @@ export class GameManager {
       this.state.presidentManager.setPresident(winnerId, this.state.players);
 
       const mayor = this.state.players.find(p => p.id === winnerId);
-      this.actionLog.push(`${mayor?.name} was elected mayor.`);
+      this.announce(`${mayor?.name} was elected mayor.`);
 
       this.transport.broadcast({
         type: 'MAYOR_ELECTED',
@@ -1388,7 +1439,7 @@ export class GameManager {
         timestamp: Date.now(),
       });
     } else {
-      this.actionLog.push('The table could not agree on a mayor. The night begins without one.');
+      this.announce('The table could not agree on a mayor. The night begins without one.');
     }
 
     this.emit({ type: 'changed' });
@@ -1465,7 +1516,7 @@ export class GameManager {
       };
 
       this.lastVote = redo;
-      this.actionLog.push(
+      this.announce(
         `Day ${this.round}: the vote was tied between ${candidates
           .map(candidate => candidate.name)
           .join(' and ')}. They vote again.`,
@@ -1496,15 +1547,15 @@ export class GameManager {
         eliminatedId = target.id;
         eliminatedName = target.name;
         deaths.push(target);
-        this.actionLog.push(`Day ${this.round}: ${target.name} was voted out.`);
+        this.announce(`Day ${this.round}: ${target.name} was voted out.`);
         this.applyLoverDeaths(deaths);
       }
     } else if (topVotes > 0) {
-      this.actionLog.push(
+      this.announce(
         `Day ${this.round}: the vote was tied again, nobody was eliminated.`,
       );
     } else {
-      this.actionLog.push(`Day ${this.round}: nobody voted.`);
+      this.announce(`Day ${this.round}: nobody voted.`);
     }
 
     const result: VoteResultPayload = {
@@ -1620,7 +1671,7 @@ export class GameManager {
 
   private finish(winner: Team) {
     this.winner = winner;
-    this.actionLog.push(
+    this.announce(
       winner === 'Wolf'
         ? 'The Werewolves win.'
         : winner === 'Solitary'

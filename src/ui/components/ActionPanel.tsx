@@ -316,23 +316,37 @@ export const ActionPanel: React.FC<Props> = ({
                   : 'No valid targets.'}
               </Text>
             ) : (
-              candidates.map(target => (
-                <BaseButton
-                  key={target.id}
-                  title={
-                    option.kind === 'heal' ? `Save ${target.name}` : target.name
-                  }
-                  onPress={() => onChoose(option.id, target.id)}
-                  variant="secondary"
-                />
-              ))
+              <>
+                {candidates.map(target => (
+                  <BaseButton
+                    key={target.id}
+                    title={
+                      option.kind === 'heal' ? `Save ${target.name}` : target.name
+                    }
+                    onPress={() => onChoose(option.id, target.id)}
+                    variant="secondary"
+                  />
+                ))}
+                {nightStage === 2 && (
+                  <BaseButton
+                    title={
+                      option.kind === 'heal' || option.kind === 'poison'
+                        ? 'Keep the potion'
+                        : 'Keep it'
+                    }
+                    onPress={() => onChoose('pass', option.id)}
+                    variant="secondary"
+                  />
+                )}
+              </>
             )}
           </View>
         );
       })}
       {nightStage === 2 && (
         <Text style={styles.body}>
-          Keeping a potion is a choice too: the host moves on when you say so.
+          Keeping a potion is a choice too. Press "Keep the potion" so the host
+          can move on.
         </Text>
       )}
     </View>

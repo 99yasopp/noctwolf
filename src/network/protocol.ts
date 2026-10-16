@@ -16,6 +16,7 @@ export type MessageType =
   | 'SEAT_TOKEN'
   | 'REVENGE'
   | 'NIGHT_STAGE'
+  | 'NIGHT_PASS'
   | 'MAYOR_VOLUNTEER'
   | 'MAYOR_VOTE'
   | 'SUCCESSION'
@@ -53,6 +54,9 @@ export interface PhaseUpdatePayload {
   mayorId?: string | null;
   // Set while the table waits for the dying mayor to name a successor.
   successionMayorId?: string | null;
+  // True in the night that follows an election with too few players to feed:
+  // the wolves only look around, and the panels must not offer an attack.
+  quietNight?: boolean;
 }
 
 export interface RoleAssignPayload {
@@ -71,6 +75,11 @@ export interface RoleAssignPayload {
 export interface NightActionPayload {
   action: string;
   targetId: string;
+}
+
+// Declining a night action to its face. The action id is all the host needs.
+export interface NightPassPayload {
+  action: string;
 }
 
 export interface VoteCastPayload {

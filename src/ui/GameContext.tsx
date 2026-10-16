@@ -57,6 +57,11 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
+      if (message.type === 'NIGHT_PASS') {
+        current.passNightAction(playerId, message.payload?.action);
+        return;
+      }
+
       if (message.type === 'VOTE_CAST') {
         current.handleVote(playerId, message.payload?.targetId);
         return;

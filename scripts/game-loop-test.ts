@@ -33,7 +33,7 @@ import {
 import { ALLOWED_ACTIONS as VALIDATED_ACTIONS } from '../src/engine/roleGenerator';
 import { GameTransport } from '../src/engine/transport';
 import { Player } from '../src/engine/types';
-import { NetworkMessage } from '../src/network/protocol';
+import { NetworkMessage, PhaseUpdatePayload } from '../src/network/protocol';
 
 let failures = 0;
 
@@ -1490,6 +1490,219 @@ console.log('\n26c. the house rules reach the night');
   check(
     'while anybody else is fine',
     strict.handleNightAction(strictGuard.id, 'protect', strictSeer.id),
+  );
+}
+
+console.log('\n27. the table only hears what it should');
+{
+  const players = makePlayers(7);
+  const transport = new RecordingTransport();
+  const game = new GameManager(players, transport, true);
+  game.start([
+    WerewolfRole,
+    WerewolfRole,
+    GuardRole,
+    WitchRole,
+    SeerRole,
+    VillagerRole,
+    VillagerRole,
+  ]);
+  const mayorSeat = findRole(game, players, 'seer')!;
+  // The mayor dies into a Succession phase, and this test wants the plain
+  // morning: the seer wears the title and stays out of the knives.
+  passElection(game, mayorSeat.id);
+
+  const phasePayloads = (phase: string) =>
+    transport.broadcasts
+      .filter(message => message.type === 'PHASE_UPDATE')
+      .map(message => message.payload as PhaseUpdatePayload)
+      .filter(payload => payload.phase === phase);
+
+  check(
+    'a seven-player night is not labelled peaceful',
+    phasePayloads('Night').every(payload => payload.quietNight === false),
+  );
+
+  const wolf = findRole(game, players, 'werewolf')!;
+  const guard = findRole(game, players, 'guard')!;
+  const witch = findRole(game, players, 'witch')!;
+  const plain = players.filter(p => game.getRoleOf(p.id)?.id === 'villager');
+  const bitten = plain[0];
+  const poisoned = plain[1];
+
+  check(
+    'the guard shields the player the wolves bite',
+    game.handleNightAction(guard.id, 'protect', bitten.id),
+  );
+  check('the wolf bites', game.handleNightAction(wolf.id, 'kill', bitten.id));
+  game.advance(); // the witch wakes
+
+  const midNight = game.getPublicLog().join('\n');
+  check(
+    'the public log says nothing about the save or the victim',
+    !midNight.includes(bitten.name) && !midNight.includes('saved'),
+    midNight,
+  );
+  check(
+    'a saved victim is not offered to the healer',
+    !game.handleNightAction(witch.id, 'heal', bitten.id),
+  );
+  check('the witch poisons somebody else', game.handleNightAction(witch.id, 'poison', poisoned.id));
+  game.advance();
+  settleSuccession(game);
+
+  check(
+    'the narrator sees the save and the poison',
+    game.actionLog.some(line => line.includes(`the guard saved ${bitten.name}`)) &&
+      game.actionLog.some(line => line.includes(`${poisoned.name} was poisoned`)),
+  );
+  check(
+    'the public log never learns the cause',
+    !game.getPublicLog().some(line => line.includes('saved') || line.includes('poisoned')),
+  );
+
+  const dayPayload = phasePayloads('Day').pop();
+  check(
+    'the save held: only the poisoned player is dead',
+    !!dayPayload &&
+      dayPayload.deaths?.length === 1 &&
+      dayPayload.deaths[0].id === poisoned.id,
+    JSON.stringify(dayPayload?.deaths),
+  );
+  const morning = game.getPublicLog().join('\n');
+  check(
+    'the morning names the dead without the cause',
+    morning.includes(`Day 1: ${poisoned.name} did not survive the night.`) &&
+      !morning.includes('poisoned'),
+    morning,
+  );
+
+  const beforeRematch = game.actionLog.length;
+  game.start([
+    WerewolfRole,
+    WerewolfRole,
+    GuardRole,
+    WitchRole,
+    SeerRole,
+    VillagerRole,
+    VillagerRole,
+  ]);
+  check(
+    'a rematch wipes the old story',
+    game.actionLog.length < beforeRematch &&
+      !game.getPublicLog().some(line => line.includes('did not survive')),
+    game.getPublicLog().join('\n'),
+  );
+
+  // Three players is the table where an opening kill would hand the wolves
+  // parity, so the peaceful first night is on by default.
+  const smallPlayers = makePlayers(3);
+  const smallTransport = new RecordingTransport();
+  const small = new GameManager(smallPlayers, smallTransport, true);
+  small.start([WerewolfRole, SeerRole, VillagerRole]);
+  passElection(small);
+  const smallNight = smallTransport.broadcasts
+    .filter(message => message.type === 'PHASE_UPDATE')
+    .map(message => message.payload as PhaseUpdatePayload)
+    .filter(payload => payload.phase === 'Night')
+    .pop();
+  check(
+    'a three-player table hears that the night is peaceful',
+    smallNight?.quietNight === true,
+    JSON.stringify(smallNight?.quietNight),
+  );
+}
+
+console.log('\n27b. cupid ties his knot in the dark');
+{
+  const players = makePlayers(5);
+  const transport = new RecordingTransport();
+  const game = new GameManager(players, transport, true);
+  game.start([WerewolfRole, CupidRole, SeerRole, VillagerRole, VillagerRole]);
+
+  const wolf = findRole(game, players, 'werewolf')!;
+  const cupid = findRole(game, players, 'cupid')!;
+  const seer = findRole(game, players, 'seer')!;
+  // The seat is a title, and a mayor who dies would park the game in the
+  // succession before the morning is written. The plain villager takes it.
+  const villager = findRole(game, players, 'villager')!;
+  passElection(game, villager.id);
+
+  check(
+    'cupid ties the seer to himself on the first night',
+    game.handleNightAction(cupid.id, 'link', seer.id),
+  );
+  check(
+    'the lovers stay off the public log',
+    !game.getPublicLog().some(line => line.includes('Cupid')),
+  );
+
+  check('the wolf bites the cupid', game.handleNightAction(wolf.id, 'kill', cupid.id));
+  game.advance();
+  settleSuccession(game);
+
+  check(
+    'the narrator knows the pair',
+    game.actionLog.some(line =>
+      line.includes(`Cupid tied ${cupid.name} and ${seer.name}`),
+    ),
+  );
+  check(
+    'the tie is never public',
+    !game.getPublicLog().some(line => line.includes('Cupid')),
+  );
+
+  check(
+    'the heartbreak is the narrator\u2019s detail',
+    game.actionLog.some(line => line.includes(`${seer.name} died of a broken heart`)) &&
+      !game.getPublicLog().some(line => line.includes('broken heart')),
+  );
+  const morning = game.getPublicLog().join('\n');
+  check(
+    'the morning counts both lovers',
+    morning.includes(`Day 1: ${cupid.name}, ${seer.name} did not survive the night.`) ||
+      morning.includes(`Day 1: ${seer.name}, ${cupid.name} did not survive the night.`),
+    morning,
+  );
+}
+
+console.log('\n27c. a declined potion stops the waiting');
+{
+  const players = makePlayers(4);
+  const transport = new RecordingTransport();
+  const game = new GameManager(players, transport, true);
+  game.start([WerewolfRole, GuardRole, WitchRole, VillagerRole]);
+  passElection(game);
+
+  const wolf = findRole(game, players, 'werewolf')!;
+  const guard = findRole(game, players, 'guard')!;
+  const witch = findRole(game, players, 'witch')!;
+  const villager = findRole(game, players, 'villager')!;
+
+  game.handleNightAction(wolf.id, 'kill', villager.id);
+  game.handleNightAction(guard.id, 'protect', villager.id);
+  game.advance();
+
+  check(
+    'the witch has nothing to save',
+    !game.handleNightAction(witch.id, 'heal', villager.id),
+  );
+  check(
+    'the host is waiting on her poison',
+    game.getPendingNightActors().some(p => p.id === witch.id),
+  );
+  check('she declines the poison', game.passNightAction(witch.id, 'poison'));
+  check(
+    'the host is no longer waiting on her',
+    !game.getPendingNightActors().some(p => p.id === witch.id),
+  );
+
+  game.advance();
+  settleSuccession(game);
+  check(
+    'the night resolves peacefully',
+    game.getPublicLog().some(line => line.includes('nobody died in the night')),
+    game.getPublicLog().join('\n'),
   );
 }
 
