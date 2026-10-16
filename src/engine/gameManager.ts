@@ -135,11 +135,13 @@ export class GameManager {
     };
   }
 
-  // A line the whole table hears, so it belongs in the public log too.
-  private announce(message: string) {
+  // A line the whole table hears, so it belongs in the public log too. The
+  // phase can be given for lines written just before a phase change, which
+  // would otherwise be filed under the phase that is already over.
+  private announce(message: string, phase: Phase = this.state.currentPhase) {
     this.publicLog.push({
       message,
-      phase: this.state.currentPhase,
+      phase,
       round: this.round,
     });
     this.actionLog.push(message);
@@ -204,9 +206,12 @@ export class GameManager {
       if (role) this.sendRoleAssign(player.id, role);
     });
 
-    this.announce(`${players.length} players were dealt their roles.`);
+    // These two are filed under the election the table is about to enter:
+    // tagged with the phase that is still on the clock they would disappear
+    // from the blind host's log for the whole first night.
+    this.announce(`${players.length} players were dealt their roles.`, 'Election');
     // The mayor is chosen before the first night, and a wolf may win the seat.
-    this.announce('The table elects a mayor before the first night.');
+    this.announce('The table elects a mayor before the first night.', 'Election');
     this.setPhase('Election');
   }
 
@@ -482,6 +487,9 @@ export class GameManager {
     const role = this.assignments.get(playerId);
     const option = role?.nightActions?.find(candidate => candidate.id === actionId);
     if (!option) return false;
+    // The same gate as an actual choice: a pass can only decline an action the
+    // engine is offering right now, not a stale one from an earlier night.
+    if (!this.isOptionOffered(playerId, option)) return false;
 
     this.choicesFor(playerId).set(actionId, PASSED);
     this.emit({ type: 'changed' });
@@ -1118,7 +1126,9 @@ export class GameManager {
     const bond = link as { sourceId: string; targetId: string } | null;
 
     if (this.isQuietNight()) {
-      this.announce('Night 1 was peaceful: the wolves only looked around.');
+      // The players' panels say so from the phase payload; the log line is
+      // narrator-only trivia, and the morning already reports the outcome.
+      this.actionLog.push('Night 1 was peaceful: the wolves only looked around.');
     } else if (biteTarget) {
       const target = this.state.players.find(p => p.id === biteTarget);
       if (target?.isAlive) {
@@ -1233,7 +1243,9 @@ export class GameManager {
         this.applyLoverDeaths(deaths);
       }
     } else if (hunter) {
-      this.announce(`${hunter.name} took nobody down.`);
+      // A hunter who keeps his powder dry is the narrator's trivia: announcing
+      // it would reveal him for nothing.
+      this.actionLog.push(`${hunter.name} took nobody down.`);
     }
 
     this.pendingRevenge = null;

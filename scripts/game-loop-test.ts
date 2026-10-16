@@ -1520,7 +1520,14 @@ console.log('\n27. the table only hears what it should');
 
   check(
     'a seven-player night is not labelled peaceful',
-    phasePayloads('Night').every(payload => payload.quietNight === false),
+    phasePayloads('Night').length > 0 &&
+      phasePayloads('Night').every(payload => payload.quietNight === false),
+  );
+  check(
+    'the opening lines survive the first night',
+    game.getPublicLog().some(line => line.includes('were dealt their roles')) &&
+      game.getPublicLog().some(line => line.includes('elects a mayor')),
+    game.getPublicLog().join('\n'),
   );
 
   const wolf = findRole(game, players, 'werewolf')!;
@@ -1611,6 +1618,17 @@ console.log('\n27. the table only hears what it should');
     smallNight?.quietNight === true,
     JSON.stringify(smallNight?.quietNight),
   );
+  small.advance();
+  check(
+    'the peaceful night itself stays a narrator line',
+    small.actionLog.some(line => line.includes('Night 1 was peaceful')) &&
+      !small.getPublicLog().some(line => line.includes('peaceful')),
+    small.getPublicLog().join('\n'),
+  );
+  check(
+    'the morning still says nobody died',
+    small.getPublicLog().some(line => line.includes('nobody died in the night')),
+  );
 }
 
 console.log('\n27b. cupid ties his knot in the dark');
@@ -1679,8 +1697,15 @@ console.log('\n27c. a declined potion stops the waiting');
   const witch = findRole(game, players, 'witch')!;
   const villager = findRole(game, players, 'villager')!;
 
-  game.handleNightAction(wolf.id, 'kill', villager.id);
-  game.handleNightAction(guard.id, 'protect', villager.id);
+  check('the wolf bites', game.handleNightAction(wolf.id, 'kill', villager.id));
+  check(
+    'the guard shields',
+    game.handleNightAction(guard.id, 'protect', villager.id),
+  );
+  check(
+    'a potion the night has not offered cannot be declined yet',
+    !game.passNightAction(witch.id, 'poison'),
+  );
   game.advance();
 
   check(

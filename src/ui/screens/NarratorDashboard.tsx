@@ -335,14 +335,14 @@ export const NarratorDashboard = () => {
                 {entry.name}: {entry.count}
               </Text>
             ))}
-          {/* Who voted for whom is the narrator's detail; the tally is what
-              the table hears. */}
-          {seeEverything &&
-            manager.lastVote.ballots?.map(ballot => (
-              <Text key={ballot.voterId} style={styles.ballotText}>
-                {ballot.voterName} → {ballot.targetName}
-              </Text>
-            ))}
+          {/* Who voted for whom is public: every guest phone already prints
+              the same ballot list, so the host is not shown less than the
+              table. */}
+          {manager.lastVote.ballots?.map(ballot => (
+            <Text key={ballot.voterId} style={styles.ballotText}>
+              {ballot.voterName} → {ballot.targetName}
+            </Text>
+          ))}
         </View>
       )}
 

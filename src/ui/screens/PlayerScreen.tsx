@@ -53,6 +53,9 @@ export const PlayerScreen = () => {
   // The round as the message handler knows it: the handler outlives any single
   // render, so it reads the round from here rather than from state.
   const roundRef = React.useRef(1);
+  // The last phase the handler saw. The election rebroadcasts its updates
+  // between phases, and those cosmetic updates must not wipe a countdown.
+  const phaseRef = React.useRef<Phase | null>(null);
   const [status, setStatus] = useState('Connecting to host...');
   const [disconnected, setDisconnected] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
@@ -77,7 +80,10 @@ export const PlayerScreen = () => {
           setStatus('');
           setPhase(payload.phase);
           setRound(payload.round);
+          const phaseChanged =
+            phaseRef.current !== payload.phase || roundRef.current !== payload.round;
           roundRef.current = payload.round;
+          phaseRef.current = payload.phase;
           setRoster(payload.players ?? []);
           setDeaths(payload.deaths ?? []);
           setMayorCandidates(payload.mayorCandidates ?? []);
@@ -85,7 +91,12 @@ export const PlayerScreen = () => {
           setSuccessionMayorId(payload.successionMayorId ?? null);
           setQuietNight(!!payload.quietNight);
           if (payload.electionStage) setElectionStage(payload.electionStage);
-          setSubmitted([]);
+          if (phaseChanged) {
+            // Submissions and the phase clock belong to the phase that just
+            // ended. A tie re-vote clears its own through VOTE_RESULT.
+            setSubmitted([]);
+            setClock(null);
+          }
           if (payload.phase === 'Debate') {
             setLog(prev => [
               `The candidates for mayor: ${(payload.mayorCandidates ?? [])
@@ -94,8 +105,6 @@ export const PlayerScreen = () => {
               ...prev,
             ]);
           }
-          // The phase changed, so the phase clock is gone until a new sync.
-          setClock(null);
           setNightStage(1);
           setVictim(null);
 
