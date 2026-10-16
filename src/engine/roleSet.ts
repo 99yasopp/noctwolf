@@ -5,6 +5,9 @@ import { Team } from './types';
 // declare which kinds of action it uses.
 export type ActionKind =
   | 'attack'
+  | 'extraAttack'
+  | 'wolfAttack'
+  | 'infect'
   | 'protect'
   | 'heal'
   | 'poison'
@@ -93,6 +96,49 @@ export const AlienRole: PlayableRole = {
   winsAlone: true,
 };
 
+export const BigBadWolfRole: PlayableRole = {
+  id: 'big-bad-wolf',
+  name: 'Big Bad Wolf',
+  team: 'Wolf',
+  description:
+    'You hunt with the pack, then devour a second player on your own. You lose that second bite for good once any wolf dies.',
+  nightActions: [
+    { id: 'kill', label: 'Devour a player', kind: 'attack' },
+    { id: 'kill2', label: 'Devour a second player', kind: 'extraAttack' },
+  ],
+};
+
+export const InfectiousFatherRole: PlayableRole = {
+  id: 'infectious-father',
+  name: 'Infectious Father',
+  team: 'Wolf',
+  description:
+    "You hunt with the pack. Once in the game you may infect the pack's victim instead of devouring them: they become a werewolf and keep their powers.",
+  nightActions: [
+    { id: 'kill', label: 'Devour a player', kind: 'attack' },
+    {
+      id: 'infect',
+      label: 'Infect the victim instead',
+      kind: 'infect',
+      charges: 1,
+      allowSelf: true,
+    },
+  ],
+};
+
+export const WhiteWerewolfRole: PlayableRole = {
+  id: 'white-werewolf',
+  name: 'White Werewolf',
+  team: 'Wolf',
+  description:
+    'You hunt with the pack. Every second night you may devour one of your own kin. You win only as the last player alive.',
+  nightActions: [
+    { id: 'kill', label: 'Devour a player', kind: 'attack' },
+    { id: 'wolfkill', label: 'Devour a werewolf', kind: 'wolfAttack' },
+  ],
+  winsAlone: true,
+};
+
 export const SeerRole: PlayableRole = {
   id: 'seer',
   name: 'Seer',
@@ -148,6 +194,9 @@ export const CupidRole: PlayableRole = {
 export const ALL_ROLES: PlayableRole[] = [
   WerewolfRole,
   RedWolfRole,
+  BigBadWolfRole,
+  InfectiousFatherRole,
+  WhiteWerewolfRole,
   AlienRole,
   SeerRole,
   VillagerRole,

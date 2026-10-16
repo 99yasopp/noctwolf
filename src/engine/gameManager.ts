@@ -410,9 +410,45 @@ export class GameManager {
     if (this.chargesUsedBy(playerId, option.id) >= actionChargeLimit(option)) return false;
     if (option.kind === 'link' && this.round !== 1) return false;
     if (option.kind === 'attack' && this.isQuietNight()) return false;
+    // A peaceful night gives the Big Bad Wolf nothing to add to either.
+    if (option.kind === 'extraAttack' && (this.isQuietNight() || this.anyWolfDead())) {
+      return false;
+    }
+    // The White Wolf stalks every second night, and the infection replaces a
+    // bite that a peaceful night never takes.
+    if (option.kind === 'wolfAttack' && this.round % 2 !== 0) return false;
+    if (option.kind === 'infect' && this.isQuietNight()) return false;
     // Nothing to save means no potion to offer.
     if (option.kind === 'heal' && !this.healTarget()) return false;
     return true;
+  }
+
+  // True once any wolf has fallen: the Big Bad Wolf's second bite is gone for
+  // good from that night on.
+  private anyWolfDead(): boolean {
+    return this.state.players.some(
+      player => !player.isAlive && this.assignments.get(player.id)?.team === 'Wolf',
+    );
+  }
+
+  // The Infectious Father's choice for tonight, if he made it: his infection
+  // replaces the pack's bite on whoever they picked.
+  private pendingInfection(): { playerId: string; actionId: string } | null {
+    let found: { playerId: string; actionId: string } | null = null;
+
+    this.nightChoices.forEach((choices, playerId) => {
+      const actor = this.state.players.find(p => p.id === playerId);
+      const role = this.assignments.get(playerId);
+      if (!actor?.isAlive || !role || this.isSilenced(playerId)) return;
+
+      choices.forEach((targetId, actionId) => {
+        if (targetId === PASSED) return;
+        const option = role.nightActions?.find(candidate => candidate.id === actionId);
+        if (option?.kind === 'infect') found = { playerId, actionId };
+      });
+    });
+
+    return found;
   }
 
   // True while a Red Wolf's silence still covers this player.
@@ -468,6 +504,9 @@ export class GameManager {
     // Nothing for the potion to do against a player the wolves cannot even
     // hurt: the Alien keeps his skin and the witch keeps her potion.
     if (this.assignments.get(victim.id)?.wolfImmune) return null;
+    // The father is about to infect the pack's victim instead of killing
+    // them, so there is no death to save.
+    if (this.pendingInfection()) return null;
     return victim;
   }
 
@@ -493,6 +532,12 @@ export class GameManager {
       if (option.kind === 'heal') return !!victim && victim.id === target.id;
       if (target.id === player.id && !option.allowSelf) return false;
       if (option.kind === 'attack' && this.assignments.get(target.id)?.team === 'Wolf') return false;
+      // The White Wolf picks among his own kin, and the father only switches
+      // the infection on: the pack's victim is whoever the pack picked.
+      if (option.kind === 'wolfAttack' && this.assignments.get(target.id)?.team !== 'Wolf') {
+        return false;
+      }
+      if (option.kind === 'infect' && target.id !== player.id) return false;
       if (
         option.kind === 'protect' &&
         this.options.guardNoRepeat &&
@@ -795,6 +840,11 @@ export class GameManager {
     const option = this.assignments
       .get(playerId)
       ?.nightActions?.find(candidate => candidate.id === actionId);
+    // Two pack powers carry no count of their own: the White Wolf's pick is up
+    // every second night, the Big Bad Wolf keeps his only while the pack is
+    // whole. Reporting 0 or 1 is what hides the button on the other nights.
+    if (option?.kind === 'wolfAttack') return this.round % 2 === 0 ? 1 : 0;
+    if (option?.kind === 'extraAttack') return this.anyWolfDead() ? 0 : 1;
     const limit = actionChargeLimit(option);
     if (!Number.isFinite(limit)) return null;
 
@@ -1269,8 +1319,15 @@ export class GameManager {
     // Wolves hunt as a pack: their bite is the majority of the pack's picks,
     // not whichever device happened to tap last.
     const attackVotes = new Map<string, number>();
+    // The two solo bites of the pack, each resolved on its own.
+    const extraAttacks: string[] = [];
+    const wolfAttacks: string[] = [];
     let inspect: { sourceId: string; targetId: string } | null = null;
     let link: { sourceId: string; targetId: string } | null = null;
+
+    // Read before the choices are tallied: the father's infection replaces the
+    // pack's bite, so his own kill vote must not be counted.
+    const infection = this.pendingInfection();
 
     this.nightChoices.forEach((choices, playerId) => {
       const actor = this.state.players.find(p => p.id === playerId);
@@ -1296,7 +1353,14 @@ export class GameManager {
             poisoned.set(targetId, { playerId, actionId });
             break;
           case 'attack':
+            if (infection?.playerId === playerId) break;
             attackVotes.set(targetId, (attackVotes.get(targetId) ?? 0) + 1);
+            break;
+          case 'extraAttack':
+            if (!this.anyWolfDead()) extraAttacks.push(targetId);
+            break;
+          case 'wolfAttack':
+            wolfAttacks.push(targetId);
             break;
           case 'inspect':
             inspect = { sourceId: playerId, targetId };
@@ -1314,6 +1378,36 @@ export class GameManager {
     const peek = inspect as { sourceId: string; targetId: string } | null;
     const bond = link as { sourceId: string; targetId: string } | null;
 
+    // Every wolf kill takes the same path: the Alien shrugs it off, the
+    // guard's shield stops it, the witch may already have saved the victim,
+    // and only then does anyone die. The potion is spent only by the bite the
+    // witch was actually shown.
+    const wolfKill = (target: Player, source: string, spendHeal: boolean) => {
+      if (this.assignments.get(target.id)?.wolfImmune) {
+        this.actionLog.push(
+          `Night ${this.round}: ${source} attacked ${target.name}, and it did nothing.`,
+        );
+        return;
+      }
+      if (shielded.has(target.id)) {
+        this.actionLog.push(`Night ${this.round}: the guard saved ${target.name} from ${source}.`);
+        return;
+      }
+      const mender = healed.get(target.id);
+      if (mender) {
+        if (spendHeal) {
+          this.spendCharge(mender.playerId, mender.actionId);
+          this.resendRoleTo(mender.playerId);
+        }
+        this.actionLog.push(`Night ${this.round}: the witch saved ${target.name} from ${source}.`);
+        return;
+      }
+
+      target.isAlive = false;
+      deaths.push(target);
+      this.actionLog.push(`Night ${this.round}: ${target.name} was devoured by ${source}.`);
+    };
+
     if (this.isQuietNight()) {
       // The players' panels say so from the phase payload; the log line is
       // narrator-only trivia, and the morning already reports the outcome.
@@ -1321,27 +1415,27 @@ export class GameManager {
     } else if (biteTarget) {
       const target = this.state.players.find(p => p.id === biteTarget);
       if (target?.isAlive) {
-        const immune = this.assignments.get(target.id)?.wolfImmune;
-        if (immune) {
-          // The Alien shrugs the pack off: the wolves learn nothing and the
-          // witch was never offered a potion for him.
-          this.actionLog.push(
-            `Night ${this.round}: the wolves attacked ${target.name}, and it did nothing.`,
-          );
-        } else if (shielded.has(target.id)) {
-          this.actionLog.push(`Night ${this.round}: the guard saved ${target.name}.`);
-        } else if (healed.has(target.id)) {
-          // Spent only when it actually saves someone.
-          const mender = healed.get(target.id)!;
-          this.spendCharge(mender.playerId, mender.actionId);
-          this.resendRoleTo(mender.playerId);
-          this.actionLog.push(`Night ${this.round}: the witch saved ${target.name}.`);
+        if (infection) {
+          // Spent whether or not it lands: the father used his one charge.
+          this.spendCharge(infection.playerId, infection.actionId);
+          this.resendRoleTo(infection.playerId);
+          this.infectPlayer(target);
         } else {
-          target.isAlive = false;
-          deaths.push(target);
-          this.actionLog.push(`Night ${this.round}: ${target.name} was devoured.`);
+          wolfKill(target, 'the pack', true);
         }
       }
+    }
+
+    // The pack's own extra bites: no potion reaches these.
+    if (!this.isQuietNight()) {
+      extraAttacks.forEach(targetId => {
+        const target = this.state.players.find(p => p.id === targetId);
+        if (target?.isAlive) wolfKill(target, 'the Big Bad Wolf', false);
+      });
+      wolfAttacks.forEach(targetId => {
+        const target = this.state.players.find(p => p.id === targetId);
+        if (target?.isAlive) wolfKill(target, 'the White Werewolf', false);
+      });
     }
 
     // Poison is not the wolves' bite: shielding does not stop it.
@@ -1401,6 +1495,51 @@ export class GameManager {
     }
 
     return deaths;
+  }
+
+  // The Infectious Father's bite, converted: the victim keeps the card and its
+  // powers but wakes up a wolf. The guard's shield and the Alien's nature stop
+  // it, and the charge was spent either way.
+  private infectPlayer(target: Player) {
+    const role = this.assignments.get(target.id);
+    if (!role) return;
+
+    if (role.wolfImmune) {
+      this.actionLog.push(`Night ${this.round}: the infection slid off ${target.name}.`);
+      return;
+    }
+    if (this.isShieldedBySomeone(target.id)) {
+      this.actionLog.push(
+        `Night ${this.round}: the guard's shield kept the infection off ${target.name}.`,
+      );
+      return;
+    }
+
+    // The card stays, the team changes: the infected keeps every power.
+    this.assignments.set(target.id, { ...role, team: 'Wolf' });
+    this.actionLog.push(
+      `Night ${this.round}: ${target.name} was infected and is a werewolf now (${role.name}).`,
+    );
+
+    this.sendRoleAssign(target.id, this.assignments.get(target.id)!);
+    const message =
+      'You have been infected: you are a werewolf now, and you keep your powers.';
+    this.transport.sendToPlayer(target.id, {
+      type: 'SECRET_INFO',
+      payload: { message },
+      timestamp: Date.now(),
+    });
+    this.emit({ type: 'secret', playerId: target.id, message });
+
+    // The rest of the pack has to know who just joined it.
+    this.state.players
+      .filter(
+        player =>
+          player.isAlive &&
+          player.id !== target.id &&
+          this.assignments.get(player.id)?.team === 'Wolf',
+      )
+      .forEach(wolf => this.sendRoleAssign(wolf.id, this.assignments.get(wolf.id)!));
   }
 
   // Lovers are tied together: one going takes the other along.

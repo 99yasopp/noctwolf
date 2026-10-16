@@ -7,14 +7,17 @@
 import { GameManager } from '../src/engine/gameManager';
 import {
   AlienRole,
+  BigBadWolfRole,
   CupidRole,
   GuardRole,
   HunterRole,
+  InfectiousFatherRole,
   PlayableRole,
   RedWolfRole,
   SeerRole,
   VillagerRole,
   WerewolfRole,
+  WhiteWerewolfRole,
   WitchRole,
   buildClassicRoleSet,
   buildCustomRoleSet,
@@ -2164,6 +2167,226 @@ console.log('\n30. the red wolf silences and the alien guesses');
   check('the alien wins the table', lastGame.winner === 'Solitary' && lastAlien.isAlive);
   const over = lastTransport.broadcasts.filter(m => m.type === 'GAME_OVER').pop();
   check('the game over names him', over?.payload.winnerLabel === 'The Alien wins.', JSON.stringify(over?.payload.winnerLabel));
+}
+
+console.log('\n31. the pack learns new teeth');
+{
+  const villagersOf = (game: GameManager, players: Player[]) =>
+    players.filter(p => game.getRoleOf(p.id)?.id === 'villager');
+
+  // The Big Bad Wolf eats twice until a wolf falls.
+  const players = makePlayers(5);
+  const game = new GameManager(players, new RecordingTransport());
+  game.start([BigBadWolfRole, WerewolfRole, VillagerRole, VillagerRole, SeerRole]);
+  passElection(game);
+
+  const bigBad = findRole(game, players, 'big-bad-wolf')!;
+  const packmate = findRole(game, players, 'werewolf')!;
+  const [meal] = villagersOf(game, players);
+
+  check('the second bite is up on a whole pack', game.getChargesLeft(bigBad.id, 'kill2') === 1);
+  check('the pack bites the villager', game.handleNightAction(packmate.id, 'kill', meal.id));
+  check('the big bad wolf votes with them', game.handleNightAction(bigBad.id, 'kill', meal.id));
+  check('and takes a packmate as his own', game.handleNightAction(bigBad.id, 'kill2', packmate.id));
+
+  game.advance();
+  settleSuccession(game);
+  check('both victims are dead', !meal.isAlive && !packmate.isAlive);
+  check(
+    'the narrator sees the second bite',
+    game.actionLog.some(line => line.includes('the Big Bad Wolf')),
+  );
+
+  game.advance();
+  game.advance();
+  settleSuccession(game);
+  check(
+    'the second bite is gone once a wolf has fallen',
+    game.state.currentPhase === 'Night' && game.getChargesLeft(bigBad.id, 'kill2') === 0,
+  );
+  check(
+    'and the engine refuses it',
+    !game.handleNightAction(
+      bigBad.id,
+      'kill2',
+      players.find(p => p.isAlive && p.id !== bigBad.id)!.id,
+    ),
+  );
+
+  // The White Wolf stalks every other night, and only his own kin.
+  const wolves = makePlayers(6);
+  const wolfGame = new GameManager(wolves, new RecordingTransport());
+  wolfGame.start([
+    WhiteWerewolfRole,
+    WerewolfRole,
+    VillagerRole,
+    VillagerRole,
+    VillagerRole,
+    SeerRole,
+  ]);
+  passElection(wolfGame);
+
+  const white = findRole(wolfGame, wolves, 'white-werewolf')!;
+  const kin = findRole(wolfGame, wolves, 'werewolf')!;
+  const [firstMeal, secondMeal] = villagersOf(wolfGame, wolves);
+
+  check('the white wolf sleeps on night one', wolfGame.getChargesLeft(white.id, 'wolfkill') === 0);
+  check('and cannot pick', !wolfGame.handleNightAction(white.id, 'wolfkill', kin.id));
+  check(
+    'not even a villager is up on the first night',
+    !wolfGame.handleNightAction(white.id, 'wolfkill', firstMeal.id),
+  );
+  check('the pack feeds as usual', wolfGame.handleNightAction(kin.id, 'kill', firstMeal.id));
+
+  wolfGame.advance();
+  settleSuccession(wolfGame);
+  wolfGame.advance();
+  wolfGame.advance();
+  settleSuccession(wolfGame);
+
+  check(
+    'on the second night his kin is fair game',
+    wolfGame.state.currentPhase === 'Night' &&
+      wolfGame.round === 2 &&
+      wolfGame.getChargesLeft(white.id, 'wolfkill') === 1,
+  );
+  check('and only his kin', !wolfGame.handleNightAction(white.id, 'wolfkill', secondMeal.id));
+  check('the kill lands', wolfGame.handleNightAction(white.id, 'wolfkill', kin.id));
+
+  wolfGame.advance();
+  settleSuccession(wolfGame);
+  check('the packmate is dead', !kin.isAlive);
+  check(
+    'the narrator sees who did it',
+    wolfGame.actionLog.some(line => line.includes('the White Werewolf')),
+  );
+
+  // The Infectious Father turns the pack's victim into a wolf instead.
+  const table = makePlayers(7);
+  const tableTransport = new RecordingTransport();
+  const tableGame = new GameManager(table, tableTransport);
+  tableGame.start([
+    InfectiousFatherRole,
+    WerewolfRole,
+    WitchRole,
+    VillagerRole,
+    VillagerRole,
+    VillagerRole,
+    SeerRole,
+  ]);
+  passElection(tableGame);
+
+  const father = findRole(tableGame, table, 'infectious-father')!;
+  const biter = findRole(tableGame, table, 'werewolf')!;
+  const healer = findRole(tableGame, table, 'witch')!;
+  const victims = villagersOf(tableGame, table);
+
+  // A night with nobody bitten infects nobody, and the charge is not wasted.
+  check('the father can switch his power on', tableGame.handleNightAction(father.id, 'infect', father.id));
+  tableGame.advance();
+  tableGame.advance();
+  settleSuccession(tableGame);
+  check(
+    'a night with no victim leaves the charge alone',
+    table.every(p => p.isAlive) && tableGame.getChargesLeft(father.id, 'infect') === 1,
+  );
+
+  tableGame.advance();
+  tableGame.advance();
+  settleSuccession(tableGame);
+  check('the next night comes', tableGame.state.currentPhase === 'Night' && tableGame.round === 2);
+
+  check('the father tries again', tableGame.handleNightAction(father.id, 'infect', father.id));
+  check('the pack picks a villager', tableGame.handleNightAction(biter.id, 'kill', victims[0].id));
+  tableGame.advance();
+  check('the witch has nothing to save about an infection', tableGame.getHealTarget() === null);
+  check('and cannot waste the potion on it', !tableGame.handleNightAction(healer.id, 'heal', victims[0].id));
+  tableGame.advance();
+  settleSuccession(tableGame);
+
+  check(
+    'the victim lives and is a wolf',
+    victims[0].isAlive && tableGame.getRoleOf(victims[0].id)?.team === 'Wolf',
+  );
+  check(
+    'and keeps the card that was dealt',
+    tableGame.getRoleOf(victims[0].id)?.id === 'villager',
+  );
+  check('the charge is spent', tableGame.getChargesLeft(father.id, 'infect') === 0);
+  check(
+    'the victim is told',
+    tableTransport.directs.some(
+      d =>
+        d.playerId === victims[0].id &&
+        d.message.type === 'SECRET_INFO' &&
+        String(d.message.payload.message).includes('infected'),
+    ),
+  );
+  check(
+    'the pack is told who joined',
+    tableTransport.directs.some(
+      d => d.playerId === biter.id && d.message.type === 'ROLE_ASSIGN',
+    ),
+  );
+
+  // The guard's shield stops it, and the charge is spent anyway.
+  const shielded = makePlayers(6);
+  const shieldedGame = new GameManager(shielded, new RecordingTransport());
+  shieldedGame.start([
+    InfectiousFatherRole,
+    WerewolfRole,
+    GuardRole,
+    VillagerRole,
+    VillagerRole,
+    SeerRole,
+  ]);
+  passElection(shieldedGame);
+
+  const shieldFather = findRole(shieldedGame, shielded, 'infectious-father')!;
+  const shieldWolf = findRole(shieldedGame, shielded, 'werewolf')!;
+  const guard = findRole(shieldedGame, shielded, 'guard')!;
+  const shieldedVictim = villagersOf(shieldedGame, shielded)[0];
+
+  check('the guard shields the victim', shieldedGame.handleNightAction(guard.id, 'protect', shieldedVictim.id));
+  check('the pack bites them', shieldedGame.handleNightAction(shieldWolf.id, 'kill', shieldedVictim.id));
+  check('the father infects them', shieldedGame.handleNightAction(shieldFather.id, 'infect', shieldFather.id));
+  shieldedGame.advance();
+  shieldedGame.advance();
+  settleSuccession(shieldedGame);
+
+  check(
+    'the shield keeps the infection off',
+    shieldedVictim.isAlive && shieldedGame.getRoleOf(shieldedVictim.id)?.team === 'Village',
+  );
+  check('the power was still used', shieldedGame.getChargesLeft(shieldFather.id, 'infect') === 0);
+
+  // The Alien cannot be infected either.
+  const immune = makePlayers(6);
+  const immuneGame = new GameManager(immune, new RecordingTransport());
+  immuneGame.start([
+    InfectiousFatherRole,
+    WerewolfRole,
+    AlienRole,
+    VillagerRole,
+    VillagerRole,
+    SeerRole,
+  ]);
+  passElection(immuneGame);
+
+  const immuneFather = findRole(immuneGame, immune, 'infectious-father')!;
+  const immuneWolf = findRole(immuneGame, immune, 'werewolf')!;
+  const immuneAlien = findRole(immuneGame, immune, 'alien')!;
+
+  immuneGame.handleNightAction(immuneFather.id, 'infect', immuneFather.id);
+  immuneGame.handleNightAction(immuneWolf.id, 'kill', immuneAlien.id);
+  immuneGame.advance();
+  settleSuccession(immuneGame);
+
+  check(
+    'the infection slides off the alien',
+    immuneAlien.isAlive && immuneGame.getRoleOf(immuneAlien.id)?.team === 'Solitary',
+  );
+  check('with the charge spent', immuneGame.getChargesLeft(immuneFather.id, 'infect') === 0);
 }
 
 console.log(failures === 0 ? `\nAll checks passed.` : `\n${failures} check(s) failed.`);

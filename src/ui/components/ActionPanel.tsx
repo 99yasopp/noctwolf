@@ -58,6 +58,12 @@ interface Props {
 
 // Only the guard's shield and the witch's potion may be aimed at yourself.
 const allowsSelf = (kind: string) => kind === 'protect' || kind === 'heal';
+// The White Wolf picks among his pack, and the father only switches his
+// infection on, which is why these two do not follow the pack rule above.
+const wantsPack = (kind: string) => kind === 'wolfAttack';
+// These report 0/1 for "up right now" rather than uses left, so the count
+// would read as a lie.
+const packPower = (kind: string) => kind === 'wolfAttack' || kind === 'extraAttack';
 // A wolf never eats its own pack.
 const excludesPack = (kind: string) => kind === 'attack';
 
@@ -339,7 +345,9 @@ export const ActionPanel: React.FC<Props> = ({
   // not woken until the wolves have chosen, and a spent action is gone.
   const offered = declared.filter(option => {
     if (stageOfKind(option.kind) !== nightStage) return false;
-    if (quietNight && option.kind === 'attack') return false;
+    if (quietNight && (option.kind === 'attack' || option.kind === 'extraAttack')) {
+      return false;
+    }
     if (option.chargesLeft === 0) return false;
     return true;
   });
@@ -389,8 +397,11 @@ export const ActionPanel: React.FC<Props> = ({
             ? victim
               ? alive.filter(target => target.id === victim.id)
               : []
+            : option.kind === 'infect'
+            ? alive.filter(target => target.id === selfId)
             : alive.filter(target => {
                 if (target.id === selfId && !allowsSelf(option.kind)) return false;
+                if (wantsPack(option.kind) && !allyIds.has(target.id)) return false;
                 if (excludesPack(option.kind) && allyIds.has(target.id)) return false;
                 return true;
               });
@@ -399,7 +410,7 @@ export const ActionPanel: React.FC<Props> = ({
           <View key={option.id}>
             <Text style={styles.heading}>
               {option.label}
-              {typeof option.chargesLeft === 'number'
+              {typeof option.chargesLeft === 'number' && !packPower(option.kind)
                 ? ` (${option.chargesLeft} left)`
                 : ''}
             </Text>
@@ -417,7 +428,11 @@ export const ActionPanel: React.FC<Props> = ({
                   <BaseButton
                     key={target.id}
                     title={
-                      option.kind === 'heal' ? `Save ${target.name}` : target.name
+                      option.kind === 'heal'
+                        ? `Save ${target.name}`
+                        : option.kind === 'infect'
+                        ? "Infect the pack's victim"
+                        : target.name
                     }
                     onPress={() => onChoose(option.id, target.id)}
                     variant="secondary"
