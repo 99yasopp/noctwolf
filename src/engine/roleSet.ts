@@ -3,7 +3,14 @@ import { Team } from './types';
 // What a night action does when it is resolved. The engine keys its
 // resolution order off this, not off the role, so a new role only has to
 // declare which kinds of action it uses.
-export type ActionKind = 'attack' | 'protect' | 'heal' | 'poison' | 'inspect' | 'link';
+export type ActionKind =
+  | 'attack'
+  | 'protect'
+  | 'heal'
+  | 'poison'
+  | 'inspect'
+  | 'link'
+  | 'block';
 
 // One choice a role gets to make at night.
 export interface NightActionOption {
@@ -44,6 +51,12 @@ export interface PlayableRole {
   revengeOnDeath?: boolean;
   // Set by Cupid on the first night.
   linksLovers?: boolean;
+  // The wolves' bite and their infection cannot touch this role.
+  wolfImmune?: boolean;
+  // May stop the day to name a player's role, and kill them if it is right.
+  guessesRoles?: boolean;
+  // Wins the game outright by being the last player alive.
+  winsAlone?: boolean;
 }
 
 export const WerewolfRole: PlayableRole = {
@@ -52,6 +65,32 @@ export const WerewolfRole: PlayableRole = {
   team: 'Wolf',
   description: 'Each night you devour one player. Stay hidden by day.',
   nightActions: [{ id: 'kill', label: 'Devour a player', kind: 'attack' }],
+};
+
+// The lone half of the Red Wolf's night is folded into the same stage: nothing
+// resolves until the night ends, so the silence still lands on the night it is
+// sent, and the pack vote still works.
+export const RedWolfRole: PlayableRole = {
+  id: 'red-wolf',
+  name: 'Red Wolf',
+  team: 'Wolf',
+  description:
+    'You hunt with the pack, then silence a player for a day and a night. A silenced player cannot use a night action or a day power. Never the same player twice.',
+  nightActions: [
+    { id: 'kill', label: 'Devour a player', kind: 'attack' },
+    { id: 'silence', label: 'Silence a player', kind: 'block' },
+  ],
+};
+
+export const AlienRole: PlayableRole = {
+  id: 'alien',
+  name: 'Alien',
+  team: 'Solitary',
+  description:
+    "The wolves cannot bite or infect you. During the day you may name a player's role: right, they die; wrong, you do. You win only as the last player alive.",
+  wolfImmune: true,
+  guessesRoles: true,
+  winsAlone: true,
 };
 
 export const SeerRole: PlayableRole = {
@@ -108,6 +147,8 @@ export const CupidRole: PlayableRole = {
 
 export const ALL_ROLES: PlayableRole[] = [
   WerewolfRole,
+  RedWolfRole,
+  AlienRole,
   SeerRole,
   VillagerRole,
   GuardRole,

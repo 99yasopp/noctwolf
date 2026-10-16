@@ -6,10 +6,12 @@
 //   node /tmp/opencode/build/scripts/game-loop-test.js
 import { GameManager } from '../src/engine/gameManager';
 import {
+  AlienRole,
   CupidRole,
   GuardRole,
   HunterRole,
   PlayableRole,
+  RedWolfRole,
   SeerRole,
   VillagerRole,
   WerewolfRole,
@@ -1999,6 +2001,169 @@ console.log('\n29. the host link speaks both wires');
   const bogusLink = new ClientLink(bogus, () => {});
   bogusLink.push(asciiBytes('GET / HTTP/1.1\r\nHost: x\r\n\r\n'));
   check('a request without a key is dropped', bogus.destroyed);
+}
+
+console.log('\n30. the red wolf silences and the alien guesses');
+{
+  // A silenced player keeps quiet all night and all of the coming day.
+  const players = makePlayers(4);
+  const transport = new RecordingTransport();
+  const game = new GameManager(players, transport);
+  game.start([RedWolfRole, SeerRole, VillagerRole, VillagerRole]);
+  passElection(game);
+
+  const redWolf = findRole(game, players, 'red-wolf')!;
+  const seer = findRole(game, players, 'seer')!;
+  const bystander = players.find(p => p.id !== redWolf.id && p.id !== seer.id)!;
+
+  check(
+    'the red wolf is offered the pack and the silence',
+    game.getPendingNightActors().includes(redWolf),
+  );
+  check('he may silence', game.handleNightAction(redWolf.id, 'silence', seer.id));
+  check('the seer may still peek', game.handleNightAction(seer.id, 'peek', redWolf.id));
+
+  game.advance();
+  settleSuccession(game);
+  check(
+    'the silenced seer learns nothing',
+    !transport.directs.some(
+      d =>
+        d.message.type === 'SECRET_INFO' &&
+        d.playerId === seer.id &&
+        d.message.payload.isWolf !== undefined,
+    ),
+  );
+  check(
+    'the silenced seer is told why',
+    transport.directs.some(
+      d =>
+        d.message.type === 'SECRET_INFO' &&
+        d.playerId === seer.id &&
+        String(d.message.payload.message).includes('silenced'),
+    ),
+  );
+  check('the silenced seer is out of powers', game.isSilenced(seer.id));
+  check('the day goes on without him', game.state.currentPhase === 'Day' && game.isSilenced(seer.id));
+
+  game.advance();
+  game.advance();
+  settleSuccession(game);
+  check('the silence expires with the round', game.state.currentPhase === 'Night' && !game.isSilenced(seer.id));
+  check('the same player cannot be silenced twice', !game.handleNightAction(redWolf.id, 'silence', seer.id));
+  check('another player still can be', game.handleNightAction(redWolf.id, 'silence', bystander.id));
+
+  // A silenced Alien cannot stop the day.
+  const silenced = makePlayers(4);
+  const silencedGame = new GameManager(silenced, new RecordingTransport());
+  silencedGame.start([AlienRole, RedWolfRole, VillagerRole, VillagerRole]);
+  passElection(silencedGame);
+  const quietAlien = findRole(silencedGame, silenced, 'alien')!;
+  const otherWolf = findRole(silencedGame, silenced, 'red-wolf')!;
+  const accused = silenced.find(p => p.id !== quietAlien.id)!;
+  silencedGame.handleNightAction(otherWolf.id, 'silence', quietAlien.id);
+  silencedGame.advance();
+  settleSuccession(silencedGame);
+  check('a silenced alien cannot guess', !silencedGame.handleAlienGuess(quietAlien.id, accused.id, 'villager'));
+
+  // The wolves cannot touch the Alien, and the witch is not offered a potion.
+  const immune = makePlayers(4);
+  const immuneTransport = new RecordingTransport();
+  const immuneGame = new GameManager(immune, immuneTransport);
+  immuneGame.start([WerewolfRole, WitchRole, AlienRole, VillagerRole]);
+  passElection(immuneGame);
+  const biter = findRole(immuneGame, immune, 'werewolf')!;
+  const alien = findRole(immuneGame, immune, 'alien')!;
+  const witch = findRole(immuneGame, immune, 'witch')!;
+
+  check('the wolf can aim at the alien', immuneGame.handleNightAction(biter.id, 'kill', alien.id));
+  immuneGame.advance();
+  check('the witch has nothing to save', immuneGame.getHealTarget() === null);
+  check('the potion cannot be aimed at the alien', !immuneGame.handleNightAction(witch.id, 'heal', alien.id));
+  const stageTwo = immuneTransport.directs
+    .filter(d => d.playerId === witch.id && d.message.type === 'NIGHT_STAGE')
+    .pop();
+  check('the witch is told nothing was attacked', stageTwo?.message.payload.victim === null);
+  immuneGame.advance();
+  settleSuccession(immuneGame);
+  check('the alien survives the bite', alien.isAlive);
+  check('nobody died', immune.every(p => p.isAlive));
+
+  // A wrong guess kills the Alien and the day still reaches its vote.
+  const wrong = makePlayers(4);
+  const wrongGame = new GameManager(wrong, new RecordingTransport());
+  wrongGame.start([AlienRole, WerewolfRole, SeerRole, VillagerRole]);
+  const wrongAlien = findRole(wrongGame, wrong, 'alien')!;
+  // The mayor is not the alien, so the day is not interrupted by a succession.
+  passElection(wrongGame, wrong.find(p => p.id !== wrongAlien.id)!.id);
+  wrongGame.advance();
+  settleSuccession(wrongGame);
+  const innocent = wrong.find(p => p.id !== wrongAlien.id && p.isAlive)!;
+  check('a wrong guess kills the alien', wrongGame.handleAlienGuess(wrongAlien.id, innocent.id, 'witch') && !wrongAlien.isAlive);
+  check('nobody else died, and the day is not frozen', wrong.filter(p => !p.isAlive).length === 1 && !wrongGame.isDayFrozen());
+  wrongGame.advance();
+  check('the day still reaches its vote', wrongGame.state.currentPhase === 'Vote');
+
+  // A right guess kills the target and the day waits for him.
+  const right = makePlayers(4);
+  const rightGame = new GameManager(right, new RecordingTransport());
+  rightGame.start([AlienRole, WerewolfRole, VillagerRole, VillagerRole]);
+  const rightAlien = findRole(rightGame, right, 'alien')!;
+  const plain = findRole(rightGame, right, 'villager')!;
+  // The mayor is neither the alien nor the player he is about to name, so the
+  // day is not interrupted by a succession either.
+  passElection(rightGame, right.find(p => p.id !== rightAlien.id && p.id !== plain.id)!.id);
+  rightGame.advance();
+  settleSuccession(rightGame);
+  check('a right guess kills the target', rightGame.handleAlienGuess(rightAlien.id, plain.id, 'villager') && !plain.isAlive);
+  check('the day waits for him', rightGame.isDayFrozen());
+  rightGame.advance();
+  check('the host cannot move on', rightGame.state.currentPhase === 'Day');
+  check('he can hand the day back', rightGame.handleAlienResume(rightAlien.id) && !rightGame.isDayFrozen());
+  rightGame.advance();
+  check('the vote follows', rightGame.state.currentPhase === 'Vote');
+
+  // A right guess on a wolf ends the day where it stands.
+  const wolves = makePlayers(5);
+  const wolfGame = new GameManager(wolves, new RecordingTransport());
+  wolfGame.start([AlienRole, WerewolfRole, WerewolfRole, VillagerRole, SeerRole]);
+  const hunterAlien = findRole(wolfGame, wolves, 'alien')!;
+  const hunted = findRole(wolfGame, wolves, 'werewolf')!;
+  passElection(wolfGame, wolves.find(p => p.id !== hunterAlien.id && p.id !== hunted.id)!.id);
+  wolfGame.advance();
+  settleSuccession(wolfGame);
+  check('a right guess on a wolf kills it', wolfGame.handleAlienGuess(hunterAlien.id, hunted.id, 'werewolf') && !hunted.isAlive);
+  check('the day ends where it stands', wolfGame.state.currentPhase === 'Night' && wolfGame.round === 2 && !wolfGame.isDayFrozen());
+
+  // The last one standing wins.
+  const last = makePlayers(3);
+  const lastTransport = new RecordingTransport();
+  const lastGame = new GameManager(last, lastTransport);
+  lastGame.start([AlienRole, WerewolfRole, VillagerRole]);
+  const lastAlien = findRole(lastGame, last, 'alien')!;
+  const lastWolf = findRole(lastGame, last, 'werewolf')!;
+  const lastVillager = findRole(lastGame, last, 'villager')!;
+  // The wolf wears the chain, so the alien's kills never leave a seat open.
+  passElection(lastGame, lastWolf.id);
+
+  lastGame.advance();
+  settleSuccession(lastGame);
+  lastGame.handleAlienGuess(lastAlien.id, lastVillager.id, 'villager');
+  lastGame.handleAlienResume(lastAlien.id);
+  lastGame.advance();
+  lastGame.advance();
+  settleSuccession(lastGame);
+  check('parity does not settle it while the alien lives', lastGame.winner === null && lastGame.round === 2);
+  lastGame.handleNightAction(lastWolf.id, 'kill', lastAlien.id);
+  lastGame.advance();
+  settleSuccession(lastGame);
+  check('the bite still does nothing', lastAlien.isAlive && lastGame.winner === null);
+  lastGame.handleAlienGuess(lastAlien.id, lastWolf.id, 'werewolf');
+  // The dead wolf was the mayor, so he hands the seat on before the game ends.
+  settleSuccession(lastGame);
+  check('the alien wins the table', lastGame.winner === 'Solitary' && lastAlien.isAlive);
+  const over = lastTransport.broadcasts.filter(m => m.type === 'GAME_OVER').pop();
+  check('the game over names him', over?.payload.winnerLabel === 'The Alien wins.', JSON.stringify(over?.payload.winnerLabel));
 }
 
 console.log(failures === 0 ? `\nAll checks passed.` : `\n${failures} check(s) failed.`);

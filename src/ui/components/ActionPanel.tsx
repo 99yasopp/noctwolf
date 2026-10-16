@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { theme } from '../theme/colors';
 import { BaseButton } from './BaseButton';
 import { Phase } from '../../engine/types';
+import { ALL_ROLES, getCustomRoles } from '../../engine/roleSet';
 
 // The role as the local device knows it, normalised so the dashboard and the
 // player screen can share the same action UI.
@@ -15,6 +16,8 @@ export interface OwnRole {
   revengeOnDeath?: boolean;
   linksLovers?: boolean;
   allies?: { id: string; name: string }[];
+  // The Alien's daylight power.
+  guessesRoles?: boolean;
 }
 
 export interface ActionTarget {
@@ -47,7 +50,10 @@ interface Props {
   mayorCandidates?: { id: string; name: string }[];
   // The mayor who died and still owes the table a successor.
   successionMayorId?: string | null;
-  onChoose: (actionId: string, targetId: string) => void;
+  // The Alien still owes an answer, so the day cannot reach its vote.
+  dayFrozen?: boolean;
+  // `roleId` rides along for the Alien's guess: he names a role, not a player.
+  onChoose: (actionId: string, targetId: string, roleId?: string) => void;
 }
 
 // Only the guard's shield and the witch's potion may be aimed at yourself.
@@ -75,8 +81,12 @@ export const ActionPanel: React.FC<Props> = ({
   electionStage = 'nominate',
   mayorCandidates = [],
   successionMayorId = null,
+  dayFrozen = false,
   onChoose,
 }) => {
+  // The Alien points at a player first, then at a role.
+  const [guessTarget, setGuessTarget] = useState<string | null>(null);
+
   if (gameOver || !phase || !role || !selfId) return null;
 
   const alive = targets.filter(target => target.isAlive);
@@ -221,6 +231,79 @@ export const ActionPanel: React.FC<Props> = ({
     );
   }
 
+  if (phase === 'Day' && role.guessesRoles) {
+    const guessable = [...ALL_ROLES, ...getCustomRoles()].filter(
+      (candidate, index, list) =>
+        list.findIndex(other => other.id === candidate.id) === index,
+    );
+    const accused = guessTarget ? alive.find(target => target.id === guessTarget) : null;
+
+    return (
+      <View style={styles.panel}>
+        <Text style={styles.heading}>
+          {dayFrozen ? 'Point again, or let the day go on' : 'The alien takes a guess'}
+        </Text>
+        {accused ? (
+          <>
+            <Text style={styles.body}>
+              What is {accused.name}? A right name kills them, a wrong one kills
+              you.
+            </Text>
+            {guessable.map(candidate => (
+              <BaseButton
+                key={candidate.id}
+                title={candidate.name}
+                onPress={() => onChoose('alienGuess', accused.id, candidate.id)}
+                variant="secondary"
+              />
+            ))}
+            <BaseButton
+              title="Pick someone else"
+              onPress={() => setGuessTarget(null)}
+              variant="secondary"
+            />
+          </>
+        ) : (
+          <>
+            <Text style={styles.body}>
+              Point at a player, then name their role. Nobody knows you did.
+            </Text>
+            {alive
+              .filter(target => target.id !== selfId)
+              .map(target => (
+                <BaseButton
+                  key={target.id}
+                  title={target.name}
+                  onPress={() => setGuessTarget(target.id)}
+                  variant="secondary"
+                />
+              ))}
+          </>
+        )}
+        {dayFrozen && (
+          <BaseButton
+            title="Let the day go on"
+            onPress={() => onChoose('alienResume', selfId)}
+            variant="secondary"
+          />
+        )}
+      </View>
+    );
+  }
+
+  // Everyone else is told why the vote has not started.
+  if (phase === 'Day' && dayFrozen) {
+    return (
+      <View style={styles.panel}>
+        <Text style={styles.heading}>The day is paused</Text>
+        <Text style={styles.body}>
+          Wait for the host: the table is busy with something, and the vote
+          comes after.
+        </Text>
+      </View>
+    );
+  }
+
   if (phase === 'Vote') {
     const voted = submitted.includes('vote');
     const onBallot =
@@ -268,17 +351,30 @@ export const ActionPanel: React.FC<Props> = ({
       option =>
         stageOfKind(option.kind) === 2 && nightStage === 1 && option.chargesLeft !== 0,
     );
+    // Her potion is live and the night is hers, but the wolves left her
+    // nothing to work on: nobody was taken, or the guard already has him.
+    const nothingToSave =
+      nightStage === 2 &&
+      declared.some(option => option.kind === 'heal' && option.chargesLeft !== 0);
 
     return (
       <View style={styles.panel}>
         <Text style={styles.heading}>
-          {peaceful ? 'Night 1 is peaceful' : stillToCome ? 'Not yet' : 'Night'}
+          {peaceful
+            ? 'Night 1 is peaceful'
+            : stillToCome
+            ? 'Not yet'
+            : nothingToSave
+            ? 'Nothing to save tonight'
+            : 'Night'}
         </Text>
         <Text style={styles.body}>
           {peaceful
             ? "The wolves only look around tonight. Nobody will be devoured, so tomorrow's vote decides everything."
             : stillToCome
             ? 'The wolves are out. You will be woken once they have chosen.'
+            : nothingToSave
+            ? 'Nobody was taken that your potion could help, so it stays where it is. The poison is still yours to use.'
             : 'You have no night action. Sleep well.'}
         </Text>
       </View>

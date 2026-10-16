@@ -91,6 +91,7 @@ export const NarratorDashboard = () => {
         })),
         revengeOnDeath: role.revengeOnDeath,
         linksLovers: role.linksLovers,
+        guessesRoles: role.guessesRoles,
         allies:
           role.team === 'Wolf'
             ? players
@@ -164,16 +165,23 @@ export const NarratorDashboard = () => {
       ? 'Wake the witch'
       : `Resolve night ${round} → Day`
     : phase === 'Day'
-    ? 'Start the vote'
+    ? // The Alien still owes an answer, so there is nothing to press.
+      manager.isDayFrozen()
+      ? null
+      : 'Start the vote'
     : phase === 'Vote'
     ? 'Resolve the vote → Night'
     : phase === 'Revenge'
     ? 'Carry out the revenge'
     : 'Start the night';
 
-  const submitLocalAction = (actionId: string, targetId: string) => {
+  const submitLocalAction = (actionId: string, targetId: string, roleId?: string) => {
     const ok =
-      actionId === 'vote'
+      actionId === 'alienGuess' && roleId
+        ? manager.handleAlienGuess(localPlayer.id, targetId, roleId)
+        : actionId === 'alienResume'
+        ? manager.handleAlienResume(localPlayer.id)
+        : actionId === 'vote'
         ? manager.handleVote(localPlayer.id, targetId)
         : actionId === 'mayor-vote'
         ? manager.handleMayorVote(localPlayer.id, targetId)
@@ -371,6 +379,7 @@ export const NarratorDashboard = () => {
         submitted={submitted}
         gameOver={!!manager.winner}
         quietNight={manager.isQuietNight()}
+        dayFrozen={manager.isDayFrozen()}
         selfAlive={localPlayer.isAlive}
         nightStage={manager.getNightStage()}
         victim={manager.getHealTarget()}

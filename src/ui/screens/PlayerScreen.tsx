@@ -40,6 +40,8 @@ export const PlayerScreen = () => {
   // The engine decides which nights are peaceful; the round number alone would
   // lie as soon as the election runs late or a rematch re-deals.
   const [quietNight, setQuietNight] = useState(false);
+  // The Alien still owes the table an answer, so the day cannot reach its vote.
+  const [dayFrozen, setDayFrozen] = useState(false);
   // Whether the role card is covered, for when phones are handed around.
   const [roleHidden, setRoleHidden] = useState(false);
   // The public story of the game, built from what the host already tells us.
@@ -90,6 +92,7 @@ export const PlayerScreen = () => {
           setMayorId(payload.mayorId ?? null);
           setSuccessionMayorId(payload.successionMayorId ?? null);
           setQuietNight(!!payload.quietNight);
+          setDayFrozen(!!payload.dayFrozen);
           if (payload.electionStage) setElectionStage(payload.electionStage);
           if (phaseChanged) {
             // Submissions and the phase clock belong to the phase that just
@@ -134,6 +137,7 @@ export const PlayerScreen = () => {
           setClock(null);
           setNightStage(1);
           setVictim(null);
+          setDayFrozen(false);
           break;
 
         case 'TIME_SYNC': {
@@ -265,11 +269,25 @@ export const PlayerScreen = () => {
       }
     : null;
 
-  const submit = (actionId: string, targetId: string) => {
+  const submit = (actionId: string, targetId: string, roleId?: string) => {
     const client = lobby.client;
     if (!client || !localPlayer) return;
 
-    if (actionId === 'vote') {
+    if (actionId === 'alienGuess' && roleId) {
+      client.sendMessage({
+        type: 'ALIEN_GUESS',
+        payload: { targetId, roleId },
+        senderId: localPlayer.id,
+        timestamp: Date.now(),
+      });
+    } else if (actionId === 'alienResume') {
+      client.sendMessage({
+        type: 'ALIEN_RESUME',
+        payload: {},
+        senderId: localPlayer.id,
+        timestamp: Date.now(),
+      });
+    } else if (actionId === 'vote') {
       client.sendMessage({
         type: 'VOTE_CAST',
         payload: { targetId },
@@ -465,6 +483,7 @@ export const PlayerScreen = () => {
           electionStage={electionStage}
           mayorCandidates={mayorCandidates}
           successionMayorId={successionMayorId}
+          dayFrozen={dayFrozen}
           onChoose={submit}
         />
       )}

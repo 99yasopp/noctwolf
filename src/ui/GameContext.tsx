@@ -93,6 +93,20 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
+      if (message.type === 'ALIEN_GUESS') {
+        current.handleAlienGuess(
+          playerId,
+          message.payload?.targetId,
+          message.payload?.roleId,
+        );
+        return;
+      }
+
+      if (message.type === 'ALIEN_RESUME') {
+        current.handleAlienResume(playerId);
+        return;
+      }
+
       if (message.type === 'STATE_REQUEST') {
         current.sendStateTo(playerId);
       }

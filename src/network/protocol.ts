@@ -21,7 +21,9 @@ export type MessageType =
   | 'MAYOR_VOTE'
   | 'SUCCESSION'
   | 'MAYOR_ELECTED'
-  | 'TIME_SYNC';
+  | 'TIME_SYNC'
+  | 'ALIEN_GUESS'
+  | 'ALIEN_RESUME';
 
 export interface NetworkMessage {
   type: MessageType;
@@ -57,6 +59,9 @@ export interface PhaseUpdatePayload {
   // True in the night that follows an election with too few players to feed:
   // the wolves only look around, and the panels must not offer an attack.
   quietNight?: boolean;
+  // Set while the Alien still owes the table an answer: the day cannot move on
+  // to the vote until he stops guessing.
+  dayFrozen?: boolean;
 }
 
 export interface RoleAssignPayload {
@@ -70,11 +75,19 @@ export interface RoleAssignPayload {
   nightActions?: { id: string; label: string; kind: string; chargesLeft?: number }[];
   revengeOnDeath?: boolean;
   linksLovers?: boolean;
+  // The Alien's day power, so his panel can offer it.
+  guessesRoles?: boolean;
 }
 
 export interface NightActionPayload {
   action: string;
   targetId: string;
+}
+
+// The Alien names a player and a role. Both ids: the host knows the truth.
+export interface AlienGuessPayload {
+  targetId: string;
+  roleId: string;
 }
 
 // Declining a night action to its face. The action id is all the host needs.
@@ -136,5 +149,8 @@ export interface SecretInfoPayload {
 
 export interface GameOverPayload {
   winner: Team;
+  // Who actually won when 'Solitary' is not the lovers: the Alien, the Piper,
+  // a lone White Wolf. The reveal below names everyone anyway.
+  winnerLabel?: string;
   reveal: { id: string; name: string; role: string; team: Team; isAlive: boolean }[];
 }

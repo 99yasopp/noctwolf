@@ -8,6 +8,8 @@ import {
   PlayableRole,
   actionChargeLimit,
   buildRoleSet,
+  getCustomRoles,
+  getRoleById,
 } from './roleSet';
 import { GameOptions, defaultGameOptions } from './setup';
 import {
@@ -93,10 +95,23 @@ export class GameManager {
   private lastProtected = new Map<string, string>();
   // Set by Cupid on the first night.
   private lovers: [string, string] | null = null;
+  // Round until which each silenced player is out of powers. A silence sent on
+  // night r covers the rest of night r and all of day r, which is the same
+  // round here, then expires by itself.
+  private silencedUntil = new Map<string, number>();
+  // `blocker:target` pairs, so two Red Wolves each keep their own list of
+  // players they may never silence again.
+  private blockedTargets = new Set<string>();
+  // Set while the Alien still owes the table an answer: the day cannot move on
+  // to the vote until he stops guessing.
+  private alienGuess: string | null = null;
+  // Who won when 'Solitary' is not the lovers: the announcement text, also
+  // carried to the screens.
+  private winnerLabel: string | null = null;
   // Whoever owes a revenge kill, and the deaths that triggered it.
   private pendingRevenge: string | null = null;
   private revengeChoice: { hunterId: string; targetId: string } | null = null;
-  private revengeOrigin: 'Night' | 'Vote' | null = null;
+  private revengeOrigin: 'Night' | 'Vote' | 'Day' | null = null;
   private revengeDeaths: Player[] = [];
 
   private votes = new Map<string, string>();
@@ -112,7 +127,7 @@ export class GameManager {
   // A mayor who dies hands the title on, so the table waits for his word.
   private pendingSuccession: string | null = null;
   private successionChoice: { mayorId: string; targetId: string } | null = null;
-  private successionOrigin: 'Night' | 'Vote' = 'Night';
+  private successionOrigin: 'Night' | 'Vote' | 'Day' = 'Night';
   private successionDeaths: Player[] = [];
   // The host's clock for the current phase, if one was set.
   private timer: { endsAt: number; totalMs: number } | null = null;
@@ -170,6 +185,10 @@ export class GameManager {
     this.chargesUsed.clear();
     this.lastProtected.clear();
     this.lovers = null;
+    this.silencedUntil.clear();
+    this.blockedTargets.clear();
+    this.alienGuess = null;
+    this.winnerLabel = null;
     this.pendingRevenge = null;
     this.revengeChoice = null;
     this.revengeOrigin = null;
@@ -241,6 +260,8 @@ export class GameManager {
         return;
 
       case 'Day':
+        // The Alien still owes the table an answer: the vote must wait.
+        if (this.alienGuess) return;
         this.setPhase('Vote');
         return;
 
@@ -273,7 +294,7 @@ export class GameManager {
   // Deaths hand the game to whoever is still owed an action: the dying mayor
   // names a successor first, then the hunter fires, and only then does the
   // phase close.
-  private enterAfterDeaths(origin: 'Night' | 'Vote', deaths: Player[]) {
+  private enterAfterDeaths(origin: 'Night' | 'Vote' | 'Day', deaths: Player[]) {
     const mayorId = this.state.presidentManager.getPresidentId();
 
     if (
@@ -301,9 +322,20 @@ export class GameManager {
     this.endPhase(origin, deaths);
   }
 
-  private endPhase(origin: 'Night' | 'Vote', deaths: Player[]) {
+  private endPhase(origin: 'Night' | 'Vote' | 'Day', deaths: Player[]) {
     if (origin === 'Night') this.enterDay(deaths);
+    else if (origin === 'Day') this.resumeDay();
     else this.enterNextRound();
+  }
+
+  // A day that lost a player without reaching its vote, which is what the
+  // Alien's guess leaves behind.
+  private resumeDay() {
+    if (this.winner) return;
+
+    this.setPhase('Day');
+    const winner = this.checkWin();
+    if (winner) this.finish(winner);
   }
 
   private enterDay(deaths: Player[]) {
@@ -373,12 +405,24 @@ export class GameManager {
     ignoreStage = false,
   ): boolean {
     if (!ignoreStage && stageOfKind(option.kind) !== this.nightStage) return false;
+    // A silenced player has no powers at all, night or day.
+    if (this.isSilenced(playerId)) return false;
     if (this.chargesUsedBy(playerId, option.id) >= actionChargeLimit(option)) return false;
     if (option.kind === 'link' && this.round !== 1) return false;
     if (option.kind === 'attack' && this.isQuietNight()) return false;
     // Nothing to save means no potion to offer.
     if (option.kind === 'heal' && !this.healTarget()) return false;
     return true;
+  }
+
+  // True while a Red Wolf's silence still covers this player.
+  isSilenced(playerId: string): boolean {
+    return this.round <= (this.silencedUntil.get(playerId) ?? 0);
+  }
+
+  // The day waits for the Alien: no vote, and the host cannot move it on.
+  isDayFrozen(): boolean {
+    return this.alienGuess !== null;
   }
 
   // Who the wolves took tonight, as far as the choice alone says. Null when
@@ -421,6 +465,9 @@ export class GameManager {
     const victim = this.victimOfNight();
     if (!victim?.isAlive) return null;
     if (this.isShieldedBySomeone(victim.id)) return null;
+    // Nothing for the potion to do against a player the wolves cannot even
+    // hurt: the Alien keeps his skin and the witch keeps her potion.
+    if (this.assignments.get(victim.id)?.wolfImmune) return null;
     return victim;
   }
 
@@ -451,6 +498,10 @@ export class GameManager {
         this.options.guardNoRepeat &&
         this.lastProtected.get(player.id) === target.id
       ) {
+        return false;
+      }
+      // A Red Wolf never silences the same player twice in a whole game.
+      if (option.kind === 'block' && this.blockedTargets.has(`${player.id}:${target.id}`)) {
         return false;
       }
       return true;
@@ -585,6 +636,106 @@ export class GameManager {
     this.votes.set(voterId, targetId);
     this.emit({ type: 'changed' });
     return true;
+  }
+
+  // -------------------------------------------------------- the Alien's day
+
+  // The Alien names a player's role. Wrong: the Alien dies and the day goes on.
+  // Right: the target dies, and a wolf target ends the day where it stands.
+  handleAlienGuess(alienId: string, targetId: string, roleId: string): boolean {
+    if (this.winner) return false;
+    if (this.state.currentPhase !== 'Day') return false;
+    if (this.alienGuess !== null && this.alienGuess !== alienId) return false;
+
+    const alien = this.state.players.find(p => p.id === alienId);
+    const role = this.assignments.get(alienId);
+    if (!alien?.isAlive || !role?.guessesRoles) return false;
+    if (this.isSilenced(alienId)) return false;
+
+    const target = this.state.players.find(p => p.id === targetId);
+    if (!target?.isAlive || target.id === alienId) return false;
+
+    // Any role the app knows may be named, not only the ones in play.
+    if (
+      !getRoleById(roleId) &&
+      !getCustomRoles().some(candidate => candidate.id === roleId)
+    ) {
+      return false;
+    }
+
+    const truth = this.assignments.get(target.id);
+    const correct = truth?.id === roleId;
+    // Whatever happens next, the open question is answered.
+    this.alienGuess = null;
+    this.actionLog.push(
+      `Day ${this.round}: the Alien named ${target.name} as ${roleId} and was ${
+        correct ? 'right' : 'wrong'
+      }.`,
+    );
+
+    if (correct) {
+      this.killInDay(target);
+      this.sendAlienResult(
+        alienId,
+        `${target.name} was ${truth?.name} and is dead. Point again, or let the day go on.`,
+      );
+    } else {
+      this.killInDay(alien);
+      this.sendAlienResult(alienId, `${target.name} was not that role. The guess has killed you.`);
+    }
+
+    // A wolf's death mid-day ends the day: nobody votes after that. The death
+    // chain runs first either way, so a dying mayor still names a successor
+    // and a hunter still fires before the day takes its leave.
+    const dayEnds = correct && truth?.team === 'Wolf';
+    if (correct && !dayEnds) {
+      // He may point again; the frozen flag holds the host at the day.
+      this.alienGuess = alienId;
+    }
+
+    this.enterAfterDeaths(dayEnds ? 'Vote' : 'Day', []);
+    return true;
+  }
+
+  // The Alien hands the day back without pointing at anyone else.
+  handleAlienResume(alienId: string): boolean {
+    if (this.winner) return false;
+    if (this.state.currentPhase !== 'Day') return false;
+    if (this.alienGuess !== alienId) return false;
+
+    this.alienGuess = null;
+    this.broadcastPhase();
+    this.emit({ type: 'changed' });
+    return true;
+  }
+
+  // A death in the middle of the day, from the Alien's guess or from his own
+  // wrong one. The day is not over, so this cannot go through endPhase.
+  private killInDay(victim: Player) {
+    victim.isAlive = false;
+    this.announce(`Day ${this.round}: ${victim.name} has died.`);
+
+    const mayorId = this.state.presidentManager.getPresidentId();
+    if (mayorId === victim.id && this.state.players.some(player => player.isAlive)) {
+      this.pendingSuccession = mayorId;
+    }
+
+    // The hunter still gets his parting shot, Alien or not.
+    if (
+      this.assignments.get(victim.id)?.revengeOnDeath &&
+      this.state.players.some(player => player.isAlive)
+    ) {
+      this.pendingRevenge = victim.id;
+    }
+  }
+
+  private sendAlienResult(alienId: string, message: string) {
+    this.transport.sendToPlayer(alienId, {
+      type: 'SECRET_INFO',
+      payload: { message },
+      timestamp: Date.now(),
+    });
+    this.emit({ type: 'secret', playerId: alienId, message });
   }
 
   // ------------------------------------------------------------------ queries
@@ -817,6 +968,7 @@ export class GameManager {
       })),
       revengeOnDeath: role.revengeOnDeath,
       linksLovers: role.linksLovers,
+      guessesRoles: role.guessesRoles,
     };
 
     this.transport.sendToPlayer(playerId, {
@@ -857,6 +1009,7 @@ export class GameManager {
       // The panels must be able to say "Night 1 is peaceful" without guessing
       // from the round number, which the election can throw off.
       quietNight: this.isQuietNight(),
+      ...(phase === 'Day' ? { dayFrozen: this.isDayFrozen() } : {}),
       ...extra,
     };
   }
@@ -864,6 +1017,7 @@ export class GameManager {
   private buildGameOverPayload(): GameOverPayload {
     return {
       winner: this.winner ?? 'Village',
+      winnerLabel: this.winnerLabel ?? undefined,
       reveal: this.state.players.map(p => ({
         id: p.id,
         name: p.name,
@@ -1073,6 +1227,39 @@ export class GameManager {
   private resolveNight(): Player[] {
     const deaths: Player[] = [];
 
+    // The Red Wolf's silence lands before anything else resolves, so a player
+    // silenced tonight loses a choice he may already have sent.
+    const silenced = new Set<string>();
+    this.nightChoices.forEach((choices, playerId) => {
+      const role = this.assignments.get(playerId);
+      const actor = this.state.players.find(p => p.id === playerId);
+      if (!actor?.isAlive || !role) return;
+
+      choices.forEach((targetId, actionId) => {
+        const option = role.nightActions?.find(candidate => candidate.id === actionId);
+        if (option?.kind !== 'block' || targetId === PASSED) return;
+
+        silenced.add(targetId);
+        this.silencedUntil.set(targetId, this.round);
+        this.blockedTargets.add(`${playerId}:${targetId}`);
+
+        const target = this.state.players.find(p => p.id === targetId);
+        if (target) {
+          this.actionLog.push(`Night ${this.round}: the Red Wolf silenced ${target.name}.`);
+          // The player is told, not the table: a silenced role that says
+          // nothing looks like a broken app.
+          const message =
+            'You have been silenced: your powers fail until the end of the coming day.';
+          this.transport.sendToPlayer(targetId, {
+            type: 'SECRET_INFO',
+            payload: { message },
+            timestamp: Date.now(),
+          });
+          this.emit({ type: 'secret', playerId: targetId, message });
+        }
+      });
+    });
+
     // Gather every choice made tonight, by kind of action.
     const shielded = new Set<string>();
     // Charged actions remember which action id spent them, so a role whose
@@ -1089,6 +1276,8 @@ export class GameManager {
       const actor = this.state.players.find(p => p.id === playerId);
       const role = this.assignments.get(playerId);
       if (!actor?.isAlive || !role) return;
+      // Silenced by the block resolved just above: the choice does not happen.
+      if (silenced.has(playerId)) return;
 
       choices.forEach((targetId, actionId) => {
         const option = role.nightActions?.find(candidate => candidate.id === actionId);
@@ -1132,7 +1321,14 @@ export class GameManager {
     } else if (biteTarget) {
       const target = this.state.players.find(p => p.id === biteTarget);
       if (target?.isAlive) {
-        if (shielded.has(target.id)) {
+        const immune = this.assignments.get(target.id)?.wolfImmune;
+        if (immune) {
+          // The Alien shrugs the pack off: the wolves learn nothing and the
+          // witch was never offered a potion for him.
+          this.actionLog.push(
+            `Night ${this.round}: the wolves attacked ${target.name}, and it did nothing.`,
+          );
+        } else if (shielded.has(target.id)) {
           this.actionLog.push(`Night ${this.round}: the guard saved ${target.name}.`);
         } else if (healed.has(target.id)) {
           // Spent only when it actually saves someone.
@@ -1668,13 +1864,24 @@ export class GameManager {
       alive.length === 2 &&
       this.lovers.every(id => alive.some(p => p.id === id))
     ) {
+      this.winnerLabel = 'The Lovers win.';
+      return 'Solitary';
+    }
+
+    // A role that only wins alone has won the moment the table is his.
+    if (alive.length === 1 && this.assignments.get(alive[0].id)?.winsAlone) {
+      this.winnerLabel = `The ${alive[0].role} wins.`;
       return 'Solitary';
     }
 
     const wolves = alive.filter(p => this.assignments.get(p.id)?.team === 'Wolf');
     const others = alive.filter(p => this.assignments.get(p.id)?.team !== 'Wolf');
 
+    this.winnerLabel = null;
     if (wolves.length === 0) return 'Village';
+    // Parity settles nothing while the Alien is alive: he can still kill a
+    // wolf by daylight, so the game runs until one side is actually gone.
+    if (alive.some(p => this.assignments.get(p.id)?.guessesRoles)) return null;
     // Once the wolves are at least half of the survivors they can no longer
     // be outvoted, which is the classic werewolf win condition.
     if (wolves.length >= others.length) return 'Wolf';
@@ -1684,11 +1891,12 @@ export class GameManager {
   private finish(winner: Team) {
     this.winner = winner;
     this.announce(
-      winner === 'Wolf'
-        ? 'The Werewolves win.'
-        : winner === 'Solitary'
-        ? 'The Lovers win.'
-        : 'The Village wins.',
+      this.winnerLabel ??
+        (winner === 'Wolf'
+          ? 'The Werewolves win.'
+          : winner === 'Solitary'
+          ? 'The Lovers win.'
+          : 'The Village wins.'),
     );
 
     this.transport.broadcast({
