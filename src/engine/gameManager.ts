@@ -3,6 +3,7 @@ import { ActionContext, Phase, Player, Team } from './types';
 import { Role } from './roles';
 import { GameTransport, nullTransport } from './transport';
 import {
+  ALL_ROLES,
   ActionKind,
   NightActionOption,
   PlayableRole,
@@ -718,16 +719,28 @@ export class GameManager {
       }.`,
     );
 
+    const deaths: Player[] = [];
     if (correct) {
-      this.killInDay(target);
+      this.killInDay(target, deaths);
       this.sendAlienResult(
         alienId,
         `${target.name} was ${truth?.name} and is dead. Point again, or let the day go on.`,
       );
     } else {
-      this.killInDay(alien);
+      this.killInDay(alien, deaths);
       this.sendAlienResult(alienId, `${target.name} was not that role. The guess has killed you.`);
     }
+
+    // A lover never outlives the other, day or night.
+    this.applyLoverDeaths(deaths);
+
+    // A hunter still gets his parting shot, Alien or not.
+    this.pendingRevenge =
+      deaths.find(
+        dead =>
+          this.assignments.get(dead.id)?.revengeOnDeath &&
+          this.state.players.some(other => other.isAlive),
+      )?.id ?? null;
 
     // A wolf's death mid-day ends the day: nobody votes after that. The death
     // chain runs first either way, so a dying mayor still names a successor
@@ -738,7 +751,10 @@ export class GameManager {
       this.alienGuess = alienId;
     }
 
-    this.enterAfterDeaths(dayEnds ? 'Vote' : 'Day', []);
+    // Everyone the guess took is announced, never why.
+    deaths.forEach(dead => this.announce(`Day ${this.round}: ${dead.name} has died.`));
+
+    this.enterAfterDeaths(dayEnds ? 'Vote' : 'Day', deaths);
     return true;
   }
 
@@ -754,24 +770,24 @@ export class GameManager {
     return true;
   }
 
+  // The Alien went silent: the host may hand the day back himself rather than
+  // let a disconnected phone hold the whole table.
+  forceDayOn(): boolean {
+    if (this.winner) return false;
+    if (this.state.currentPhase !== 'Day' || !this.alienGuess) return false;
+
+    this.alienGuess = null;
+    this.broadcastPhase();
+    this.emit({ type: 'changed' });
+    return true;
+  }
+
   // A death in the middle of the day, from the Alien's guess or from his own
-  // wrong one. The day is not over, so this cannot go through endPhase.
-  private killInDay(victim: Player) {
+  // wrong one. The day is not over, so the lovers are chained here and the
+  // rest of the death chain waits for enterAfterDeaths.
+  private killInDay(victim: Player, deaths: Player[]) {
     victim.isAlive = false;
-    this.announce(`Day ${this.round}: ${victim.name} has died.`);
-
-    const mayorId = this.state.presidentManager.getPresidentId();
-    if (mayorId === victim.id && this.state.players.some(player => player.isAlive)) {
-      this.pendingSuccession = mayorId;
-    }
-
-    // The hunter still gets his parting shot, Alien or not.
-    if (
-      this.assignments.get(victim.id)?.revengeOnDeath &&
-      this.state.players.some(player => player.isAlive)
-    ) {
-      this.pendingRevenge = victim.id;
-    }
+    deaths.push(victim);
   }
 
   private sendAlienResult(alienId: string, message: string) {
@@ -787,6 +803,12 @@ export class GameManager {
 
   getRoleOf(playerId: string): PlayableRole | undefined {
     return this.assignments.get(playerId);
+  }
+
+  // The engine's own words when a solo role took the game: null for the three
+  // sides, whose announcements the screens already know.
+  getWinnerLabel(): string | null {
+    return this.winnerLabel;
   }
 
   getAlivePlayers(): Player[] {
@@ -1191,6 +1213,37 @@ export class GameManager {
         });
     }
 
+    // A bot Alien would otherwise let a two-player endgame run forever: it
+    // points at whoever is left and names a role at random, then hands the day
+    // back rather than sitting on a freeze it cannot press away.
+    if (this.state.currentPhase === 'Day' && this.winner === null) {
+      const botAlien = this.state.players.find(
+        player =>
+          player.isAlive &&
+          player.isBot &&
+          this.assignments.get(player.id)?.guessesRoles === true &&
+          !this.isSilenced(player.id),
+      );
+
+      if (botAlien) {
+        if (this.alienGuess === botAlien.id) {
+          this.handleAlienResume(botAlien.id);
+        } else if (!this.alienGuess) {
+          const targets = this.state.players.filter(
+            player => player.isAlive && player.id !== botAlien.id,
+          );
+          const roles = [...ALL_ROLES, ...getCustomRoles()];
+          if (targets.length > 0 && roles.length > 0) {
+            const target = targets[Math.floor(Math.random() * targets.length)];
+            const guess = roles[Math.floor(Math.random() * roles.length)];
+            this.handleAlienGuess(botAlien.id, target.id, guess.id);
+            // A right guess freezes the day, and nobody is there to press on.
+            if (this.alienGuess === botAlien.id) this.handleAlienResume(botAlien.id);
+          }
+        }
+      }
+    }
+
     if (this.state.currentPhase === 'Vote') {
       const alive = this.state.players.filter(p => p.isAlive);
       alive.forEach(voter => {
@@ -1278,12 +1331,15 @@ export class GameManager {
     const deaths: Player[] = [];
 
     // The Red Wolf's silence lands before anything else resolves, so a player
-    // silenced tonight loses a choice he may already have sent.
+    // silenced tonight loses a choice he may already have sent. Seating order
+    // settles two wolves silencing each other: the earlier seat lands first.
     const silenced = new Set<string>();
-    this.nightChoices.forEach((choices, playerId) => {
-      const role = this.assignments.get(playerId);
-      const actor = this.state.players.find(p => p.id === playerId);
-      if (!actor?.isAlive || !role) return;
+    this.state.players.forEach(actor => {
+      const role = this.assignments.get(actor.id);
+      const choices = this.nightChoices.get(actor.id);
+      if (!actor.isAlive || !role || !choices) return;
+      // A Red Wolf still under an earlier silence has no powers tonight.
+      if (this.isSilenced(actor.id)) return;
 
       choices.forEach((targetId, actionId) => {
         const option = role.nightActions?.find(candidate => candidate.id === actionId);
@@ -1291,7 +1347,7 @@ export class GameManager {
 
         silenced.add(targetId);
         this.silencedUntil.set(targetId, this.round);
-        this.blockedTargets.add(`${playerId}:${targetId}`);
+        this.blockedTargets.add(`${actor.id}:${targetId}`);
 
         const target = this.state.players.find(p => p.id === targetId);
         if (target) {
@@ -1560,7 +1616,9 @@ export class GameManager {
       partner.isAlive = false;
       deaths.push(partner);
       queue.push(partner);
-      this.actionLog.push(`Night ${this.round}: ${partner.name} died of a broken heart.`);
+      // The Alien can break a heart in broad daylight too.
+      const when = this.state.currentPhase === 'Night' ? 'Night' : 'Day';
+      this.actionLog.push(`${when} ${this.round}: ${partner.name} died of a broken heart.`);
     }
   }
 

@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-nati
 import { theme } from '../theme/colors';
 import { BaseButton } from '../components/BaseButton';
 import { ActionPanel, OwnRole } from '../components/ActionPanel';
-import { formatRemaining } from '../format';
+import { formatRemaining, winnerText } from '../format';
 import { useGame } from '../GameContext';
 import { lobby } from '../../network/lobby';
 
@@ -154,8 +154,7 @@ export const NarratorDashboard = () => {
     ? null
     : phase === 'Election'
     ? manager.getElectionStage() === 'nominate'
-      ? 'Close the nominations → the candidates speak'
-      : 'Announce the mayor → night 1'
+      ? 'Close the nominations → the candidates speak'      : 'Announce the mayor → night 1'
     : phase === 'Debate'
     ? 'Start the vote for mayor'
     : phase === 'Succession'
@@ -165,9 +164,10 @@ export const NarratorDashboard = () => {
       ? 'Wake the witch'
       : `Resolve night ${round} → Day`
     : phase === 'Day'
-    ? // The Alien still owes an answer, so there is nothing to press.
+    ? // The Alien's turn is his own, but a phone that went to sleep must not
+      // hold the whole table: the host can force the vote.
       manager.isDayFrozen()
-      ? null
+      ? 'Force the vote'
       : 'Start the vote'
     : phase === 'Vote'
     ? 'Resolve the vote → Night'
@@ -311,11 +311,7 @@ export const NarratorDashboard = () => {
       {manager.winner && (
         <View style={styles.winnerCard}>
           <Text style={styles.winnerText}>
-            {manager.winner === 'Wolf'
-              ? 'Werewolves win!'
-              : manager.winner === 'Solitary'
-              ? 'The Lovers win!'
-              : 'Village wins!'}
+            {winnerText(manager.winner, manager.getWinnerLabel())}
           </Text>
           <Text style={styles.winnerSub}>
             Everyone keeps their seat. Playing again deals new roles to the
@@ -365,7 +361,10 @@ export const NarratorDashboard = () => {
         <BaseButton
           title={nextLabel}
           onPress={() => {
-            advanceOnce();
+            // A frozen day is the Alien's to release; the host's press is the
+            // escape hatch for a phone that is gone.
+            if (manager.isDayFrozen()) manager.forceDayOn();
+            else advanceOnce();
             setSubmitted([]);
           }}
         />

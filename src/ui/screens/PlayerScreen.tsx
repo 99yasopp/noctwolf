@@ -15,7 +15,7 @@ import {
   RoleAssignPayload,
   VoteResultPayload,
 } from '../../network/protocol';
-import { formatRemaining } from '../format';
+import { formatRemaining, winnerText } from '../format';
 
 export const PlayerScreen = () => {
   const { localPlayer, returnToLobby } = useGame();
@@ -111,8 +111,10 @@ export const PlayerScreen = () => {
           setNightStage(1);
           setVictim(null);
 
-          // Deaths are announced when the morning comes, not at nightfall.
-          if (payload.phase === 'Day') {
+          // Deaths are announced when the morning comes, not at nightfall, and
+          // only on a real transition: the Alien's frozen day re-broadcasts
+          // the same phase without any word about the dead.
+          if (payload.phase === 'Day' && payload.deaths !== undefined) {
             setLog(prev => [
               payload.deaths?.length
                 ? `Night ${payload.round}: ${payload.deaths.map(d => d.name).join(', ')} died.`
@@ -198,14 +200,7 @@ export const PlayerScreen = () => {
         case 'GAME_OVER': {
           const payload = message.payload as GameOverPayload;
           setOutcome(payload);
-          setLog(prev => [
-            payload.winner === 'Wolf'
-              ? 'The Werewolves won.'
-              : payload.winner === 'Solitary'
-              ? 'The Lovers won.'
-              : 'The Village won.',
-            ...prev,
-          ]);
+          setLog(prev => [winnerText(payload.winner, payload.winnerLabel), ...prev]);
           break;
         }
 
@@ -265,6 +260,7 @@ export const PlayerScreen = () => {
         nightActions: role.nightActions,
         revengeOnDeath: role.revengeOnDeath,
         linksLovers: role.linksLovers,
+        guessesRoles: role.guessesRoles,
         allies: role.allies ?? [],
       }
     : null;
@@ -393,13 +389,7 @@ export const PlayerScreen = () => {
 
       {outcome && (
         <View style={styles.winnerCard}>
-          <Text style={styles.winnerText}>
-            {outcome.winner === 'Wolf'
-              ? 'Werewolves win!'
-              : outcome.winner === 'Solitary'
-              ? 'The Lovers win!'
-              : 'Village wins!'}
-          </Text>
+          <Text style={styles.winnerText}>{winnerText(outcome.winner, outcome.winnerLabel)}</Text>
           {outcome.reveal.map(entry => (
             <Text key={entry.id} style={styles.revealText}>
               {entry.name}: {entry.role}

@@ -2389,5 +2389,83 @@ console.log('\n31. the pack learns new teeth');
   check('with the charge spent', immuneGame.getChargesLeft(immuneFather.id, 'infect') === 0);
 }
 
+console.log('\n32. the day and the pack keep their books straight');
+{
+  // Two Red Wolves silencing each other: the earlier seat lands first, so the
+  // later one loses his silence along with his powers.
+  const wolves = makePlayers(4);
+  const wolfTransport = new RecordingTransport();
+  const wolfGame = new GameManager(wolves, wolfTransport);
+  wolfGame.start([RedWolfRole, RedWolfRole, SeerRole, VillagerRole]);
+  passElection(wolfGame);
+
+  const reds = wolves.filter(player => wolfGame.getRoleOf(player.id)?.id === 'red-wolf');
+  const [firstRed, secondRed] = reds;
+  const seer = findRole(wolfGame, wolves, 'seer')!;
+
+  check('the first red wolf silences the second', wolfGame.handleNightAction(firstRed.id, 'silence', secondRed.id));
+  check('the second tries to silence the seer', wolfGame.handleNightAction(secondRed.id, 'silence', seer.id));
+  check('the seer still peeks', wolfGame.handleNightAction(seer.id, 'peek', firstRed.id));
+
+  wolfGame.advance();
+  settleSuccession(wolfGame);
+  check('the silenced red wolf is out of powers', wolfGame.isSilenced(secondRed.id));
+  check('the seer was never silenced', !wolfGame.isSilenced(seer.id));
+  check(
+    'and his peek still happened',
+    wolfTransport.directs.some(
+      d =>
+        d.playerId === seer.id &&
+        d.message.type === 'SECRET_INFO' &&
+        d.message.payload.isWolf !== undefined,
+    ),
+  );
+
+  // A lover never outlives the other, even when the Alien does the killing.
+  const lovers = makePlayers(4);
+  const loverGame = new GameManager(lovers, new RecordingTransport());
+  loverGame.start([AlienRole, CupidRole, WerewolfRole, VillagerRole]);
+  const loverAlien = findRole(loverGame, lovers, 'alien')!;
+  const cupid = findRole(loverGame, lovers, 'cupid')!;
+  const beloved = lovers.find(p => p.id !== loverAlien.id && p.id !== cupid.id)!;
+  passElection(
+    loverGame,
+    lovers.find(p => p.id !== loverAlien.id && p.id !== cupid.id && p.id !== beloved.id)!.id,
+  );
+  check('cupid ties his knot', loverGame.handleNightAction(cupid.id, 'link', beloved.id));
+  loverGame.advance();
+  settleSuccession(loverGame);
+  check('the day is running', loverGame.state.currentPhase === 'Day');
+  check('the alien names the cupid', loverGame.handleAlienGuess(loverAlien.id, cupid.id, 'cupid'));
+  check('both lovers are dead', !cupid.isAlive && !beloved.isAlive);
+  check(
+    'the partner is announced too',
+    loverGame.getPublicLog().some(line => line.includes(beloved.name)),
+  );
+
+  // A silent phone does not hold the table: the host can force the vote.
+  const forced = makePlayers(4);
+  const forcedGame = new GameManager(forced, new RecordingTransport());
+  forcedGame.start([AlienRole, WerewolfRole, VillagerRole, VillagerRole]);
+  const forcedAlien = findRole(forcedGame, forced, 'alien')!;
+  const forcedVillager = findRole(forcedGame, forced, 'villager')!;
+  passElection(forcedGame, forced.find(p => p.id !== forcedAlien.id && p.id !== forcedVillager.id)!.id);
+  forcedGame.advance();
+  settleSuccession(forcedGame);
+  forcedGame.handleAlienGuess(forcedAlien.id, forcedVillager.id, 'villager');
+  check('the day is frozen', forcedGame.isDayFrozen());
+  check('the host can force the vote', forcedGame.forceDayOn() && !forcedGame.isDayFrozen());
+  forcedGame.advance();
+  check('and the vote still arrives', forcedGame.state.currentPhase === 'Vote');
+
+  // A table of bots with an Alien in it still reaches an end by itself.
+  const bots = makePlayers(5, true);
+  const botGame = new GameManager(bots, new RecordingTransport());
+  botGame.start([AlienRole, WerewolfRole, VillagerRole, VillagerRole, SeerRole]);
+  let presses = 0;
+  while (botGame.winner === null && presses++ < 300) botGame.advance();
+  check('a bot table with an alien still ends', botGame.winner !== null, `${presses} presses`);
+}
+
 console.log(failures === 0 ? `\nAll checks passed.` : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

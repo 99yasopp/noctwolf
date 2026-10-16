@@ -359,30 +359,17 @@ export const ActionPanel: React.FC<Props> = ({
       option =>
         stageOfKind(option.kind) === 2 && nightStage === 1 && option.chargesLeft !== 0,
     );
-    // Her potion is live and the night is hers, but the wolves left her
-    // nothing to work on: nobody was taken, or the guard already has him.
-    const nothingToSave =
-      nightStage === 2 &&
-      declared.some(option => option.kind === 'heal' && option.chargesLeft !== 0);
 
     return (
       <View style={styles.panel}>
         <Text style={styles.heading}>
-          {peaceful
-            ? 'Night 1 is peaceful'
-            : stillToCome
-            ? 'Not yet'
-            : nothingToSave
-            ? 'Nothing to save tonight'
-            : 'Night'}
+          {peaceful ? 'Night 1 is peaceful' : stillToCome ? 'Not yet' : 'Night'}
         </Text>
         <Text style={styles.body}>
           {peaceful
             ? "The wolves only look around tonight. Nobody will be devoured, so tomorrow's vote decides everything."
             : stillToCome
             ? 'The wolves are out. You will be woken once they have chosen.'
-            : nothingToSave
-            ? 'Nobody was taken that your potion could help, so it stays where it is. The poison is still yours to use.'
             : 'You have no night action. Sleep well.'}
         </Text>
       </View>
@@ -419,7 +406,7 @@ export const ActionPanel: React.FC<Props> = ({
             ) : candidates.length === 0 ? (
               <Text style={styles.body}>
                 {option.kind === 'heal'
-                  ? 'Nobody was attacked tonight, so the potion stays where it is.'
+                  ? 'Nothing to save tonight: the wolves took nobody, or whoever they took is already shielded. The potion stays where it is.'
                   : 'No valid targets.'}
               </Text>
             ) : (

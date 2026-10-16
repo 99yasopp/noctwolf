@@ -149,8 +149,8 @@ export interface SecretInfoPayload {
 
 export interface GameOverPayload {
   winner: Team;
-  // Who actually won when 'Solitary' is not the lovers: the Alien, the Piper,
-  // a lone White Wolf. The reveal below names everyone anyway.
+  // The engine's own words when 'Solitary' is not the lovers. The reveal below
+  // names everyone anyway.
   winnerLabel?: string;
   reveal: { id: string; name: string; role: string; team: Team; isAlive: boolean }[];
 }

@@ -78,7 +78,7 @@ export const RedWolfRole: PlayableRole = {
   name: 'Red Wolf',
   team: 'Wolf',
   description:
-    'You hunt with the pack, then silence a player for a day and a night. A silenced player cannot use a night action or a day power. Never the same player twice.',
+    'You hunt with the pack, then silence a player: their night action fails and their powers stay dead all through the coming day. Never the same player twice.',
   nightActions: [
     { id: 'kill', label: 'Devour a player', kind: 'attack' },
     { id: 'silence', label: 'Silence a player', kind: 'block' },
