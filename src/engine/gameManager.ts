@@ -1,5 +1,5 @@
 import { GameState } from './state';
-import { ActionContext, Phase, Player, Team } from './types';
+import { ActionContext, ChatGroup, ChatLine, Phase, Player, Team } from './types';
 import { Role } from './roles';
 import { GameTransport, nullTransport } from './transport';
 import {
@@ -43,6 +43,13 @@ const stageOfKind = (kind: ActionKind): 1 | 2 =>
 // A settled decision to do nothing, so a bot that keeps its potion is not
 // reported as still owing an action.
 const PASSED = '__passed__';
+
+// A private window: how long one line may be, how fast they may come, and how
+// much of the evening is kept for a phone that loses its connection.
+const CHAT_LENGTH = 200;
+const CHAT_PER_WINDOW = 6;
+const CHAT_WINDOW_MS = 10_000;
+const CHAT_KEPT = 100;
 
 // Registry of every action a role is allowed to trigger.
 const ACTION_REGISTRY = {
@@ -115,6 +122,10 @@ export class GameManager {
   private foxLost = new Set<string>();
   // The Raven's two votes against one player, counted in the next day's vote.
   private ravenTarget: string | null = null;
+  // The private windows: the wolves' whisper and the lovers' bond. Kept for
+  // one game in memory, and never written into the table's journal.
+  private chatLog: ChatLine[] = [];
+  private chatTimes = new Map<string, number[]>();
   // What the seer found, held until the morning so the village can be told.
   private seerSighting: string | null = null;
   // Set by the host when the wolves spotted the little girl tonight.
@@ -251,6 +262,8 @@ export class GameManager {
     this.packTieOpen = false;
     this.packTie = [];
     this.packTiePick = null;
+    this.chatLog = [];
+    this.chatTimes.clear();
     this.mayorVolunteers = [];
     this.electionStage = 'nominate';
     this.electionRevote = false;
@@ -310,6 +323,8 @@ export class GameManager {
     this.announce(`${players.length} players were dealt their roles.`, 'Election');
     // The mayor is chosen before the first night, and a wolf may win the seat.
     this.announce('The table elects a mayor before the first night.', 'Election');
+    // Every phone learns which private windows it holds: the pack, or none.
+    this.sendChatGroups();
     this.setPhase('Election');
   }
 
@@ -418,6 +433,10 @@ export class GameManager {
   // names a successor first, then the hunter fires, and only then does the
   // phase close.
   private enterAfterDeaths(origin: 'Night' | 'Vote' | 'Day', deaths: Player[]) {
+    // A death closes the dead player's windows and ends the bond if he was one
+    // of the two.
+    if (deaths.length > 0) this.sendChatGroups();
+
     const mayorId = this.state.presidentManager.getPresidentId();
 
     if (
@@ -1253,6 +1272,127 @@ export class GameManager {
     return target ? { id: target.id, name: target.name, isAlive: target.isAlive } : null;
   }
 
+  // ------------------------------------------------------------- private chat
+
+  // The windows this player may hear: the pack, and the bond Cupid tied. The
+  // dead hear nothing, and the bond is over the moment one of the two dies.
+  private chatGroupsOf(playerId: string): ChatGroup[] {
+    const player = this.state.players.find(p => p.id === playerId);
+    if (!player?.isAlive) return [];
+
+    const groups: ChatGroup[] = [];
+    if (this.assignments.get(playerId)?.team === 'Wolf') groups.push('wolves');
+    if (
+      this.lovers?.includes(playerId) &&
+      this.lovers.every(id => this.state.players.find(p => p.id === id)?.isAlive)
+    ) {
+      groups.push('lovers');
+    }
+    return groups;
+  }
+
+  // A group's window, as the table set it. Membership is a separate question.
+  private chatOpen(group: ChatGroup): boolean {
+    if (this.winner) return false;
+
+    if (group === 'lovers') {
+      // 'off' is the only other choice: the pair talks whenever both live.
+      return this.setting('loverChat') !== 'off';
+    }
+
+    const mode = this.setting('wolfChat');
+    if (mode === 'always') return true;
+    if (this.state.currentPhase !== 'Night') return false;
+    if (mode === 'night') return true;
+    // 'wake', the default: only while the pack is choosing its victim.
+    return this.nightStage === 1;
+  }
+
+  private membersOf(group: ChatGroup): string[] {
+    return this.state.players
+      .map(player => player.id)
+      .filter(id => this.chatGroupsOf(id).includes(group));
+  }
+
+  // One phone learns which windows it has. Sent again whenever the seats
+  // change: a wolf who joins the pack, a lover whose other half dies.
+  private sendChatGroupsTo(playerId: string) {
+    this.transport.sendToPlayer(playerId, {
+      type: 'CHAT_GROUPS',
+      payload: { groups: this.chatGroupsOf(playerId) },
+      timestamp: Date.now(),
+    });
+  }
+
+  private sendChatGroups() {
+    this.state.players.forEach(player => this.sendChatGroupsTo(player.id));
+  }
+
+  // The whole window so far, for a phone that just woke up.
+  private sendChatLogTo(playerId: string) {
+    this.getOpenChatGroups(playerId).forEach(group => {
+      this.getChatLog(group).forEach(line => {
+        this.transport.sendToPlayer(playerId, {
+          type: 'CHAT_MESSAGE',
+          payload: line,
+          timestamp: line.timestamp,
+        });
+      });
+    });
+  }
+
+  // A line in one of the private windows. The engine is the trust boundary: it
+  // decides who may listen, when, and how fast, and nothing said here reaches
+  // the table's journal.
+  handleChat(playerId: string, group: ChatGroup, text: string): boolean {
+    if (group !== 'wolves' && group !== 'lovers') return false;
+    if (this.winner) return false;
+    if (!this.chatGroupsOf(playerId).includes(group)) return false;
+    if (!this.chatOpen(group)) return false;
+
+    const message = String(text ?? '').trim().slice(0, CHAT_LENGTH);
+    if (!message) return false;
+
+    const now = Date.now();
+    const spoken = (this.chatTimes.get(playerId) ?? []).filter(at => now - at < CHAT_WINDOW_MS);
+    if (spoken.length >= CHAT_PER_WINDOW) return false;
+    spoken.push(now);
+    this.chatTimes.set(playerId, spoken);
+
+    const speaker = this.state.players.find(p => p.id === playerId);
+    const line: ChatLine = {
+      group,
+      senderId: playerId,
+      senderName: speaker?.name ?? 'A voice',
+      message,
+      timestamp: now,
+    };
+    this.chatLog = [...this.chatLog, line].slice(-CHAT_KEPT);
+
+    this.membersOf(group).forEach(memberId => {
+      this.transport.sendToPlayer(memberId, {
+        type: 'CHAT_MESSAGE',
+        payload: line,
+        timestamp: line.timestamp,
+      });
+    });
+
+    return true;
+  }
+
+  getChatGroups(playerId: string): ChatGroup[] {
+    return this.chatGroupsOf(playerId);
+  }
+
+  // The windows open right now, which is what a chat panel may show.
+  getOpenChatGroups(playerId: string): ChatGroup[] {
+    return this.chatGroupsOf(playerId).filter(group => this.chatOpen(group));
+  }
+
+  getChatLog(group?: ChatGroup): ChatLine[] {
+    return this.chatLog.filter(line => !group || line.group === group);
+  }
+
   // A death in the middle of the day, from the Alien's guess or from his own
   // wrong one. The day is not over, so the lovers are chained here and the
   // rest of the death chain waits for enterAfterDeaths.
@@ -1517,6 +1657,10 @@ export class GameManager {
         timestamp: Date.now(),
       });
     });
+
+    // The private windows this phone holds, and whatever was said in them.
+    this.sendChatGroupsTo(playerId);
+    this.sendChatLogTo(playerId);
 
     if (this.lastVote) {
       this.transport.sendToPlayer(playerId, {
@@ -2203,6 +2347,9 @@ export class GameManager {
 
     if (bond) {
       this.lovers = [bond.sourceId, bond.targetId];
+      // The pair just learned each other's name: their window opens with it.
+      this.sendChatGroupsTo(bond.sourceId);
+      this.sendChatGroupsTo(bond.targetId);
       const cupid = this.state.players.find(p => p.id === bond.sourceId);
       const beloved = this.state.players.find(p => p.id === bond.targetId);
       this.actionLog.push(`Cupid tied ${cupid?.name} and ${beloved?.name} together.`);
@@ -2398,6 +2545,9 @@ export class GameManager {
           this.assignments.get(player.id)?.team === 'Wolf',
       )
       .forEach(wolf => this.sendRoleAssign(wolf.id, this.assignments.get(wolf.id)!, true));
+
+    // The pack just grew: the new wolf's phone gets its window now.
+    this.sendChatGroups();
   }
 
   // The Wild Child turns the moment his model dies, wherever the death came

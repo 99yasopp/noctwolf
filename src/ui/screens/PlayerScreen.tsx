@@ -5,8 +5,9 @@ import { BaseButton } from '../components/BaseButton';
 import { ActionPanel, OwnRole } from '../components/ActionPanel';
 import { useGame } from '../GameContext';
 import { lobby } from '../../network/lobby';
-import { Phase } from '../../engine/types';
+import { ChatGroup, ChatLine, Phase } from '../../engine/types';
 import {
+  ChatGroupsPayload,
   GameOverPayload,
   MayorElectedPayload,
   NightStagePayload,
@@ -20,16 +21,20 @@ import {
 import { SETTING_DEFS, Settings, settingLabel } from '../../engine/setup';
 import { TabBar } from '../components/TabBar';
 import { NotesTab } from '../components/NotesTab';
+import { ChatTab } from '../components/ChatTab';
 import { formatRemaining, winnerText } from '../format';
 
 export const PlayerScreen = () => {
   const { localPlayer, returnToLobby, gameId } = useGame();
 
   // Which of the phone's pages is open. Play is the game itself.
-  const [tab, setTab] = useState<'play' | 'journal' | 'notes'>('play');
+  const [tab, setTab] = useState<'play' | 'journal' | 'notes' | 'chat'>('play');
   // The journal: every line the table heard, in order, with the round it
   // belonged to.
   const [publicLines, setPublicLines] = useState<PublicLogPayload[]>([]);
+  // The private windows this phone holds, and what was said inside them.
+  const [chatGroups, setChatGroups] = useState<ChatGroup[]>([]);
+  const [chatLines, setChatLines] = useState<ChatLine[]>([]);
   const [phase, setPhase] = useState<Phase | null>(null);
   const [round, setRound] = useState(1);
   const [roster, setRoster] = useState<PlayerRef[]>([]);
@@ -165,6 +170,8 @@ export const PlayerScreen = () => {
           setDeaths([]);
           setLog([]);
           setPublicLines([]);
+          setChatGroups([]);
+          setChatLines([]);
           setClock(null);
           break;
         }
@@ -201,6 +208,28 @@ export const PlayerScreen = () => {
         case 'PUBLIC_LOG': {
           const line = message.payload as PublicLogPayload;
           if (line?.message) setPublicLines(prev => [...prev, line]);
+          break;
+        }
+
+        case 'CHAT_GROUPS':
+          setChatGroups((message.payload as ChatGroupsPayload)?.groups ?? []);
+          break;
+
+        case 'CHAT_MESSAGE': {
+          const line = message.payload as ChatLine;
+          if (!line?.message) break;
+          // A phone that reconnected is handed the window again, so a line it
+          // already read must not double.
+          setChatLines(previous =>
+            previous.some(
+              seen =>
+                seen.timestamp === line.timestamp &&
+                seen.senderId === line.senderId &&
+                seen.message === line.message,
+            )
+              ? previous
+              : [...previous, line],
+          );
           break;
         }
 
@@ -429,10 +458,32 @@ export const PlayerScreen = () => {
     setSubmitted(prev => [...prev, actionId === 'pass' ? targetId : actionId]);
   };
 
+  const sendChat = (group: ChatGroup, text: string) => {
+    const client = lobby.client;
+    if (!client || !localPlayer) return;
+
+    client.sendMessage({
+      type: 'CHAT_SEND',
+      payload: { group, message: text },
+      senderId: localPlayer.id,
+      timestamp: Date.now(),
+    });
+  };
+
+  // The windows the engine has open right now, read from the table's rules the
+  // same way the engine reads them.
+  const openGroups = chatGroups.filter(group => {
+    if (group === 'lovers') return rules?.['loverChat'] !== 'off';
+    if (rules?.['wolfChat'] === 'always') return true;
+    if (phase !== 'Night') return false;
+    return rules?.['wolfChat'] === 'night' || nightStage === 1;
+  });
+
   const tabs = [
     { id: 'play', label: 'Play' },
     { id: 'journal', label: 'Journal' },
     { id: 'notes', label: 'Notes' },
+    ...(chatGroups.length > 0 ? [{ id: 'chat', label: 'Chat' }] : []),
   ];
 
   // The journal reads by round: a heading whenever the round or the phase turns.
@@ -454,7 +505,7 @@ export const PlayerScreen = () => {
       <TabBar
         tabs={tabs}
         active={tab}
-        onSelect={id => setTab(id as 'play' | 'journal' | 'notes')}
+        onSelect={id => setTab(id as 'play' | 'journal' | 'notes' | 'chat')}
       />
 
       {tab === 'play' && (
@@ -692,6 +743,16 @@ export const PlayerScreen = () => {
           gameKey={String(gameId)}
           myRole={role?.roleName ?? 'Unknown'}
           players={roster.map(entry => entry.name)}
+        />
+      )}
+
+      {tab === 'chat' && (
+        <ChatTab
+          groups={chatGroups}
+          open={openGroups}
+          lines={chatLines}
+          selfId={localPlayer?.id ?? ''}
+          onSend={sendChat}
         />
       )}
     </ScrollView>

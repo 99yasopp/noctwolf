@@ -116,6 +116,30 @@ export const SETTING_DEFS: SettingDef[] = [
     ],
     default: 'random',
   },
+  {
+    id: 'wolfChat',
+    label: 'Pack whispers',
+    group: 'Wolves',
+    help: 'When the wolves may write to each other on their phones. Whatever is said there never reaches the table.',
+    choices: [
+      { value: 'wake', label: 'While choosing a victim' },
+      { value: 'night', label: 'All night' },
+      { value: 'always', label: 'All game' },
+    ],
+    default: 'wake',
+  },
+  {
+    id: 'loverChat',
+    label: 'Lovers talk',
+    group: 'Village powers',
+    help: 'Whether Cupid\'s pair may write to each other. Their window closes for good when one of the two dies.',
+    choices: [
+      { value: 'always', label: 'Any hour' },
+      { value: 'off', label: 'Never' },
+    ],
+    whenRole: 'cupid',
+    default: 'always',
+  },
 ];
 
 export const defaultSettings = (): Settings =>

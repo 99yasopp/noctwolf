@@ -132,6 +132,11 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
+      if (message.type === 'CHAT_SEND') {
+        current.handleChat(playerId, message.payload?.group, message.payload?.message);
+        return;
+      }
+
       if (message.type === 'STATE_REQUEST') {
         current.sendStateTo(playerId);
       }

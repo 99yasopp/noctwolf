@@ -3708,5 +3708,163 @@ console.log('\n41. the count the night and the vote agree on');
   check('and every rule it never set keeps its default', migrated.settings['raven.timing'] === 'night');
 }
 
+console.log('\n42. the private windows');
+{
+  const chatTable = makePlayers(7);
+  const chatTransport = new RecordingTransport();
+  const chatGame = new GameManager(chatTable, chatTransport);
+  chatGame.start([
+    WerewolfRole,
+    WerewolfRole,
+    CupidRole,
+    SeerRole,
+    VillagerRole,
+    VillagerRole,
+    VillagerRole,
+  ]);
+  passElection(chatGame);
+
+  const chatWolves = chatTable.filter(p => chatGame.getRoleOf(p.id)?.id === 'werewolf');
+  const chatCupid = findRole(chatGame, chatTable, 'cupid')!;
+  const chatSeer = findRole(chatGame, chatTable, 'seer')!;
+  const chatVillagers = chatTable.filter(p => chatGame.getRoleOf(p.id)?.id === 'villager');
+
+  check(
+    'the pack learns its window with the deal',
+    chatTransport.directs.some(
+      direct => direct.playerId === chatWolves[0].id && direct.message.payload?.groups?.includes('wolves'),
+    ),
+  );
+  check(
+    'and a villager holds none',
+    chatTransport.directs.some(
+      direct =>
+        direct.playerId === chatSeer.id &&
+        Array.isArray(direct.message.payload?.groups) &&
+        direct.message.payload.groups.length === 0,
+    ),
+  );
+
+  // The default window: the pack whispers while it picks its victim, and no
+  // one outside it hears a word.
+  check('a villager cannot write to the pack', !chatGame.handleChat(chatSeer.id, 'wolves', 'hello'));
+  check('an empty line is nothing', !chatGame.handleChat(chatWolves[0].id, 'wolves', '   '));
+  check(
+    'a wolf may write while the pack picks',
+    chatGame.handleChat(chatWolves[0].id, 'wolves', 'x'.repeat(500)),
+  );
+  const spokenLines = chatGame.getChatLog('wolves');
+  check('and the line is cut to its length', spokenLines[0].message.length === 200);
+  check(
+    'and reaches the packmate',
+    chatTransport.directs.some(
+      direct => direct.playerId === chatWolves[1].id && direct.message.type === 'CHAT_MESSAGE',
+    ),
+  );
+  check(
+    'but never the village',
+    !chatTransport.directs.some(
+      direct =>
+        direct.message.type === 'CHAT_MESSAGE' &&
+        direct.playerId !== chatWolves[0].id &&
+        direct.playerId !== chatWolves[1].id,
+    ),
+  );
+
+  // Six lines in a window, then the window goes quiet for that player alone.
+  const chatty = Array.from({ length: 5 }, (_, index) =>
+    chatGame.handleChat(chatWolves[0].id, 'wolves', `line ${index}`),
+  );
+  check('the window holds six lines', chatty.every(ok => ok));
+  check('and then goes quiet', !chatGame.handleChat(chatWolves[0].id, 'wolves', 'too much'));
+  check('but only for the one talking', chatGame.handleChat(chatWolves[1].id, 'wolves', 'still here'));
+  check(
+    'and nothing said there reaches the journal',
+    !chatGame.getPublicLog().some(line => line.includes('still here')),
+  );
+
+  chatTransport.directs = [];
+  chatGame.sendStateTo(chatWolves[1].id);
+  check(
+    'a phone that reconnects is handed the window again',
+    chatTransport.directs.filter(
+      direct => direct.playerId === chatWolves[1].id && direct.message.type === 'CHAT_MESSAGE',
+    ).length >= 6,
+  );
+
+  // The night resolves and the cupid ties himself to the seer.
+  check(
+    'the cupid ties himself to a name',
+    chatGame.handleNightAction(chatCupid.id, 'link', chatSeer.id),
+  );
+  chatGame.handleNightAction(chatWolves[0].id, 'kill', chatVillagers[0].id);
+  chatGame.advance();
+  settleSuccession(chatGame);
+
+  check(
+    'the day shuts the pack window',
+    !chatGame.getOpenChatGroups(chatWolves[1].id).includes('wolves') &&
+      !chatGame.handleChat(chatWolves[1].id, 'wolves', 'good morning'),
+  );
+  check(
+    'the pair learns its window with the bond',
+    chatTransport.directs.some(
+      direct => direct.playerId === chatSeer.id && direct.message.payload?.groups?.includes('lovers'),
+    ),
+  );
+  check('and by default may speak by day', chatGame.handleChat(chatSeer.id, 'lovers', 'we are tied'));
+  check(
+    'and only to each other',
+    chatTransport.directs.some(
+      direct =>
+        direct.playerId === chatCupid.id &&
+        direct.message.payload?.group === 'lovers' &&
+        direct.message.payload?.message === 'we are tied',
+    ) &&
+      !chatTransport.directs.some(
+        direct =>
+          direct.playerId === chatWolves[0].id &&
+          direct.message.payload?.group === 'lovers',
+      ),
+  );
+  check('a wolf cannot write to the pair', !chatGame.handleChat(chatWolves[1].id, 'lovers', 'hello'));
+
+  // A table that keeps the pair quiet, and a bond that ends with a death.
+  const quietTable = makePlayers(5);
+  const quietGame = new GameManager(quietTable, new RecordingTransport());
+  quietGame.start([CupidRole, WerewolfRole, VillagerRole, VillagerRole, VillagerRole], {
+    ...defaultSettings(),
+    loverChat: 'off',
+  });
+  passElection(quietGame);
+
+  const quietCupid = findRole(quietGame, quietTable, 'cupid')!;
+  const quietWolf = findRole(quietGame, quietTable, 'werewolf')!;
+  const quietVillagers = quietTable.filter(p => quietGame.getRoleOf(p.id)?.id === 'villager');
+
+  quietGame.handleNightAction(quietCupid.id, 'link', quietVillagers[0].id);
+  quietGame.handleNightAction(quietWolf.id, 'kill', quietVillagers[1].id);
+  quietGame.advance();
+  settleSuccession(quietGame);
+  check('the pair holds its window', quietGame.getChatGroups(quietCupid.id).includes('lovers'));
+  check(
+    'but the table keeps it quiet',
+    !quietGame.getOpenChatGroups(quietCupid.id).includes('lovers') &&
+      !quietGame.handleChat(quietCupid.id, 'lovers', 'psst'),
+  );
+
+  // The next night takes the other half of the bond: the window closes for
+  // good.
+  quietGame.advance();
+  quietGame.getAlivePlayers().forEach(player => quietGame.handleVote(player.id, quietVillagers[2].id));
+  quietGame.advance();
+  settleSuccession(quietGame);
+  quietGame.handleNightAction(quietWolf.id, 'kill', quietVillagers[0].id);
+  quietGame.advance();
+  settleSuccession(quietGame);
+  check('the bond ends when one of the two dies', quietGame.getChatGroups(quietCupid.id).length === 0);
+  check('and the widow cannot write', !quietGame.handleChat(quietCupid.id, 'lovers', 'are you there?'));
+}
+
 console.log(failures === 0 ? `\nAll checks passed.` : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

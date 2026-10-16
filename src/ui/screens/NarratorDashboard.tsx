@@ -5,6 +5,7 @@ import { BaseButton } from '../components/BaseButton';
 import { ActionPanel, OwnRole } from '../components/ActionPanel';
 import { TabBar } from '../components/TabBar';
 import { NotesTab } from '../components/NotesTab';
+import { ChatTab } from '../components/ChatTab';
 import { formatRemaining, winnerText } from '../format';
 import { useGame } from '../GameContext';
 import { lobby } from '../../network/lobby';
@@ -18,9 +19,9 @@ export const NarratorDashboard = () => {
   // host who is playing the game has to ask for it on purpose.
   const [narratorView, setNarratorView] = useState(false);
   const [confirmingNarrator, setConfirmingNarrator] = useState(false);
-  // Which page of the dashboard is open: the running game, or the host's own
-  // notes about it.
-  const [tab, setTab] = useState<'play' | 'notes'>('play');
+  // Which page of the dashboard is open: the running game, the host's own
+  // notes about it, or the private windows he holds as a player.
+  const [tab, setTab] = useState<'play' | 'notes' | 'chat'>('play');
 
   useEffect(() => {
     if (!manager || !localPlayer) return;
@@ -74,6 +75,10 @@ export const NarratorDashboard = () => {
 
   const players = manager.state.players;
   const role = manager.getRoleOf(localPlayer.id);
+
+  // The host plays too, so his own private windows are his own.
+  const hostGroups = manager.getChatGroups(localPlayer.id);
+  const hostOpen = manager.getOpenChatGroups(localPlayer.id);
 
   // A table with test players in the seats is a test game: there is nothing to
   // keep from the host, because he is the only real player in it.
@@ -241,9 +246,10 @@ export const NarratorDashboard = () => {
         tabs={[
           { id: 'play', label: 'Play' },
           { id: 'notes', label: 'Notes' },
+          ...(hostGroups.length > 0 ? [{ id: 'chat', label: 'Chat' }] : []),
         ]}
         active={tab}
-        onSelect={id => setTab(id as 'play' | 'notes')}
+        onSelect={id => setTab(id as 'play' | 'notes' | 'chat')}
       />
 
       {tab === 'play' && (
@@ -593,6 +599,19 @@ export const NarratorDashboard = () => {
           gameKey={`host-${String(gameId)}`}
           myRole={role?.name ?? 'Host'}
           players={players.map(player => player.name)}
+        />
+      )}
+
+      {tab === 'chat' && (
+        <ChatTab
+          groups={hostGroups}
+          open={hostOpen}
+          lines={manager.getChatLog()}
+          selfId={localPlayer.id}
+          onSend={(group, text) => {
+            manager.handleChat(localPlayer.id, group, text);
+            forceRender(count => count + 1);
+          }}
         />
       )}
     </ScrollView>

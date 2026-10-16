@@ -1,4 +1,4 @@
-import { Phase, Player, Team } from '../engine/types';
+import { ChatGroup, Phase, Player, Team } from '../engine/types';
 import { SettingValue } from '../engine/setup';
 
 // Define the message types for network communication
@@ -31,7 +31,10 @@ export type MessageType =
   | 'TIE_BREAK'
   | 'RULES_UPDATE'
   | 'RAVEN_MARK'
-  | 'PUBLIC_LOG';
+  | 'PUBLIC_LOG'
+  | 'CHAT_SEND'
+  | 'CHAT_MESSAGE'
+  | 'CHAT_GROUPS';
 
 export interface NetworkMessage {
   type: MessageType;
@@ -63,6 +66,12 @@ export interface PublicLogPayload {
   message: string;
   phase: Phase;
   round: number;
+}
+
+// Which private windows a phone holds, and one line said inside one of them.
+// The engine is the only judge of both.
+export interface ChatGroupsPayload {
+  groups: ChatGroup[];
 }
 
 export interface PhaseUpdatePayload {
