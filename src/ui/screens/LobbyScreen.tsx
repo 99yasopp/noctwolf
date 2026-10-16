@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TextInput, ScrollView, Platform } from 'react-n
 import { theme } from '../theme/colors';
 import { BaseButton } from '../components/BaseButton';
 import { GAME_PORT, HOST_PLAYER_ID, LOCAL_GUEST_ID, lobby } from '../../network/lobby';
-import { getPreset, ROLE_PRESETS, setCustomRoles } from '../../engine/roleSet';
+import { setCustomRoles } from '../../engine/roleSet';
 import { loadCustomRoles } from '../../services/customRoles';
 import { loadPreferences, savePreferences } from '../../services/preferences';
 import { SettingsScreen } from './SettingsScreen';
@@ -12,7 +12,7 @@ import { SetupScreen } from './SetupScreen';
 import {
   RoleSetup,
   buildSetupRoles,
-  setupFromRoles,
+  defaultRoleSetup,
   setupProblem,
 } from '../../engine/setup';
 import { Player } from '../../engine/types';
@@ -47,11 +47,11 @@ export const LobbyScreen = () => {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [isHost, setIsHost] = useState(false);
-  const [presetId, setPresetId] = useState(ROLE_PRESETS[0].id);
-  // The host's table: null until the saved one is read or a starter is seeded.
+  // The host's table: null until the saved one is read, then the empty table
+  // he builds himself.
   const [setup, setSetup] = useState<RoleSetup | null>(null);
-  // Seeding a starter from the preset must wait for the saved table: the two
-  // land in the same breath when this screen mounts straight from a game.
+  // Reading the saved table has to finish before an empty one is kept in its
+  // place, or it would be overwritten the moment the waiting room opens.
   const [prefsLoaded, setPrefsLoaded] = useState(false);
   // Lets the setup picker show Custom only once there are roles to deal.
   const [customRoleCount, setCustomRoleCount] = useState(0);
@@ -62,10 +62,9 @@ export const LobbyScreen = () => {
       setCustomRoleCount(roles.length);
     });
 
-    // Remember where this device last joined, and which setup this host likes.
+    // Remember where this device last joined, and the setup this host likes.
     loadPreferences().then(saved => {
       if (saved.lastHost) setInputIp(saved.lastHost);
-      if (saved.presetId) setPresetId(saved.presetId);
       if (saved.setup) setSetup(saved.setup);
       setPrefsLoaded(true);
     });
@@ -83,26 +82,19 @@ export const LobbyScreen = () => {
     setView('waiting');
   }, []);
 
-  const preset = getPreset(presetId);
-
   // Every change to the table is kept, so the next evening opens on it.
   const changeSetup = (next: RoleSetup) => {
     setSetup(next);
     savePreferences({ setup: next });
   };
 
-  // The first look at the waiting room seeds the table from the chosen
-  // starter: after that the host's own counts are left alone.
+  // The first look at the waiting room opens an empty table: no role is dealt
+  // until the host has named one himself.
   useEffect(() => {
     if (view !== 'waiting' || !isHost || setup || !prefsLoaded) return;
-    changeSetup(setupFromRoles(preset.build(Math.max(players.length, 1))));
+    changeSetup(defaultRoleSetup());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, isHost, setup, players.length, preset, prefsLoaded]);
-
-  const seedFromPreset = (id: string) => {
-    setPresetId(id);
-    savePreferences({ presetId: id });
-  };
+  }, [view, isHost, setup, prefsLoaded]);
 
   // The host owns the roster; guests receive it over the network.
   useEffect(() => {
@@ -247,14 +239,17 @@ export const LobbyScreen = () => {
       return;
     }
 
-    const problem = setup ? setupProblem(setup, roster.length) : null;
+    // A table with nothing on it is not a problem to report: it is simply not
+    // ready, and setupProblem says so.
+    const setupToDeal = setup ?? defaultRoleSetup();
+    const problem = setupProblem(setupToDeal, roster.length);
     if (problem) {
       setError(problem);
       return;
     }
 
     setError('');
-    startHostGame(roster, host, setup ?? setupFromRoles(preset.build(roster.length)));
+    startHostGame(roster, host, setupToDeal);
   };
 
   // Lets the host exercise a full game without extra devices. Bots act and
@@ -428,10 +423,8 @@ export const LobbyScreen = () => {
     return (
       <SetupScreen
         setup={setup}
-        presetId={presetId}
         playerCount={Math.max(players.length, 1)}
         onChange={changeSetup}
-        onPreset={seedFromPreset}
         onBack={() => setView('waiting')}
       />
     );

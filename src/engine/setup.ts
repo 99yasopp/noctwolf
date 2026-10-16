@@ -64,6 +64,8 @@ export const setupProblem = (setup: RoleSetup, playerCount: number): string | nu
   if (playerCount <= 0) return null;
 
   const used = setupSeatsUsed(setup);
+  if (used === 0) return 'Choose the roles for this table.';
+
   if (used < playerCount) {
     return `${playerCount - used} seat${playerCount - used > 1 ? 's' : ''} still free. Fill the rest with villagers.`;
   }

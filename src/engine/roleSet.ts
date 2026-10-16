@@ -382,70 +382,16 @@ export const getRoleById = (id: string): PlayableRole | undefined =>
 
 // ---------------------------------------------------------------------- setups
 
-// A setup is a named way of filling a table of n players.
-export interface RolePreset {
-  id: string;
-  name: string;
-  description: string;
-  build: (playerCount: number) => PlayableRole[];
-}
-
 const fill = (set: PlayableRole[], playerCount: number): PlayableRole[] => {
   const built = [...set];
   while (built.length < playerCount) built.push(VillagerRole);
   return built.slice(0, playerCount);
 };
 
-// One wolf, one seer, everyone else a villager. Three players therefore means
-// Werewolf + Seer + Villager.
-export const buildSimpleRoleSet = (playerCount: number): PlayableRole[] => {
-  if (playerCount <= 0) return [];
-
-  const wolfCount = Math.max(1, Math.floor(playerCount / 4));
-  const seerCount = playerCount >= 3 ? 1 : 0;
-  const set: PlayableRole[] = [];
-  for (let i = 0; i < wolfCount; i++) set.push(WerewolfRole);
-  if (seerCount) set.push(SeerRole);
-  return fill(set, playerCount);
-};
-
-// The village's full toolbox. Powers only appear once the table is big enough
-// to absorb a mistake, so a small game stays readable.
-export const buildClassicRoleSet = (playerCount: number): PlayableRole[] => {
-  if (playerCount <= 0) return [];
-
-  const wolfCount = Math.max(1, Math.floor(playerCount / 4));
-  const set: PlayableRole[] = [];
-  for (let i = 0; i < wolfCount; i++) set.push(WerewolfRole);
-
-  if (playerCount >= 3) set.push(SeerRole);
-  if (playerCount >= 5) set.push(GuardRole);
-  if (playerCount >= 6) set.push(WitchRole);
-  if (playerCount >= 7) set.push(HunterRole);
-  if (playerCount >= 8) set.push(CupidRole);
-
-  return fill(set, playerCount);
-};
-
-// Everything at once, for a table that knows the game well.
-export const buildChaosRoleSet = (playerCount: number): PlayableRole[] => {
-  if (playerCount <= 0) return [];
-
-  const wolfCount = Math.max(1, Math.round(playerCount / 3));
-  const set: PlayableRole[] = [];
-  for (let i = 0; i < wolfCount; i++) set.push(WerewolfRole);
-
-  [SeerRole, GuardRole, WitchRole, HunterRole, CupidRole].forEach(role => {
-    if (set.length < playerCount) set.push(role);
-  });
-
-  return fill(set, playerCount);
-};
-
 // ---------------------------------------------------------------- custom roles
 
 // Roles the host generated and approved. They live in the engine rather than
-// in a screen so a preset can be built without an import cycle.
+// in a screen, so a role list can be built without an import cycle.
 let customRoles: PlayableRole[] = [];
 
 export const setCustomRoles = (roles: PlayableRole[]) => {
@@ -475,36 +421,3 @@ export const buildCustomRoleSet = (playerCount: number): PlayableRole[] => {
 
   return fill(set, playerCount);
 };
-
-export const ROLE_PRESETS: RolePreset[] = [
-  {
-    id: 'simple',
-    name: 'Simple',
-    description: 'One wolf, one seer, the rest villagers. Best for three players.',
-    build: buildSimpleRoleSet,
-  },
-  {
-    id: 'classic',
-    name: 'Classic',
-    description: 'Adds the guard, witch, hunter and cupid as the table grows.',
-    build: buildClassicRoleSet,
-  },
-  {
-    id: 'chaos',
-    name: 'Chaos',
-    description: 'More wolves, every power in play.',
-    build: buildChaosRoleSet,
-  },
-  {
-    id: 'custom',
-    name: 'Custom',
-    description: 'The roles you made with the AI, in place of the villagers.',
-    build: buildCustomRoleSet,
-  },
-];
-
-export const getPreset = (id: string): RolePreset =>
-  ROLE_PRESETS.find(preset => preset.id === id) ?? ROLE_PRESETS[0];
-
-// Kept as the default so an unconfigured game behaves as it always has.
-export const buildRoleSet = buildSimpleRoleSet;

@@ -1,7 +1,6 @@
 import React, { createContext, useCallback, useContext, useRef, useState } from 'react';
 import { GameManager } from '../engine/gameManager';
-import { buildRoleSet } from '../engine/roleSet';
-import { RoleSetup, buildSetupRoles, setupFromRoles } from '../engine/setup';
+import { RoleSetup, buildSetupRoles, defaultRoleSetup } from '../engine/setup';
 import { Player } from '../engine/types';
 import { lobby } from '../network/lobby';
 
@@ -35,8 +34,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [manager, setManager] = useState<GameManager | null>(null);
   const [gameId, setGameId] = useState(0);
   const managerRef = useRef<GameManager | null>(null);
-  // The table the host built; a rematch re-deals from the same one.
-  const setupRef = useRef<RoleSetup>(setupFromRoles(buildRoleSet(3)));
+  // The table the host built; a rematch re-deals from the same one. A table
+  // with no setup yet is empty on purpose: the host picks the roles.
+  const setupRef = useRef<RoleSetup>(defaultRoleSetup());
 
   const startHostGame = useCallback((players: Player[], host: Player, setup?: RoleSetup) => {
     // A table that comes back from a finished game still has its dead, and a
@@ -44,7 +44,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     lobby.resetRoster();
     const game = new GameManager(players, lobby, true);
     managerRef.current = game;
-    setupRef.current = setup ?? setupFromRoles(buildRoleSet(players.length));
+    setupRef.current = setup ?? defaultRoleSetup();
     setManager(game);
     setLocalPlayer(host);
 

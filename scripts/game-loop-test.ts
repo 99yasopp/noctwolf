@@ -32,7 +32,6 @@ import {
   WildChildRole,
   WitchRole,
   WolfDogRole,
-  buildClassicRoleSet,
   buildCustomRoleSet,
   getCustomRoles,
   setCustomRoles,
@@ -173,6 +172,19 @@ const passElection = (game: GameManager, volunteerId?: string) => {
     Math.random = realRandom;
   }
 };
+
+// A classic eight-seat table, written out because the game no longer ships
+// starters: the host names every seat himself.
+const classicEight: PlayableRole[] = [
+  CupidRole,
+  GuardRole,
+  HunterRole,
+  SeerRole,
+  VillagerRole,
+  WerewolfRole,
+  WerewolfRole,
+  WitchRole,
+];
 
 // ---------------------------------------------------------------------------
 
@@ -447,24 +459,19 @@ console.log('\n9. a rematch re-deals into the same seats');
 
 console.log('\n10. the wider role set');
 {
-  const ids = (set: PlayableRole[]) => set.map(r => r.id).sort().join(',');
+  // The only builder left: an empty custom list is a plain one-wolf table, and
+  // the host's own roles take the villagers' seats.
   check(
-    'a small table stays simple',
-    ids(buildClassicRoleSet(3)) === 'seer,villager,werewolf',
-    ids(buildClassicRoleSet(3)),
-  );
-  check(
-    'an eight player table gets every power',
-    ids(buildClassicRoleSet(8)) === 'cupid,guard,hunter,seer,villager,werewolf,werewolf,witch',
-    ids(buildClassicRoleSet(8)),
+    'a table always has a wolf',
+    [3, 5, 8].every(n => buildCustomRoleSet(n).some(role => role.team === 'Wolf')),
   );
   check(
     'the mayor is a title now, never a dealt card',
-    [3, 5, 8, 12].every(n => buildClassicRoleSet(n).every(role => role.id !== 'mayor')),
+    [3, 5, 8, 12].every(n => buildCustomRoleSet(n).every(role => role.id !== 'mayor')),
   );
   check(
     'the built set always fits the table',
-    [3, 5, 8, 12].every(n => buildClassicRoleSet(n).length === n),
+    [3, 5, 8, 12].every(n => buildCustomRoleSet(n).length === n),
   );
 }
 
@@ -1332,7 +1339,7 @@ console.log('\n25. a full table with a witch always finishes');
   for (let attempt = 0; attempt < 60; attempt++) {
     const players = makePlayers(8, true);
     const game = new GameManager(players, new RecordingTransport());
-    game.start(buildClassicRoleSet(8));
+    game.start(classicEight);
     passElection(game);
 
     let guard = 0;
@@ -1361,11 +1368,11 @@ const voteOut = (game: GameManager, targetId: string) => {
 
 console.log('\n26. the host builds the table');
 {
-  const seeded = setupFromRoles(buildClassicRoleSet(8));
-  check('the starter fills every seat', setupSeatsUsed(seeded) === 8, JSON.stringify(seeded.counts));
+  const seeded = setupFromRoles(classicEight);
+  check('the table fills every seat', setupSeatsUsed(seeded) === 8, JSON.stringify(seeded.counts));
   check('the counts name the roles', seeded.counts.werewolf === 2 && seeded.counts.witch === 1);
   check('the villagers take the last seat', seeded.counts.villager === 1);
-  check('the starter is a table that can be dealt', setupProblem(seeded, 8) === null);
+  check('the table can be dealt', setupProblem(seeded, 8) === null);
 
   const roles = buildSetupRoles(seeded, 8);
   check('the deal follows the counts', roles.length === 8, String(roles.length));

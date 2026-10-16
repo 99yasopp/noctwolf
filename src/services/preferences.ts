@@ -8,14 +8,13 @@ import { RoleSetup } from '../engine/setup';
 
 export interface Preferences {
   lastHost: string;
-  presetId: string;
   // The composition the host built by hand, so the next evening opens on it.
   setup: RoleSetup | null;
 }
 
 const STORAGE_KEY = 'preferences';
 
-const defaults: Preferences = { lastHost: '', presetId: 'simple', setup: null };
+const defaults: Preferences = { lastHost: '', setup: null };
 
 // expo-secure-store has no web implementation, so the web build works from
 // memory instead of throwing.

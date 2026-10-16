@@ -2,11 +2,10 @@ import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { theme } from '../theme/colors';
 import { BaseButton } from '../components/BaseButton';
-import { ALL_ROLES, ROLE_PRESETS, getCustomRoles } from '../../engine/roleSet';
+import { ALL_ROLES, getCustomRoles } from '../../engine/roleSet';
 import {
   RoleSetup,
   fillWithVillagers,
-  setupFromRoles,
   setupProblem,
   setupSeatsUsed,
 } from '../../engine/setup';
@@ -15,10 +14,7 @@ interface Props {
   setup: RoleSetup;
   // How many players are at the table right now, so the seats can be counted.
   playerCount: number;
-  // Which starter the counts came from, for the chips.
-  presetId: string;
   onChange: (setup: RoleSetup) => void;
-  onPreset: (presetId: string) => void;
   onBack: () => void;
 }
 
@@ -64,9 +60,7 @@ const Stepper: React.FC<{
 export const SetupScreen: React.FC<Props> = ({
   setup,
   playerCount,
-  presetId,
   onChange,
-  onPreset,
   onBack,
 }) => {
   const problem = setupProblem(setup, playerCount);
@@ -97,42 +91,11 @@ export const SetupScreen: React.FC<Props> = ({
       ? 'Always peaceful'
       : 'Never peaceful';
 
-  const seed = (id: string) => {
-    const preset = ROLE_PRESETS.find(entry => entry.id === id);
-    if (!preset) return;
-
-    // The counts come from the starter, the house rules stay as the host set
-    // them: changing a preset should not undo a decision about the first night.
-    const seeded = setupFromRoles(preset.build(Math.max(playerCount, 1)));
-    onChange({ ...seeded, options: setup.options });
-    onPreset(id);
-  };
-
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>The table</Text>
       <Text style={styles.hint}>
-        {seats} of {playerCount} seats filled. The rest are villagers.
-      </Text>
-
-      <Text style={styles.subHeader}>Starters</Text>
-      {ROLE_PRESETS.filter(
-        preset => preset.id !== 'custom' || customRoles.length > 0,
-      ).map(preset => (
-        <BaseButton
-          key={preset.id}
-          title={
-            preset.id === presetId
-              ? `${preset.name} ✓`
-              : preset.name
-          }
-          variant={preset.id === presetId ? 'primary' : 'secondary'}
-          onPress={() => seed(preset.id)}
-        />
-      ))}
-      <Text style={styles.hint}>
-        A starter fills the seats for this table; every role below can still be
-        changed by hand.
+        {seats} of {playerCount} seats filled.
       </Text>
 
       {problem ? (

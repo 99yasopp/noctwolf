@@ -8,7 +8,7 @@ import {
   NightActionOption,
   PlayableRole,
   actionChargeLimit,
-  buildRoleSet,
+  buildCustomRoleSet,
   getCustomRoles,
   getRoleById,
 } from './roleSet';
@@ -209,7 +209,9 @@ export class GameManager {
       return;
     }
 
-    const set = shuffle(roleSet && roleSet.length ? roleSet : buildRoleSet(players.length));
+    const set = shuffle(
+      roleSet && roleSet.length ? roleSet : buildCustomRoleSet(players.length),
+    );
     this.assignments.clear();
     this.votes.clear();
     this.nightChoices.clear();
