@@ -84,6 +84,9 @@ export interface RoleAssignPayload {
   guessesRoles?: boolean;
   // The Thief's two spare cards, only while the first night is still open.
   thiefCards?: { id: string; name: string }[];
+  // A resend of the same card, so the screen updates in place rather than
+  // wiping the player's private log for a fresh deal.
+  refresh?: boolean;
   // The Pied Piper's flock so far, so his panel stops offering them.
   charmedIds?: string[];
   // The scapegoat and the judge are asked to act in their own phases.

@@ -151,18 +151,26 @@ const settleSuccession = (game: GameManager) => {
 
 // Every game now opens with the mayoral election: the helper stands one
 // volunteer and presses through the debate and the ballot until the first night
-// starts. Bot tables sort their own election out, so the loop just runs it.
+// starts. Bot rivals and random ballots can tie the seat twice over, and a
+// second tie deliberately leaves the table without a mayor, so the helper
+// settles the election on a fixed die roll: one candidate, one ballot.
 const passElection = (game: GameManager, volunteerId?: string) => {
   const volunteer = volunteerId ?? game.getAlivePlayers()[0].id;
   game.volunteerForMayor(volunteer);
 
-  let guard = 0;
-  while (
-    (game.state.currentPhase === 'Election' || game.state.currentPhase === 'Debate') &&
-    guard++ < 10
-  ) {
-    game.advance();
-    settleSuccession(game);
+  const realRandom = Math.random;
+  Math.random = () => 0.99;
+  try {
+    let guard = 0;
+    while (
+      (game.state.currentPhase === 'Election' || game.state.currentPhase === 'Debate') &&
+      guard++ < 50
+    ) {
+      game.advance();
+      settleSuccession(game);
+    }
+  } finally {
+    Math.random = realRandom;
   }
 };
 
@@ -2680,6 +2688,8 @@ console.log('\n34. the first night decides who people are');
 
   check('the camp is open on the first night', dogGame.getChargesLeft(dog.id, 'join') === 1);
   check('the wolf-dog joins the wolves', dogGame.handleNightAction(dog.id, 'join', dog.id));
+  check('the second camp is refused', !dogGame.handleNightAction(dog.id, 'stay', dog.id));
+  check('and one tap is the whole decision', dogGame.hasActed(dog.id));
   check('the pack still bites', dogGame.handleNightAction(dogWolf.id, 'kill', dogMeal.id));
 
   dogGame.advance();
@@ -2810,11 +2820,13 @@ console.log('\n34. the first night decides who people are');
     thiefGame.actionLog.some(line => line.includes(`the ${thiefCards[0].name}`)),
   );
 
-  thiefGame.advance();
-  settleSuccession(thiefGame);
-  thiefGame.advance();
-  thiefGame.advance();
-  settleSuccession(thiefGame);
+  // Press through the rest of the first night, the day and its vote: a card
+  // the thief took may wake in a second stage and cost an extra press.
+  let thiefGuard = 0;
+  while (thiefGame.round === 1 && thiefGuard++ < 8) {
+    thiefGame.advance();
+    settleSuccession(thiefGame);
+  }
   check('the window is the first night alone', thiefGame.round === 2);
   check('no second swap', !thiefGame.handleThiefSwap(thief.id, thiefCards[1].id));
 
@@ -3007,6 +3019,57 @@ console.log('\n35. the village settles its debts');
   settleSuccession(muteGame);
   check('silence ends the day', muteGame.state.currentPhase === 'Night' && !muteVictim.isAlive);
 
+  // A judge's second vote is not the first vote's tie: the whole table is on
+  // the ballot again.
+  const mixTable = makePlayers(6);
+  const mixGame = new GameManager(mixTable, new RecordingTransport());
+  mixGame.start([
+    StutteringJudgeRole,
+    WerewolfRole,
+    VillagerRole,
+    VillagerRole,
+    SeerRole,
+    GuardRole,
+  ]);
+  passElection(mixGame);
+
+  const mixJudge = findRole(mixGame, mixTable, 'stuttering-judge')!;
+  const mixVillagers = mixTable.filter(p => mixGame.getRoleOf(p.id)?.id === 'villager');
+  const mixSideA = mixVillagers[0];
+  const mixSideB = mixVillagers[1];
+  const mixThird = findRole(mixGame, mixTable, 'seer')!;
+  const mixMayor = mixGame.state.presidentManager.getPresidentId();
+  // The voters must all outlive the day: the first name they hang is one of
+  // them.
+  const mixVoters = mixTable
+    .filter(p => p.isAlive && p.id !== mixMayor && p.id !== mixSideA.id)
+    .slice(0, 4);
+
+  mixGame.advance();
+  settleSuccession(mixGame);
+  mixGame.advance();
+  check(
+    'the first vote of the day ties',
+    mixVoters.slice(0, 2).every(voter => mixGame.handleVote(voter.id, mixSideA.id)) &&
+      mixVoters.slice(2).every(voter => mixGame.handleVote(voter.id, mixSideB.id)),
+  );
+  mixGame.advance();
+  check('and the re-vote starts', mixGame.getRevoteCandidates().length === 2);
+  check(
+    'which settles on one name',
+    mixVoters.every(voter => mixGame.handleVote(voter.id, mixSideA.id)),
+  );
+  mixGame.advance();
+  check('the judge calls for one more', mixGame.state.currentPhase === 'Judge');
+  check('and gets it', mixGame.handleJudgeRepeat(mixJudge.id));
+  check(
+    'with the whole table to choose from',
+    mixVoters.every(voter => mixGame.handleVote(voter.id, mixThird.id)),
+  );
+  mixGame.advance();
+  settleSuccession(mixGame);
+  check('the second vote kills its own name', !mixThird.isAlive && !mixSideA.isAlive);
+
   // The Angel takes the game with the first night's bite.
   const nightAngelTable = makePlayers(5);
   const nightAngelGame = new GameManager(nightAngelTable, new RecordingTransport());
@@ -3087,6 +3150,10 @@ console.log('\n36. the piper collects the village');
   check('two charms are offered', pipeGame.getRoleOf(piper.id)?.nightActions?.length === 2);
   check('the first charm lands', pipeGame.handleNightAction(piper.id, 'charm-1', pipeVillagers[0].id));
   check('and the second', pipeGame.handleNightAction(piper.id, 'charm-2', pipeVillagers[1].id));
+  check(
+    'one charm per name per night',
+    !pipeGame.handleNightAction(piper.id, 'charm-2', pipeVillagers[0].id),
+  );
   pipeGame.advance();
   settleSuccession(pipeGame);
   check(

@@ -127,22 +127,27 @@ export const PlayerScreen = () => {
           break;
         }
 
-        case 'ROLE_ASSIGN':
+        case 'ROLE_ASSIGN': {
+          const assign = message.payload as RoleAssignPayload;
+          setRole(assign);
+          setRoleHidden(false);
+          setNightStage(1);
+          setVictim(null);
+          setDayFrozen(false);
+          setSubmitted([]);
+          // A refresh of the same card keeps the player's own history: only a
+          // fresh deal clears the game that came before.
+          if (assign.refresh) break;
           // A rematch re-deals into the seat we already hold, so everything
           // from the previous game has to go with the new role.
-          setRole(message.payload as RoleAssignPayload);
           setSecrets([]);
           setVoteResult(null);
           setOutcome(null);
           setDeaths([]);
-          setSubmitted([]);
           setLog([]);
-          setRoleHidden(false);
           setClock(null);
-          setNightStage(1);
-          setVictim(null);
-          setDayFrozen(false);
           break;
+        }
 
         case 'TIME_SYNC': {
           const remainingMs = message.payload?.remainingMs;

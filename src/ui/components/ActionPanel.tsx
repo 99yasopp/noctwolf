@@ -425,10 +425,15 @@ export const ActionPanel: React.FC<Props> = ({
   if (phase !== 'Night') return null;
 
   const declared = role.nightActions ?? [];
+  // The Wolf-Dog picks one camp and the other button goes with it.
+  const sideChosen = declared.some(
+    option => option.kind === 'side' && submitted.includes(option.id),
+  );
   // The wolves look around on the first night instead of feeding, the witch is
   // not woken until the wolves have chosen, and a spent action is gone.
   const offered = declared.filter(option => {
     if (stageOfKind(option.kind) !== nightStage) return false;
+    if (option.kind === 'side' && sideChosen) return false;
     if (quietNight && (option.kind === 'attack' || option.kind === 'extraAttack')) {
       return false;
     }

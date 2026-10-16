@@ -353,15 +353,23 @@ export class GameManager {
           goat.isAlive = false;
           deaths.push(goat);
           this.applyLoverDeaths(deaths);
-          this.pendingRevenge =
-            deaths.find(
-              dead =>
-                this.assignments.get(dead.id)?.revengeOnDeath &&
-                this.state.players.some(other => other.isAlive),
-            )?.id ?? null;
+          // A hunter from the day's vote keeps the shot he is owed.
+          if (!this.pendingRevenge) {
+            this.pendingRevenge =
+              deaths.find(
+                dead =>
+                  this.assignments.get(dead.id)?.revengeOnDeath &&
+                  this.state.players.some(other => other.isAlive),
+              )?.id ?? null;
+          }
           this.announce(`Day ${this.round}: ${goat.name}, the scapegoat, is dead.`);
         }
-        this.enterAfterDeaths('Vote', deaths);
+
+        // The day can end on this death: the votes that came before it still
+        // owe their mayor a succession and their hunter a shot.
+        const allDeaths = [...this.judgeDeaths, ...deaths];
+        this.judgeDeaths = [];
+        this.enterAfterDeaths('Vote', allDeaths);
         return;
       }
 
@@ -457,6 +465,10 @@ export class GameManager {
   }
 
   private enterNextRound() {
+    // The model may have died to the day's vote: the child turns before the
+    // win is judged, or a parity win would be a morning late.
+    this.turnWildChildren();
+
     const winner = this.checkWin();
     if (winner) {
       this.finish(winner);
@@ -467,7 +479,7 @@ export class GameManager {
 
     // The Thief's spare cards were for the first night alone, and every card
     // is sent again so the panels show tonight's powers rather than last
-    // night's.
+    // night's. The role is unchanged, so the screens refresh in place.
     this.thiefCards.clear();
     this.state.players.forEach(player => this.resendRoleTo(player.id));
 
@@ -614,7 +626,9 @@ export class GameManager {
   // True when a Little Girl sits at this table. The host asked for her card,
   // so this only tells his own screen when the button is worth showing.
   hasLittleGirl(): boolean {
-    return this.state.players.some(p => this.assignments.get(p.id)?.id === 'little-girl');
+    return this.state.players.some(
+      p => p.isAlive && this.assignments.get(p.id)?.id === 'little-girl',
+    );
   }
 
   // The host decides: the wolves spotted the little girl tonight, so she dies
@@ -763,7 +777,20 @@ export class GameManager {
     if (!this.isOptionOffered(playerId, option)) return false;
     if (!this.validTargets(actor, option).some(target => target.id === targetId)) return false;
 
-    this.choicesFor(playerId).set(actionId, targetId);
+    const chosen = this.choicesFor(playerId);
+    // One charm per player per night: a second tap on the same name would be
+    // spent for nothing.
+    if (option.kind === 'charm' && [...chosen.values()].includes(targetId)) return false;
+    // The Wolf-Dog's camps are one decision: the second tap would silently
+    // overrule the first.
+    if (option.kind === 'side') {
+      const sideIds = (role.nightActions ?? [])
+        .filter(candidate => candidate.kind === 'side')
+        .map(candidate => candidate.id);
+      if (sideIds.some(id => chosen.has(id))) return false;
+    }
+
+    chosen.set(actionId, targetId);
     this.emit({ type: 'changed' });
     return true;
   }
@@ -990,7 +1017,12 @@ export class GameManager {
       this.assignments.set(playerId, taken);
       player.role = taken.name;
       player.team = taken.team;
-      player.voteWeight = taken.voteWeight ?? 1;
+      // The mayor's title outranks the card: his double vote is not the
+      // thief's to lose.
+      player.voteWeight =
+        this.state.presidentManager.getPresidentId() === playerId
+          ? 2
+          : taken.voteWeight ?? 1;
       this.actionLog.push(`Night 1: ${player.name} took the ${taken.name}.`);
     } else {
       this.actionLog.push(`Night 1: ${player.name} kept his own card.`);
@@ -1014,7 +1046,7 @@ export class GameManager {
             other.id !== playerId &&
             this.assignments.get(other.id)?.team === 'Wolf',
         )
-        .forEach(wolf => this.sendRoleAssign(wolf.id, this.assignments.get(wolf.id)!));
+        .forEach(wolf => this.sendRoleAssign(wolf.id, this.assignments.get(wolf.id)!, true));
     }
 
     this.emit({ type: 'changed' });
@@ -1258,8 +1290,17 @@ export class GameManager {
     const role = this.assignments.get(playerId);
     if (!role?.nightActions) return false;
 
-    return role.nightActions
-      .filter(option => this.isOptionOffered(playerId, option))
+    const offered = role.nightActions.filter(option =>
+      this.isOptionOffered(playerId, option),
+    );
+    // The Wolf-Dog's two camps are one decision: any side button counts for
+    // the group.
+    const sides = offered.filter(option => option.kind === 'side');
+    if (sides.length > 0 && !sides.some(option => this.hasChoice(playerId, option.id))) {
+      return false;
+    }
+    return offered
+      .filter(option => option.kind !== 'side')
       .every(option => this.hasChoice(playerId, option.id));
   }
 
@@ -1273,7 +1314,7 @@ export class GameManager {
   // after the game already started, so a late join screen cannot miss it.
   sendStateTo(playerId: string) {
     const role = this.assignments.get(playerId);
-    if (role) this.sendRoleAssign(playerId, role);
+    if (role) this.sendRoleAssign(playerId, role, true);
 
     this.transport.sendToPlayer(playerId, {
       type: 'PHASE_UPDATE',
@@ -1318,10 +1359,10 @@ export class GameManager {
   // again to the player who spent it. The count is what tells them it is gone.
   private resendRoleTo(playerId: string) {
     const role = this.assignments.get(playerId);
-    if (role) this.sendRoleAssign(playerId, role);
+    if (role) this.sendRoleAssign(playerId, role, true);
   }
 
-  private sendRoleAssign(playerId: string, role: PlayableRole) {
+  private sendRoleAssign(playerId: string, role: PlayableRole, refresh = false) {
     const group = role.alliance;
     const allies =
       role.team === 'Wolf'
@@ -1358,6 +1399,9 @@ export class GameManager {
       charmedIds: role.charms ? [...this.charmed] : undefined,
       scapegoat: role.scapegoat,
       judge: role.judge,
+      // A resend of the same card: the screen updates in place instead of
+      // treating it as a fresh deal.
+      refresh: refresh || undefined,
     };
 
     this.transport.sendToPlayer(playerId, {
@@ -1491,6 +1535,9 @@ export class GameManager {
     if (phase === 'Vote') {
       this.votes.clear();
       this.lastVote = null;
+      // A stale tie list would restrict the judge's second vote to the first
+      // vote's pair.
+      this.revoteCandidates = [];
     }
 
     // Any phase change retires the clock: the next phase needs its own.
@@ -1858,7 +1905,7 @@ export class GameManager {
     const spyPlayer = spy ? this.state.players.find(p => p.id === spy) : undefined;
     if (spy && spyPlayer?.isAlive) {
       const pack = this.state.players
-        .filter(p => this.assignments.get(p.id)?.team === 'Wolf')
+        .filter(p => p.isAlive && this.assignments.get(p.id)?.team === 'Wolf')
         .map(p => p.name);
       const message =
         pack.length > 0
@@ -2049,7 +2096,7 @@ export class GameManager {
     if (!role) return;
 
     this.assignments.set(playerId, { ...role, team: 'Wolf' });
-    this.sendRoleAssign(playerId, this.assignments.get(playerId)!);
+    this.sendRoleAssign(playerId, this.assignments.get(playerId)!, true);
     this.transport.sendToPlayer(playerId, {
       type: 'SECRET_INFO',
       payload: { message },
@@ -2064,7 +2111,7 @@ export class GameManager {
           player.id !== playerId &&
           this.assignments.get(player.id)?.team === 'Wolf',
       )
-      .forEach(wolf => this.sendRoleAssign(wolf.id, this.assignments.get(wolf.id)!));
+      .forEach(wolf => this.sendRoleAssign(wolf.id, this.assignments.get(wolf.id)!, true));
   }
 
   // The Wild Child turns the moment his model dies, wherever the death came
