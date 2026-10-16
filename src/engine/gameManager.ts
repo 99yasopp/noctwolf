@@ -187,12 +187,16 @@ export class GameManager {
   // phase can be given for lines written just before a phase change, which
   // would otherwise be filed under the phase that is already over.
   private announce(message: string, phase: Phase = this.state.currentPhase) {
-    this.publicLog.push({
-      message,
-      phase,
-      round: this.round,
-    });
+    const line = { message, phase, round: this.round };
+    this.publicLog.push(line);
     this.actionLog.push(message);
+
+    // Every phone keeps the same journal the host sees, line for line.
+    this.transport.broadcast({
+      type: 'PUBLIC_LOG',
+      payload: line,
+      timestamp: Date.now(),
+    });
   }
 
   private emit(event: GameEvent) {
@@ -1463,6 +1467,16 @@ export class GameManager {
     // A player who joins mid-night needs the stage, and the witch needs the
     // victim she may save.
     if (this.state.currentPhase === 'Night') this.sendNightStageTo(playerId);
+
+    // The journal so far, line by line, so a screen that just woke up reads
+    // the same story as the phones that never slept.
+    this.publicLog.forEach(line => {
+      this.transport.sendToPlayer(playerId, {
+        type: 'PUBLIC_LOG',
+        payload: line,
+        timestamp: Date.now(),
+      });
+    });
 
     if (this.lastVote) {
       this.transport.sendToPlayer(playerId, {

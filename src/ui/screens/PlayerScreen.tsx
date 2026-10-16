@@ -12,16 +12,23 @@ import {
   NightStagePayload,
   PhaseUpdatePayload,
   PlayerRef,
+  PublicLogPayload,
   RoleAssignPayload,
   RulesUpdatePayload,
   VoteResultPayload,
 } from '../../network/protocol';
 import { SETTING_DEFS, Settings, settingLabel } from '../../engine/setup';
+import { TabBar } from '../components/TabBar';
 import { formatRemaining, winnerText } from '../format';
 
 export const PlayerScreen = () => {
   const { localPlayer, returnToLobby } = useGame();
 
+  // Which of the phone's pages is open. Play is the game itself.
+  const [tab, setTab] = useState<'play' | 'journal'>('play');
+  // The journal: every line the table heard, in order, with the round it
+  // belonged to.
+  const [publicLines, setPublicLines] = useState<PublicLogPayload[]>([]);
   const [phase, setPhase] = useState<Phase | null>(null);
   const [round, setRound] = useState(1);
   const [roster, setRoster] = useState<PlayerRef[]>([]);
@@ -156,6 +163,7 @@ export const PlayerScreen = () => {
           setOutcome(null);
           setDeaths([]);
           setLog([]);
+          setPublicLines([]);
           setClock(null);
           break;
         }
@@ -188,6 +196,12 @@ export const PlayerScreen = () => {
         case 'RULES_UPDATE':
           setRules((message.payload as RulesUpdatePayload).settings ?? null);
           break;
+
+        case 'PUBLIC_LOG': {
+          const line = message.payload as PublicLogPayload;
+          if (line?.message) setPublicLines(prev => [...prev, line]);
+          break;
+        }
 
         case 'VOTE_RESULT': {
           const payload = message.payload as VoteResultPayload;
@@ -414,10 +428,31 @@ export const PlayerScreen = () => {
     setSubmitted(prev => [...prev, actionId === 'pass' ? targetId : actionId]);
   };
 
+  const tabs = [
+    { id: 'play', label: 'Play' },
+    { id: 'journal', label: 'Journal' },
+  ];
+
+  // The journal reads by round: a heading whenever the round or the phase turns.
+  const publicGroups = publicLines.reduce<{ key: string; lines: string[] }[]>(
+    (groups, line) => {
+      const key = `Round ${line.round} · ${line.phase}`;
+      const last = groups[groups.length - 1];
+      if (last && last.key === key) last.lines.push(line.message);
+      else groups.push({ key, lines: [line.message] });
+      return groups;
+    },
+    [],
+  );
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.header}>Werewolf</Text>
 
+      <TabBar tabs={tabs} active={tab} onSelect={id => setTab(id as 'play' | 'journal')} />
+
+      {tab === 'play' && (
+        <>
       {disconnected && (
         <View style={styles.alertCard}>
           <Text style={styles.alertText}>
@@ -606,6 +641,45 @@ export const PlayerScreen = () => {
       ))}
 
       <BaseButton title="Back to Lobby" onPress={returnToLobby} variant="danger" />
+        </>
+      )}
+
+      {tab === 'journal' && (
+        <>
+          <View style={styles.secretCard}>
+            <Text style={styles.secretHeading}>What the table heard</Text>
+            {publicGroups.length === 0 ? (
+              <Text style={styles.secretText}>Nothing has been announced yet.</Text>
+            ) : (
+              publicGroups.map(group => (
+                <View key={group.key}>
+                  <Text style={styles.journalGroup}>{group.key}</Text>
+                  {group.lines.map((line, index) => (
+                    <Text key={index} style={styles.secretText}>
+                      {line}
+                    </Text>
+                  ))}
+                </View>
+              ))
+            )}
+          </View>
+
+          <View style={styles.secretCard}>
+            <Text style={styles.secretHeading}>What only you heard</Text>
+            {secrets.length === 0 ? (
+              <Text style={styles.secretText}>
+                Nothing yet. Whatever the game whispers to you lands here.
+              </Text>
+            ) : (
+              secrets.map((secret, index) => (
+                <Text key={index} style={styles.secretText}>
+                  {secret}
+                </Text>
+              ))
+            )}
+          </View>
+        </>
+      )}
     </ScrollView>
   );
 };
@@ -618,6 +692,12 @@ const styles = StyleSheet.create({
   content: {
     padding: theme.spacing.medium,
     paddingBottom: theme.spacing.large,
+  },
+  journalGroup: {
+    color: theme.colors.dim,
+    fontWeight: 'bold',
+    marginTop: theme.spacing.small,
+    marginBottom: 2,
   },
   header: {
     fontSize: 24,

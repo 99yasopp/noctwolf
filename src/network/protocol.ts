@@ -29,7 +29,8 @@ export type MessageType =
   | 'SCAPEGOAT_BAN'
   | 'TIE_BREAK'
   | 'RULES_UPDATE'
-  | 'RAVEN_MARK';
+  | 'RAVEN_MARK'
+  | 'PUBLIC_LOG';
 
 export interface NetworkMessage {
   type: MessageType;
@@ -53,6 +54,14 @@ export interface PlayerListPayload {
 // them; only the host can change them.
 export interface RulesUpdatePayload {
   settings: Record<string, boolean | string | null>;
+}
+
+// One line of the table's journal: what everyone heard, and when. A phone that
+// joins late is sent the lines it missed, one by one.
+export interface PublicLogPayload {
+  message: string;
+  phase: Phase;
+  round: number;
 }
 
 export interface PhaseUpdatePayload {

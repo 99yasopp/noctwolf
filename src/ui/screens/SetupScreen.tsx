@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { theme } from '../theme/colors';
 import { BaseButton } from '../components/BaseButton';
+import { RoleGrid } from '../components/RoleGrid';
 import { ALL_ROLES, getCustomRoles } from '../../engine/roleSet';
 import {
   SETTING_DEFS,
@@ -73,11 +74,11 @@ export const SetupScreen: React.FC<Props> = ({
   const seats = setupSeatsUsed(setup);
   const customRoles = getCustomRoles();
 
-  // The built-in roles first, then whatever the host made with the AI.
+  // Every built-in role, then whatever the host made with the AI. The grid
+  // groups them by side on its own.
   const roles = [
-    ...ALL_ROLES.filter(role => role.id !== 'villager'),
+    ...ALL_ROLES,
     ...customRoles.filter(role => !ALL_ROLES.some(built => built.id === role.id)),
-    ...ALL_ROLES.filter(role => role.id === 'villager'),
   ];
 
   const setCount = (roleId: string, count: number) =>
@@ -114,15 +115,7 @@ export const SetupScreen: React.FC<Props> = ({
       )}
 
       <Text style={styles.subHeader}>Roles</Text>
-      {roles.map(role => (
-        <Stepper
-          key={role.id}
-          label={role.name}
-          note={role.team === 'Wolf' ? 'Wolf' : undefined}
-          count={setup.counts[role.id] ?? 0}
-          onChange={count => setCount(role.id, count)}
-        />
-      ))}
+      <RoleGrid roles={roles} counts={setup.counts} onChange={setCount} />
 
       <Text style={styles.subHeader}>House rules</Text>
       {SETTING_DEFS.filter(

@@ -54,6 +54,15 @@ import {
 import { ALLOWED_ACTIONS as VALIDATED_ACTIONS } from '../src/engine/roleGenerator';
 import { GameTransport } from '../src/engine/transport';
 import { Player } from '../src/engine/types';
+import {
+  NOTES_HISTORY_LIMIT,
+  NOTES_PLAYER_LIMIT,
+  NOTES_TEXT_LIMIT,
+  NOTES_VALUE_LIMIT,
+  emptyGameNotes,
+  fitGameNotes,
+  upsertEntry,
+} from '../src/services/notes';
 import { NetworkMessage, PhaseUpdatePayload } from '../src/network/protocol';
 import { MessageDecoder, encodeMessage } from '../src/network/framing';
 import { ClientLink } from '../src/network/clientLink';
@@ -3497,6 +3506,80 @@ console.log('\n39. the village powers keep their own rules');
   const plainRaven = findRole(plainGame, plainPlayers, 'raven')!;
   const plainVictim = findRole(plainGame, plainPlayers, 'villager')!;
   check('the raven marks at night by default', plainGame.handleNightAction(plainRaven.id, 'curse', plainVictim.id));
+}
+
+console.log('\n40. the journal and the notes');
+{
+  const journalPlayers = makePlayers(4);
+  const journalTransport = new RecordingTransport();
+  const journalGame = new GameManager(journalPlayers, journalTransport);
+  journalGame.start([WerewolfRole, SeerRole, VillagerRole, VillagerRole]);
+
+  const journalLines = journalTransport.broadcasts.filter(
+    message => message.type === 'PUBLIC_LOG',
+  );
+  check('the table hears the deal in its journal', journalLines.length >= 2);
+  check(
+    'and every line carries its round and phase',
+    journalLines.every(
+      message =>
+        typeof message.payload?.message === 'string' &&
+        message.payload?.round === 1 &&
+        !!message.payload?.phase,
+    ),
+  );
+  check(
+    'the host reads the same lines',
+    journalGame.getPublicLog().length === journalLines.length,
+    `${journalGame.getPublicLog().length} vs ${journalLines.length}`,
+  );
+
+  journalTransport.directs = [];
+  journalGame.sendStateTo(journalPlayers[0].id);
+  check(
+    'a phone that wakes up late is handed the journal so far',
+    journalTransport.directs.filter(direct => direct.message.type === 'PUBLIC_LOG').length ===
+      journalLines.length,
+  );
+
+  // The notes live on the phone alone. Their pure half is what the store
+  // writes, so it has to fit a device key whatever the table typed.
+  const longPage = {
+    ...emptyGameNotes('g1', 'Seer'),
+    text: 'x'.repeat(3000),
+    players: Object.fromEntries(
+      Array.from({ length: 40 }, (_, index) => [`P${index}`, 'y'.repeat(200)]),
+    ),
+  };
+  const fitted = fitGameNotes(longPage);
+  check(
+    'a page of notes is trimmed to fit one key',
+    JSON.stringify(fitted).length <= NOTES_VALUE_LIMIT,
+    String(JSON.stringify(fitted).length),
+  );
+  check(
+    'the free pad keeps its start',
+    fitted.text.startsWith('x') && fitted.text.length <= NOTES_TEXT_LIMIT,
+  );
+  check(
+    'and every player line keeps its shape',
+    Object.values(fitted.players).every(note => note.length <= NOTES_PLAYER_LIMIT),
+  );
+
+  const history = Array.from({ length: 30 }, (_, index) => ({
+    id: `g${index}`,
+    date: '2026-01-01',
+    myRole: 'Villager',
+  }));
+  check(
+    'the history keeps its newest twenty-five',
+    upsertEntry(history, { id: 'gNew', date: '2026-02-01', myRole: 'Seer' }).length ===
+      NOTES_HISTORY_LIMIT,
+  );
+  check(
+    'and a page written again moves to the front',
+    upsertEntry(history, { id: 'g5', date: 'now', myRole: 'Wolf' })[0].id === 'g5',
+  );
 }
 
 console.log(failures === 0 ? `\nAll checks passed.` : `\n${failures} check(s) failed.`);
