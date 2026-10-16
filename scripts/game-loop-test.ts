@@ -41,8 +41,12 @@ import {
   translateGeneratedRole,
 } from '../src/engine/generatedRole';
 import {
+  SETTING_DEFS,
   buildSetupRoles,
+  defaultSettings,
   fillWithVillagers,
+  nextSettingValue,
+  settingLabel,
   setupFromRoles,
   setupProblem,
   setupSeatsUsed,
@@ -3318,6 +3322,62 @@ console.log('\n37. the pack splits its vote');
   hostGame.advance();
   settleSuccession(hostGame);
   check('and that one dies', !hostVillagers[1].isAlive && hostVillagers[0].isAlive);
+}
+
+console.log('\n38. the rules live in one list');
+{
+  const ids = SETTING_DEFS.map(def => def.id);
+  check('every rule has its own id', new Set(ids).size === ids.length);
+  check(
+    'every rule has words for the host',
+    SETTING_DEFS.every(
+      def => def.label.length > 0 && def.help.length > 0 && def.group.length > 0,
+    ),
+  );
+  check(
+    'every rule has a default, and it is one of its choices',
+    SETTING_DEFS.every(
+      def =>
+        def.default !== undefined &&
+        (!def.choices || def.choices.some(choice => choice.value === def.default)),
+    ),
+  );
+
+  const defaults = defaultSettings();
+  check('the defaults cover the list', ids.every(id => id in defaults));
+  check('and hold no stranger', Object.keys(defaults).length === ids.length);
+
+  const firstNight = SETTING_DEFS.find(def => def.id === 'peacefulFirstNight')!;
+  check(
+    'a rule cycles through its choices',
+    nextSettingValue(firstNight, null) === true &&
+      nextSettingValue(firstNight, true) === false &&
+      nextSettingValue(firstNight, false) === null,
+  );
+  check(
+    'and names the value it holds, set or not',
+    settingLabel(firstNight, null).includes('Auto') &&
+      settingLabel(firstNight, undefined).includes('Auto'),
+  );
+
+  // The engine reads through the list: a rule the table never set behaves as
+  // its default says, and the deal carries the rules to every phone.
+  const barePlayers = makePlayers(3);
+  const bareTransport = new RecordingTransport();
+  const bare = new GameManager(barePlayers, bareTransport);
+  bare.start([WerewolfRole, SeerRole, VillagerRole], {});
+  check('an unset rule falls back to its default', bare.isQuietNight());
+  check(
+    'the rules reach the table with the deal',
+    bareTransport.broadcasts.some(
+      message => message.type === 'RULES_UPDATE' && message.payload?.settings?.peacefulFirstNight === null,
+    ),
+  );
+
+  const deadlyPlayers = makePlayers(3);
+  const deadly = new GameManager(deadlyPlayers, new RecordingTransport());
+  deadly.start([WerewolfRole, SeerRole, VillagerRole], { peacefulFirstNight: false });
+  check('the table can force a deadly first night', !deadly.isQuietNight());
 }
 
 console.log(failures === 0 ? `\nAll checks passed.` : `\n${failures} check(s) failed.`);

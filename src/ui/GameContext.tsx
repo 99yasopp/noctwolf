@@ -132,7 +132,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     });
 
-    game.start(buildSetupRoles(setupRef.current, players.length), setupRef.current.options);
+    game.start(buildSetupRoles(setupRef.current, players.length), setupRef.current.settings);
     setGameId(id => id + 1);
     setMode('narrator');
   }, []);
@@ -154,7 +154,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // The same table, re-dealt: the counts are rebuilt for the seats that are
     // actually still there, in case somebody left.
     const roster = lobby.getPlayers();
-    current.start(buildSetupRoles(setupRef.current, roster.length), setupRef.current.options);
+    current.start(buildSetupRoles(setupRef.current, roster.length), setupRef.current.settings);
     setGameId(id => id + 1);
     setMode('narrator');
   }, []);

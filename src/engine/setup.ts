@@ -6,26 +6,93 @@ import {
 } from './roleSet';
 
 // The rules a host can change for the whole table, as opposed to which roles
-// are dealt. Kept in one record so the setup screen, the engine and the saved
-// preferences all speak about the same thing.
+// are dealt. One list is the single source of truth: the engine reads the
+// values, and the screens render whatever is in the list, so a new rule costs
+// one entry and no new UI.
 
-export interface GameOptions {
-  // null follows the table size: only a three-player table opens peacefully.
-  // true and false force it on or off.
-  peacefulFirstNight: boolean | null;
-  // The guard may not shield the same player two nights in a row.
-  guardNoRepeat: boolean;
-  // Who breaks a tie in the pack's vote when no infectious father is left to
-  // decide: the game takes one at random, or the host names the victim.
-  // Optional so older saved setups keep the random default.
-  wolfTieBreak?: 'random' | 'host';
+export type SettingValue = boolean | string | null;
+
+export interface SettingDef {
+  id: string;
+  label: string;
+  // Rules that belong together on the host's screen.
+  group: string;
+  // What the rule does, in the host's words. Shown under the button.
+  help: string;
+  // A rule with choices is cycled through them; without, it is on or off.
+  choices?: { value: SettingValue; label: string }[];
+  default: SettingValue;
 }
 
-export const defaultGameOptions = (): GameOptions => ({
-  peacefulFirstNight: null,
-  guardNoRepeat: true,
-  wolfTieBreak: 'random',
-});
+export type Settings = Record<string, SettingValue>;
+
+export const SETTING_DEFS: SettingDef[] = [
+  {
+    id: 'peacefulFirstNight',
+    label: 'First night',
+    group: 'Table',
+    help: 'A peaceful first night lets the wolves look around without feeding, so the first vote decides everything. At three players that is the only way the game can start fairly.',
+    choices: [
+      { value: null, label: 'Auto (peaceful at 3 players)' },
+      { value: true, label: 'Always peaceful' },
+      { value: false, label: 'Never peaceful' },
+    ],
+    default: null,
+  },
+  {
+    id: 'guardNoRepeat',
+    label: 'Guard repeat',
+    group: 'Village powers',
+    help: 'Whether the guard may shield the same player two nights in a row.',
+    choices: [
+      { value: true, label: 'Forbidden' },
+      { value: false, label: 'Allowed' },
+    ],
+    default: true,
+  },
+  {
+    id: 'wolfTieBreak',
+    label: 'Tie between wolves',
+    group: 'Wolves',
+    help: 'When the pack splits its vote, the infectious father names the victim if he is alive. This decides who names it when he is not.',
+    choices: [
+      { value: 'random', label: 'Random victim' },
+      { value: 'host', label: 'The host picks' },
+    ],
+    default: 'random',
+  },
+];
+
+export const defaultSettings = (): Settings =>
+  Object.fromEntries(SETTING_DEFS.map(def => [def.id, def.default]));
+
+export const settingDefault = (id: string): SettingValue => {
+  const def = SETTING_DEFS.find(entry => entry.id === id);
+  // Not `??`: a rule whose default is null would read as false instead.
+  return def ? def.default : false;
+};
+
+// The label of the value a setting holds now, for its button.
+export const settingLabel = (def: SettingDef, value: SettingValue | undefined): string => {
+  const current = value === undefined ? def.default : value;
+  const choice = def.choices?.find(entry => entry.value === current);
+  if (choice) return choice.label;
+
+  return current === true ? 'On' : current === false ? 'Off' : String(current);
+};
+
+// The value the next tap should store: the following choice, or the other
+// side of a toggle.
+export const nextSettingValue = (
+  def: SettingDef,
+  value: SettingValue | undefined,
+): SettingValue => {
+  if (!def.choices || def.choices.length === 0) return value === true ? false : true;
+
+  const current = value === undefined ? def.default : value;
+  const index = def.choices.findIndex(entry => entry.value === current);
+  return def.choices[(index + 1) % def.choices.length].value;
+};
 
 // The host's table: how many seats each role takes, how many potions the witch
 // holds, and the house rules. Seats nobody claims are filled with villagers.
@@ -33,14 +100,14 @@ export interface RoleSetup {
   counts: Record<string, number>;
   witchHealCharges: number;
   witchPoisonCharges: number;
-  options: GameOptions;
+  settings: Settings;
 }
 
 export const defaultRoleSetup = (): RoleSetup => ({
   counts: {},
   witchHealCharges: 1,
   witchPoisonCharges: 1,
-  options: defaultGameOptions(),
+  settings: defaultSettings(),
 });
 
 // Every role a setup may name: the built-in list plus the host's own roles.
@@ -133,7 +200,7 @@ export const countsFromRoles = (roles: PlayableRole[]): Record<string, number> =
   return counts;
 };
 
-// A setup seeded from a preset, including the witch's default potions.
+// A setup built from a list of roles, including the witch's default potions.
 export const setupFromRoles = (roles: PlayableRole[]): RoleSetup => {
   const witch = roles.find(role => role.id === 'witch');
 
@@ -143,6 +210,6 @@ export const setupFromRoles = (roles: PlayableRole[]): RoleSetup => {
       witch?.nightActions?.find(option => option.id === 'heal')?.charges ?? 1,
     witchPoisonCharges:
       witch?.nightActions?.find(option => option.id === 'poison')?.charges ?? 1,
-    options: defaultGameOptions(),
+    settings: defaultSettings(),
   };
 };

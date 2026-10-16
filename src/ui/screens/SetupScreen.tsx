@@ -4,8 +4,12 @@ import { theme } from '../theme/colors';
 import { BaseButton } from '../components/BaseButton';
 import { ALL_ROLES, getCustomRoles } from '../../engine/roleSet';
 import {
+  SETTING_DEFS,
+  SettingDef,
   RoleSetup,
   fillWithVillagers,
+  nextSettingValue,
+  settingLabel,
   setupProblem,
   setupSeatsUsed,
 } from '../../engine/setup';
@@ -77,19 +81,11 @@ export const SetupScreen: React.FC<Props> = ({
   const setCount = (roleId: string, count: number) =>
     onChange({ ...setup, counts: { ...setup.counts, [roleId]: count } });
 
-  const cycleFirstNight = () => {
-    const current = setup.options.peacefulFirstNight;
-    const next = current === null ? true : current === true ? false : null;
-
-    onChange({ ...setup, options: { ...setup.options, peacefulFirstNight: next } });
-  };
-
-  const firstNightLabel =
-    setup.options.peacefulFirstNight === null
-      ? 'Auto (peaceful at 3 players)'
-      : setup.options.peacefulFirstNight
-      ? 'Always peaceful'
-      : 'Never peaceful';
+  const setSetting = (id: string, def: SettingDef) =>
+    onChange({
+      ...setup,
+      settings: { ...setup.settings, [id]: nextSettingValue(def, setup.settings?.[id]) },
+    });
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -146,54 +142,16 @@ export const SetupScreen: React.FC<Props> = ({
       )}
 
       <Text style={styles.subHeader}>House rules</Text>
-      {(setup.counts.guard ?? 0) > 0 && (
-        <BaseButton
-          title={`Guard repeat: ${
-            setup.options.guardNoRepeat ? 'forbidden' : 'allowed'
-          }`}
-          variant="secondary"
-          onPress={() =>
-            onChange({
-              ...setup,
-              options: {
-                ...setup.options,
-                guardNoRepeat: !setup.options.guardNoRepeat,
-              },
-            })
-          }
-        />
-      )}
-      <BaseButton
-        title={`First night: ${firstNightLabel}`}
-        variant="secondary"
-        onPress={cycleFirstNight}
-      />
-      <Text style={styles.hint}>
-        A peaceful first night lets the wolves look around without feeding, so
-        the first vote decides everything. At three players that is the only
-        way the game can start fairly.
-      </Text>
-
-      <BaseButton
-        title={`Wolves on a tie: ${
-          setup.options.wolfTieBreak === 'host' ? 'the host picks' : 'random victim'
-        }`}
-        variant="secondary"
-        onPress={() =>
-          onChange({
-            ...setup,
-            options: {
-              ...setup.options,
-              wolfTieBreak: setup.options.wolfTieBreak === 'host' ? 'random' : 'host',
-            },
-          })
-        }
-      />
-      <Text style={styles.hint}>
-        When the pack's vote leaves two names level, the infectious father names
-        the victim if he is still alive. This rule says who names it when he is
-        not.
-      </Text>
+      {SETTING_DEFS.map(def => (
+        <View key={def.id}>
+          <BaseButton
+            title={`${def.label}: ${settingLabel(def, setup.settings?.[def.id])}`}
+            variant="secondary"
+            onPress={() => setSetting(def.id, def)}
+          />
+          <Text style={styles.hint}>{def.help}</Text>
+        </View>
+      ))}
 
       <BaseButton title="Back to the waiting room" onPress={onBack} variant="danger" />
     </ScrollView>

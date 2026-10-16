@@ -27,7 +27,8 @@ export type MessageType =
   | 'THIEF_SWAP'
   | 'JUDGE_REPEAT'
   | 'SCAPEGOAT_BAN'
-  | 'TIE_BREAK';
+  | 'TIE_BREAK'
+  | 'RULES_UPDATE';
 
 export interface NetworkMessage {
   type: MessageType;
@@ -45,6 +46,12 @@ export interface PlayerRef {
 
 export interface PlayerListPayload {
   players: Player[];
+}
+
+// The house rules, sent to the whole table when the deal is made. Guests read
+// them; only the host can change them.
+export interface RulesUpdatePayload {
+  settings: Record<string, boolean | string | null>;
 }
 
 export interface PhaseUpdatePayload {

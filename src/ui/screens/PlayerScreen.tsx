@@ -13,8 +13,10 @@ import {
   PhaseUpdatePayload,
   PlayerRef,
   RoleAssignPayload,
+  RulesUpdatePayload,
   VoteResultPayload,
 } from '../../network/protocol';
+import { SETTING_DEFS, Settings, settingLabel } from '../../engine/setup';
 import { formatRemaining, winnerText } from '../format';
 
 export const PlayerScreen = () => {
@@ -34,6 +36,8 @@ export const PlayerScreen = () => {
   const [victim, setVictim] = useState<{ id: string; name: string } | null>(null);
   // The names the pack left level, sent to the infectious father alone.
   const [tieTargets, setTieTargets] = useState<{ id: string; name: string }[]>([]);
+  // The house rules the deal arrived with. Only the host can change them.
+  const [rules, setRules] = useState<Settings | null>(null);
   // The election is public, so every phone gets the same list.
   const [electionStage, setElectionStage] = useState<'nominate' | 'vote'>('nominate');
   const [mayorCandidates, setMayorCandidates] = useState<{ id: string; name: string }[]>([]);
@@ -176,6 +180,10 @@ export const PlayerScreen = () => {
 
         case 'SECRET_INFO':
           setSecrets(prev => [...prev, message.payload?.message].filter(Boolean));
+          break;
+
+        case 'RULES_UPDATE':
+          setRules((message.payload as RulesUpdatePayload).settings ?? null);
           break;
 
         case 'VOTE_RESULT': {
@@ -541,6 +549,17 @@ export const PlayerScreen = () => {
           {secrets.map((secret, index) => (
             <Text key={index} style={styles.secretText}>
               {secret}
+            </Text>
+          ))}
+        </View>
+      )}
+
+      {rules && (
+        <View style={styles.secretCard}>
+          <Text style={styles.secretHeading}>Table rules</Text>
+          {SETTING_DEFS.map(def => (
+            <Text key={def.id} style={styles.secretText}>
+              {def.label}: {settingLabel(def, rules[def.id])}
             </Text>
           ))}
         </View>

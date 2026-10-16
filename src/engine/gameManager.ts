@@ -12,7 +12,7 @@ import {
   getCustomRoles,
   getRoleById,
 } from './roleSet';
-import { GameOptions, defaultGameOptions } from './setup';
+import { SettingValue, Settings, defaultSettings, settingDefault } from './setup';
 import {
   KillAction,
   ProtectAction,
@@ -95,8 +95,8 @@ export class GameManager {
   // How many times a player has used each action, keyed `playerId:actionId`.
   // A count rather than a flag, because a host may give the witch two potions.
   private chargesUsed = new Map<string, number>();
-  // The rules the host picked for this table.
-  private options: GameOptions = defaultGameOptions();
+  // The rules the host picked for this table, by id.
+  private settings: Settings = defaultSettings();
   // The guard may not shield the same player twice in a row.
   private lastProtected = new Map<string, string>();
   // Set by Cupid on the first night.
@@ -201,9 +201,9 @@ export class GameManager {
 
   // Assign roles and open the first night. Roles are drawn from a shuffled
   // set so the same player is not always the wolf.
-  start(roleSet?: PlayableRole[], options: GameOptions = defaultGameOptions()) {
+  start(roleSet?: PlayableRole[], settings: Settings = defaultSettings()) {
     const players = this.state.players;
-    this.options = { ...defaultGameOptions(), ...options };
+    this.settings = { ...defaultSettings(), ...settings };
     if (players.length === 0) {
       console.warn('Cannot start a game without players');
       return;
@@ -287,6 +287,14 @@ export class GameManager {
     players.forEach(player => {
       const role = this.assignments.get(player.id);
       if (role) this.sendRoleAssign(player.id, role);
+    });
+
+    // The table's rules travel to the guests with the deal: only the host can
+    // change them, but everyone can read what they are.
+    this.transport.broadcast({
+      type: 'RULES_UPDATE',
+      payload: { settings: { ...this.settings } },
+      timestamp: Date.now(),
     });
 
     // These two are filed under the election the table is about to enter:
@@ -810,7 +818,7 @@ export class GameManager {
       }
       if (
         option.kind === 'protect' &&
-        this.options.guardNoRepeat &&
+        this.setting('guardNoRepeat') === true &&
         this.lastProtected.get(player.id) === target.id
       ) {
         return false;
@@ -1297,9 +1305,14 @@ export class GameManager {
       .map(entry => entry.message);
   }
 
-  // The rules this table was started with.
-  getOptions(): GameOptions {
-    return { ...this.options };
+  // The rules this table was started with, and one rule read back by id. A
+  // value the table never set falls back to the rule's own default.
+  getSettings(): Settings {
+    return { ...this.settings };
+  }
+
+  private setting(id: string): SettingValue {
+    return this.settings[id] ?? settingDefault(id);
   }
 
   // The opening night is peaceful when the host says so. Left on auto it is
@@ -1307,7 +1320,9 @@ export class GameManager {
   // the wolves parity before anyone has spoken.
   isQuietNight(): boolean {
     if (this.round !== 1) return false;
-    if (this.options.peacefulFirstNight !== null) return this.options.peacefulFirstNight;
+
+    const forced = this.setting('peacefulFirstNight');
+    if (forced === true || forced === false) return forced;
     return this.state.players.length <= 3;
   }
 
@@ -1610,7 +1625,7 @@ export class GameManager {
     if (leaders.length === 0) return false;
 
     const breaker = this.packTieBreaker();
-    if (!breaker && this.options.wolfTieBreak !== 'host') {
+    if (!breaker && this.setting('wolfTieBreak') !== 'host') {
       this.packTiePick = leaders[Math.floor(Math.random() * leaders.length)].id;
       return false;
     }
