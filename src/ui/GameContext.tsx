@@ -127,6 +127,11 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
+      if (message.type === 'RAVEN_MARK') {
+        current.handleRavenMark(playerId, message.payload?.targetId);
+        return;
+      }
+
       if (message.type === 'STATE_REQUEST') {
         current.sendStateTo(playerId);
       }

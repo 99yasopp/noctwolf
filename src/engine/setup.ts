@@ -10,7 +10,7 @@ import {
 // values, and the screens render whatever is in the list, so a new rule costs
 // one entry and no new UI.
 
-export type SettingValue = boolean | string | null;
+export type SettingValue = boolean | string | number | null;
 
 export interface SettingDef {
   id: string;
@@ -21,6 +21,10 @@ export interface SettingDef {
   help: string;
   // A rule with choices is cycled through them; without, it is on or off.
   choices?: { value: SettingValue; label: string }[];
+  // A rule with a count is a stepper between two bounds.
+  count?: { min: number; max: number };
+  // Only shown when this role takes at least one seat.
+  whenRole?: string;
   default: SettingValue;
 }
 
@@ -48,7 +52,58 @@ export const SETTING_DEFS: SettingDef[] = [
       { value: true, label: 'Forbidden' },
       { value: false, label: 'Allowed' },
     ],
+    whenRole: 'guard',
     default: true,
+  },
+  {
+    id: 'witch.healCharges',
+    label: 'Healing potions',
+    group: 'Village powers',
+    help: 'How many players the witch can save. A count of zero means the potion is not in play.',
+    count: { min: 0, max: 3 },
+    whenRole: 'witch',
+    default: 1,
+  },
+  {
+    id: 'witch.poisonCharges',
+    label: 'Poison',
+    group: 'Village powers',
+    help: 'How many players the witch can poison. Poison is not stopped by the guard.',
+    count: { min: 0, max: 3 },
+    whenRole: 'witch',
+    default: 1,
+  },
+  {
+    id: 'seer.depth',
+    label: 'Seer reads',
+    group: 'Village powers',
+    help: 'What the seer learns about the player he looks at: which camp they belong to, or the exact role.',
+    choices: [
+      { value: 'camp', label: 'Camp only' },
+      { value: 'exact', label: 'The exact role' },
+    ],
+    whenRole: 'seer',
+    default: 'camp',
+  },
+  {
+    id: 'seer.publicReport',
+    label: 'Seer reports in public',
+    group: 'Village powers',
+    help: 'At dawn the whole table hears what the seer found, without being told who was looked at. The detail follows the seer\'s own reading.',
+    whenRole: 'seer',
+    default: false,
+  },
+  {
+    id: 'raven.timing',
+    label: 'Raven marks',
+    group: 'Village powers',
+    help: 'The raven adds two votes against a player. He may mark at night, or on the day itself, and move the mark right up to the vote.',
+    choices: [
+      { value: 'night', label: 'At night' },
+      { value: 'beforeVote', label: 'On the day, before the vote' },
+    ],
+    whenRole: 'raven',
+    default: 'night',
   },
   {
     id: 'wolfTieBreak',
@@ -82,11 +137,12 @@ export const settingLabel = (def: SettingDef, value: SettingValue | undefined): 
 };
 
 // The value the next tap should store: the following choice, or the other
-// side of a toggle.
+// side of a toggle. Counts are stepped, never cycled.
 export const nextSettingValue = (
   def: SettingDef,
   value: SettingValue | undefined,
 ): SettingValue => {
+  if (def.count) return value === undefined ? def.default : value;
   if (!def.choices || def.choices.length === 0) return value === true ? false : true;
 
   const current = value === undefined ? def.default : value;
@@ -94,19 +150,20 @@ export const nextSettingValue = (
   return def.choices[(index + 1) % def.choices.length].value;
 };
 
-// The host's table: how many seats each role takes, how many potions the witch
-// holds, and the house rules. Seats nobody claims are filled with villagers.
+// One rule read out of a setup, defaulted for a table that never set it.
+export const setupSetting = (setup: RoleSetup, id: string): SettingValue =>
+  setup.settings?.[id] ?? settingDefault(id);
+
+// The host's table: how many seats each role takes and the house rules. Seats
+// nobody claims are filled with villagers; the potions a witch holds are rules
+// like any other.
 export interface RoleSetup {
   counts: Record<string, number>;
-  witchHealCharges: number;
-  witchPoisonCharges: number;
   settings: Settings;
 }
 
 export const defaultRoleSetup = (): RoleSetup => ({
   counts: {},
-  witchHealCharges: 1,
-  witchPoisonCharges: 1,
   settings: defaultSettings(),
 });
 
@@ -157,16 +214,23 @@ export const fillWithVillagers = (setup: RoleSetup, playerCount: number): RoleSe
 // The witch's potions are the one role the host reshapes, so her card is
 // copied with the chosen counts rather than changed in place: the same role
 // object is handed to every game of the evening.
-const withWitchPotions = (role: PlayableRole, setup: RoleSetup): PlayableRole => ({
-  ...role,
-  nightActions: role.nightActions?.map(option =>
-    option.id === 'heal'
-      ? { ...option, charges: Math.max(0, Math.floor(setup.witchHealCharges)) }
-      : option.id === 'poison'
-      ? { ...option, charges: Math.max(0, Math.floor(setup.witchPoisonCharges)) }
-      : option,
-  ),
-});
+const withWitchPotions = (role: PlayableRole, setup: RoleSetup): PlayableRole => {
+  const potions = (id: string) => {
+    const value = setupSetting(setup, id);
+    return typeof value === 'number' ? Math.max(0, Math.floor(value)) : 1;
+  };
+
+  return {
+    ...role,
+    nightActions: role.nightActions?.map(option =>
+      option.id === 'heal'
+        ? { ...option, charges: potions('witch.healCharges') }
+        : option.id === 'poison'
+        ? { ...option, charges: potions('witch.poisonCharges') }
+        : option,
+    ),
+  };
+};
 
 // The role list a setup deals. The counts already name every seat, and the
 // villagers below are only a safety net for a list that came up short.
@@ -200,16 +264,9 @@ export const countsFromRoles = (roles: PlayableRole[]): Record<string, number> =
   return counts;
 };
 
-// A setup built from a list of roles, including the witch's default potions.
-export const setupFromRoles = (roles: PlayableRole[]): RoleSetup => {
-  const witch = roles.find(role => role.id === 'witch');
-
-  return {
-    counts: countsFromRoles(roles),
-    witchHealCharges:
-      witch?.nightActions?.find(option => option.id === 'heal')?.charges ?? 1,
-    witchPoisonCharges:
-      witch?.nightActions?.find(option => option.id === 'poison')?.charges ?? 1,
-    settings: defaultSettings(),
-  };
-};
+// A setup built from a list of roles. The potions a witch holds, and every
+// other rule, come from the settings' own defaults.
+export const setupFromRoles = (roles: PlayableRole[]): RoleSetup => ({
+  counts: countsFromRoles(roles),
+  settings: defaultSettings(),
+});

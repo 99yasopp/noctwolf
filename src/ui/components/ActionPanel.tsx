@@ -61,6 +61,9 @@ interface Props {
   successionMayorId?: string | null;
   // The Alien still owes an answer, so the day cannot reach its vote.
   dayFrozen?: boolean;
+  // The raven's rule, and the mark he already holds for this vote.
+  ravenTiming?: string;
+  ravenMark?: { id: string; name: string } | null;
   // Who holds no ballot this vote: the unmasked idiot, the barred players.
   barredVoters?: string[];
   // `roleId` rides along for the Alien's guess: he names a role, not a player.
@@ -105,6 +108,8 @@ export const ActionPanel: React.FC<Props> = ({
   mayorCandidates = [],
   successionMayorId = null,
   dayFrozen = false,
+  ravenTiming = 'night',
+  ravenMark = null,
   barredVoters = [],
   onChoose,
 }) => {
@@ -312,6 +317,35 @@ export const ActionPanel: React.FC<Props> = ({
             variant="secondary"
           />
         )}
+      </View>
+    );
+  }
+
+  // The raven's mark is his to move until the vote opens: one name, changed by
+  // tapping another.
+  if (
+    phase === 'Day' &&
+    ravenTiming === 'beforeVote' &&
+    role.nightActions?.some(option => option.kind === 'curse')
+  ) {
+    const markable = alive.filter(target => target.id !== selfId);
+
+    return (
+      <View style={styles.panel}>
+        <Text style={styles.heading}>The raven's mark</Text>
+        <Text style={styles.body}>
+          {ravenMark
+            ? `Your two votes are against ${ravenMark.name}. Tap another name to move them.`
+            : 'Add two votes against one player in the vote that follows. You may move the mark until the first ballot is cast.'}
+        </Text>
+        {markable.map(target => (
+          <BaseButton
+            key={target.id}
+            title={target.id === ravenMark?.id ? `${target.name} ✓` : target.name}
+            variant="secondary"
+            onPress={() => onChoose('ravenMark', target.id)}
+          />
+        ))}
       </View>
     );
   }

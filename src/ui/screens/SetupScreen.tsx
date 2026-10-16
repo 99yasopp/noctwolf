@@ -6,12 +6,14 @@ import { ALL_ROLES, getCustomRoles } from '../../engine/roleSet';
 import {
   SETTING_DEFS,
   SettingDef,
+  SettingValue,
   RoleSetup,
   fillWithVillagers,
   nextSettingValue,
   settingLabel,
   setupProblem,
   setupSeatsUsed,
+  setupSetting,
 } from '../../engine/setup';
 
 interface Props {
@@ -81,11 +83,13 @@ export const SetupScreen: React.FC<Props> = ({
   const setCount = (roleId: string, count: number) =>
     onChange({ ...setup, counts: { ...setup.counts, [roleId]: count } });
 
-  const setSetting = (id: string, def: SettingDef) =>
-    onChange({
-      ...setup,
-      settings: { ...setup.settings, [id]: nextSettingValue(def, setup.settings?.[id]) },
-    });
+  const setSetting = (id: string, value: SettingValue) =>
+    onChange({ ...setup, settings: { ...setup.settings, [id]: value } });
+
+  const countSetting = (def: SettingDef) => {
+    const value = setupSetting(setup, def.id);
+    return typeof value === 'number' ? value : 0;
+  };
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -120,38 +124,36 @@ export const SetupScreen: React.FC<Props> = ({
         />
       ))}
 
-      {(setup.counts.witch ?? 0) > 0 && (
-        <>
-          <Text style={styles.subHeader}>The witch</Text>
-          <Stepper
-            label="Healing potions"
-            note="Spent only when they save somebody."
-            count={setup.witchHealCharges}
-            onChange={value => onChange({ ...setup, witchHealCharges: value })}
-          />
-          <Stepper
-            label="Poison"
-            note="Poison is not stopped by the guard."
-            count={setup.witchPoisonCharges}
-            onChange={value => onChange({ ...setup, witchPoisonCharges: value })}
-          />
-          <Text style={styles.hint}>
-            A potion count of zero means that potion is not in play.
-          </Text>
-        </>
-      )}
-
       <Text style={styles.subHeader}>House rules</Text>
-      {SETTING_DEFS.map(def => (
-        <View key={def.id}>
-          <BaseButton
-            title={`${def.label}: ${settingLabel(def, setup.settings?.[def.id])}`}
-            variant="secondary"
-            onPress={() => setSetting(def.id, def)}
+      {SETTING_DEFS.filter(
+        def => !def.whenRole || (setup.counts?.[def.whenRole] ?? 0) > 0,
+      ).map(def =>
+        def.count ? (
+          <Stepper
+            key={def.id}
+            label={def.label}
+            note={def.help}
+            count={countSetting(def)}
+            onChange={value =>
+              setSetting(
+                def.id,
+                Math.min(def.count!.max, Math.max(def.count!.min, value)),
+              )
+            }
           />
-          <Text style={styles.hint}>{def.help}</Text>
-        </View>
-      ))}
+        ) : (
+          <View key={def.id}>
+            <BaseButton
+              title={`${def.label}: ${settingLabel(def, setupSetting(setup, def.id))}`}
+              variant="secondary"
+              onPress={() =>
+                setSetting(def.id, nextSettingValue(def, setupSetting(setup, def.id)))
+              }
+            />
+            <Text style={styles.hint}>{def.help}</Text>
+          </View>
+        ),
+      )}
 
       <BaseButton title="Back to the waiting room" onPress={onBack} variant="danger" />
     </ScrollView>

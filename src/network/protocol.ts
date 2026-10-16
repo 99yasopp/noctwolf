@@ -28,7 +28,8 @@ export type MessageType =
   | 'JUDGE_REPEAT'
   | 'SCAPEGOAT_BAN'
   | 'TIE_BREAK'
-  | 'RULES_UPDATE';
+  | 'RULES_UPDATE'
+  | 'RAVEN_MARK';
 
 export interface NetworkMessage {
   type: MessageType;

@@ -38,6 +38,8 @@ export const PlayerScreen = () => {
   const [tieTargets, setTieTargets] = useState<{ id: string; name: string }[]>([]);
   // The house rules the deal arrived with. Only the host can change them.
   const [rules, setRules] = useState<Settings | null>(null);
+  // The raven's mark, kept on this phone: the table is not told who holds it.
+  const [ravenMark, setRavenMark] = useState<{ id: string; name: string } | null>(null);
   // The election is public, so every phone gets the same list.
   const [electionStage, setElectionStage] = useState<'nominate' | 'vote'>('nominate');
   const [mayorCandidates, setMayorCandidates] = useState<{ id: string; name: string }[]>([]);
@@ -107,6 +109,7 @@ export const PlayerScreen = () => {
             // ended. A tie re-vote clears its own through VOTE_RESULT.
             setSubmitted([]);
             setClock(null);
+            setRavenMark(null);
           }
           if (payload.phase === 'Debate') {
             setLog(prev => [
@@ -344,6 +347,17 @@ export const PlayerScreen = () => {
         senderId: localPlayer.id,
         timestamp: Date.now(),
       });
+    } else if (actionId === 'ravenMark') {
+      client.sendMessage({
+        type: 'RAVEN_MARK',
+        payload: { targetId },
+        senderId: localPlayer.id,
+        timestamp: Date.now(),
+      });
+      setRavenMark({
+        id: targetId,
+        name: roster.find(entry => entry.id === targetId)?.name ?? targetId,
+      });
     } else if (actionId === 'vote') {
       client.sendMessage({
         type: 'VOTE_CAST',
@@ -531,6 +545,12 @@ export const PlayerScreen = () => {
           quietNight={quietNight}
           selfAlive={roster.find(entry => entry.id === localPlayer?.id)?.isAlive ?? true}
           candidates={voteResult?.revote ? voteResult.candidates?.map(c => c.id) : undefined}
+          ravenTiming={
+            typeof rules?.['raven.timing'] === 'string'
+              ? (rules['raven.timing'] as string)
+              : undefined
+          }
+          ravenMark={ravenMark}
           nightStage={nightStage}
           victim={victim}
           tieTargets={tieTargets}

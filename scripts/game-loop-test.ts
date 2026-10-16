@@ -3380,5 +3380,124 @@ console.log('\n38. the rules live in one list');
   check('the table can force a deadly first night', !deadly.isQuietNight());
 }
 
+console.log('\n39. the village powers keep their own rules');
+{
+  // The witch's potions are counts in the settings, not fields of their own.
+  const potionPlayers = makePlayers(6);
+  const potionGame = new GameManager(potionPlayers, new RecordingTransport());
+  const potionSetup = {
+    ...setupFromRoles([
+      WerewolfRole,
+      WitchRole,
+      SeerRole,
+      VillagerRole,
+      VillagerRole,
+      GuardRole,
+    ]),
+    settings: { ...defaultSettings(), 'witch.healCharges': 2, 'witch.poisonCharges': 0 },
+  };
+  potionGame.start(buildSetupRoles(potionSetup, 6), potionSetup.settings);
+
+  const potionWitch = findRole(potionGame, potionPlayers, 'witch')!;
+  const potionActions = potionGame.getRoleOf(potionWitch.id)?.nightActions ?? [];
+  check(
+    'the host decides the potions',
+    potionActions.find(option => option.id === 'heal')?.charges === 2 &&
+      potionActions.find(option => option.id === 'poison')?.charges === 0,
+  );
+
+  // The seer may read camps or roles, and may say what he found at dawn.
+  const seerPlayers = makePlayers(6);
+  const seerTransport = new RecordingTransport();
+  const seerGame = new GameManager(seerPlayers, seerTransport);
+  seerGame.start(
+    [WerewolfRole, SeerRole, VillagerRole, VillagerRole, GuardRole, HunterRole],
+    { 'seer.depth': 'exact', 'seer.publicReport': true },
+  );
+  passElection(seerGame);
+
+  const nightSeer = findRole(seerGame, seerPlayers, 'seer')!;
+  const nightWolf = findRole(seerGame, seerPlayers, 'werewolf')!;
+  check(
+    'the seer may look',
+    seerGame.handleNightAction(nightSeer.id, 'peek', nightWolf.id),
+  );
+  seerGame.advance();
+  settleSuccession(seerGame);
+  check(
+    'and is told the exact role',
+    seerTransport.directs.some(
+      d =>
+        d.playerId === nightSeer.id &&
+        String(d.message.payload?.message ?? '').includes('the Werewolf'),
+    ),
+  );
+
+  const seerLines = seerGame.getPublicLog().filter(line => line.includes('The seer saw'));
+  check('the village hears what was found', seerLines.length === 1, seerLines.join(' | '));
+  check(
+    'and never who was looked at',
+    seerLines.every(line => !line.includes(nightWolf.name)),
+  );
+
+  // The raven may hold his mark for the day itself.
+  const ravenPlayers = makePlayers(6);
+  const ravenGame = new GameManager(ravenPlayers, new RecordingTransport());
+  ravenGame.start(
+    [RavenRole, WerewolfRole, SeerRole, VillagerRole, VillagerRole, GuardRole],
+    { 'raven.timing': 'beforeVote' },
+  );
+  passElection(ravenGame);
+
+  const dayRaven = findRole(ravenGame, ravenPlayers, 'raven')!;
+  const ravenWolf = findRole(ravenGame, ravenPlayers, 'werewolf')!;
+  const ravenGuard = findRole(ravenGame, ravenPlayers, 'guard')!;
+  const marked = findRole(ravenGame, ravenPlayers, 'villager')!;
+
+  check(
+    'the night no longer asks for the mark',
+    !ravenGame.handleNightAction(dayRaven.id, 'curse', marked.id),
+  );
+  ravenGame.handleNightAction(ravenWolf.id, 'kill', ravenGuard.id);
+  ravenGame.advance();
+  settleSuccession(ravenGame);
+  check('the day comes', ravenGame.state.currentPhase === 'Day');
+  check('and the raven marks', ravenGame.handleRavenMark(dayRaven.id, marked.id));
+  check('the mark moves when he changes his mind', ravenGame.handleRavenMark(dayRaven.id, ravenWolf.id));
+  check(
+    'the mark holds the last name',
+    ravenGame.getRavenMark()?.id === ravenWolf.id,
+  );
+  check('and moves back', ravenGame.handleRavenMark(dayRaven.id, marked.id));
+  ravenGame.advance();
+  check('the vote locks the mark', !ravenGame.handleRavenMark(dayRaven.id, ravenWolf.id));
+
+  // Two ballots land on the marked villager, and the raven's two votes follow.
+  // The mayor's double vote would blur the count, so the two ballots come from
+  // the plain voters.
+  const voters = ravenGame.getAlivePlayers().filter(player => player.id !== marked.id);
+  const plainVoters = voters.filter(player => player.voteWeight === 1);
+  ravenGame.handleVote(plainVoters[0].id, marked.id);
+  ravenGame.handleVote(plainVoters[1].id, marked.id);
+  voters
+    .filter(player => player.id !== plainVoters[0].id && player.id !== plainVoters[1].id)
+    .forEach(player => ravenGame.handleVote(player.id, dayRaven.id));
+
+  ravenGame.advance();
+  settleSuccession(ravenGame);
+  const markedTally = ravenGame.lastVote?.tally.find(entry => entry.id === marked.id);
+  check('the mark adds two votes', markedTally?.count === 4, String(markedTally?.count));
+
+  // Left on its own, the rule asks at night as before.
+  const plainPlayers = makePlayers(6);
+  const plainGame = new GameManager(plainPlayers, new RecordingTransport());
+  plainGame.start([RavenRole, WerewolfRole, SeerRole, VillagerRole, VillagerRole, GuardRole]);
+  passElection(plainGame);
+
+  const plainRaven = findRole(plainGame, plainPlayers, 'raven')!;
+  const plainVictim = findRole(plainGame, plainPlayers, 'villager')!;
+  check('the raven marks at night by default', plainGame.handleNightAction(plainRaven.id, 'curse', plainVictim.id));
+}
+
 console.log(failures === 0 ? `\nAll checks passed.` : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

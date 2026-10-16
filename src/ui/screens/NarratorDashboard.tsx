@@ -221,6 +221,8 @@ export const NarratorDashboard = () => {
         ? manager.passNightAction(localPlayer.id, targetId)
         : actionId === 'tieBreak'
         ? manager.handleTieBreak(localPlayer.id, targetId)
+        : actionId === 'ravenMark'
+        ? manager.handleRavenMark(localPlayer.id, targetId)
         : manager.handleNightAction(localPlayer.id, actionId, targetId);
 
     if (ok) setSubmitted(prev => [...prev, actionId === 'pass' ? targetId : actionId]);
@@ -437,6 +439,8 @@ export const NarratorDashboard = () => {
         gameOver={!!manager.winner}
         quietNight={manager.isQuietNight()}
         dayFrozen={manager.isDayFrozen()}
+        ravenTiming={String(manager.getSettings()['raven.timing'] ?? 'night')}
+        ravenMark={manager.getRavenMark()}
         barredVoters={manager.getBarredVoters()}
         selfAlive={localPlayer.isAlive}
         nightStage={manager.getNightStage()}

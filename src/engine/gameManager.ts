@@ -115,6 +115,8 @@ export class GameManager {
   private foxLost = new Set<string>();
   // The Raven's two votes against one player, counted in the next day's vote.
   private ravenTarget: string | null = null;
+  // What the seer found, held until the morning so the village can be told.
+  private seerSighting: string | null = null;
   // Set by the host when the wolves spotted the little girl tonight.
   private girlCaught = false;
   // The Thief's two spare cards, live only while the first night is.
@@ -224,6 +226,7 @@ export class GameManager {
     this.winnerLabel = null;
     this.foxLost.clear();
     this.ravenTarget = null;
+    this.seerSighting = null;
     this.girlCaught = false;
     this.thiefCards.clear();
     this.roleModels.clear();
@@ -464,6 +467,12 @@ export class GameManager {
         : `Day ${this.round}: nobody died in the night.`,
     );
 
+    // A table that lets the seer speak hears what he found, never who he saw.
+    if (this.seerSighting) {
+      this.announce(`Day ${this.round}: ${this.seerSighting}`);
+      this.seerSighting = null;
+    }
+
     // The Angel wanted the first night's attack to be theirs, and takes the
     // game with it instead of a villager's life.
     if (this.round === 1 && deaths.some(dead => this.assignments.get(dead.id)?.angel)) {
@@ -566,6 +575,11 @@ export class GameManager {
     if (option.kind === 'infect' && this.isQuietNight()) return false;
     // A fox that once found nothing has lost his nose for good.
     if (option.kind === 'fox' && this.foxLost.has(playerId)) return false;
+    // The raven may hold his mark for the day itself, so the night offers him
+    // nothing.
+    if (option.kind === 'curse' && this.setting('raven.timing') === 'beforeVote') {
+      return false;
+    }
     // First-night choices: the Wolf-Dog picks a camp and the Wild Child picks
     // the player he watches. Neither can be taken later.
     if ((option.kind === 'side' || option.kind === 'model') && this.round !== 1) {
@@ -1172,6 +1186,36 @@ export class GameManager {
     this.broadcastPhase();
     this.emit({ type: 'changed' });
     return true;
+  }
+
+  // The raven may hold his mark for the day itself, and move it as often as he
+  // likes until the vote opens: from the vote onwards the phases stop him.
+  handleRavenMark(playerId: string, targetId: string): boolean {
+    if (this.winner) return false;
+    if (this.state.currentPhase !== 'Day') return false;
+    if (this.setting('raven.timing') !== 'beforeVote') return false;
+
+    const raven = this.state.players.find(p => p.id === playerId);
+    const target = this.state.players.find(p => p.id === targetId);
+    if (!raven?.isAlive || !target?.isAlive) return false;
+    if (this.isSilenced(playerId)) return false;
+    // Only the raven's own card knows the mark, and a spent or missing power
+    // has nothing to place.
+    const card = this.assignments.get(playerId);
+    if (!card?.nightActions?.some(option => option.kind === 'curse')) return false;
+
+    this.ravenTarget = targetId;
+    this.actionLog.push(`Day ${this.round}: the raven marked ${target.name}.`);
+    this.emit({ type: 'changed' });
+    return true;
+  }
+
+  // Who the raven marked for the next vote, as far as anyone knows.
+  getRavenMark(): PlayerRef | null {
+    if (!this.ravenTarget) return null;
+
+    const target = this.state.players.find(p => p.id === this.ravenTarget);
+    return target ? { id: target.id, name: target.name, isAlive: target.isAlive } : null;
   }
 
   // A death in the middle of the day, from the Alien's guess or from his own
@@ -2125,8 +2169,19 @@ export class GameManager {
       const { sourceId, targetId } = peek;
       const target = this.state.players.find(p => p.id === targetId);
       if (target) {
-        const isWolf = this.assignments.get(target.id)?.team === 'Wolf';
-        const message = `${target.name} is ${isWolf ? 'a Werewolf' : 'not a Werewolf'}.`;
+        const role = this.assignments.get(target.id);
+        const isWolf = role?.team === 'Wolf';
+        // The table's rule decides how much the seer is told, and whatever he
+        // is told is what he could say out loud.
+        const exact = this.setting('seer.depth') === 'exact';
+        const seen = exact
+          ? `the ${role?.name ?? 'Villager'} card`
+          : isWolf
+          ? 'a Werewolf'
+          : 'no Werewolf';
+        const message = exact
+          ? `${target.name} is the ${role?.name ?? 'Villager'}.`
+          : `${target.name} is ${isWolf ? 'a Werewolf' : 'not a Werewolf'}.`;
         const payload: SecretInfoPayload = { message, isWolf };
 
         this.transport.sendToPlayer(sourceId, {
@@ -2135,6 +2190,12 @@ export class GameManager {
           timestamp: Date.now(),
         });
         this.emit({ type: 'secret', playerId: sourceId, message });
+
+        // Some tables let the seer speak at dawn. The village hears what was
+        // found, never who was looked at.
+        if (this.setting('seer.publicReport') === true) {
+          this.seerSighting = `The seer saw ${seen}.`;
+        }
       }
     }
 
