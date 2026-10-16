@@ -129,6 +129,8 @@ export class GameManager {
   // The first vote's deaths, kept while a judge decides whether the day gets
   // another one, so the mayor and the hunter still get their due.
   private judgeDeaths: Player[] = [];
+  // Everyone the Pied Piper has charmed so far.
+  private charmed = new Set<string>();
   // Who won when 'Solitary' is not the lovers: the announcement text, also
   // carried to the screens.
   private winnerLabel: string | null = null;
@@ -224,6 +226,7 @@ export class GameManager {
     this.scapegoatBans.clear();
     this.judgeUsed.clear();
     this.judgeDeaths = [];
+    this.charmed.clear();
     this.pendingRevenge = null;
     this.revengeChoice = null;
     this.revengeOrigin = null;
@@ -630,6 +633,15 @@ export class GameManager {
     return this.girlCaught;
   }
 
+  isCharmed(playerId: string): boolean {
+    return this.charmed.has(playerId);
+  }
+
+  // The Piper's flock so far, for the host's own panel.
+  getCharmedIds(): string[] {
+    return [...this.charmed];
+  }
+
   // The Thief's live spare cards, for the host's own panel: the guests get
   // theirs with the role card.
   getThiefCards(playerId: string): { id: string; name: string }[] {
@@ -732,6 +744,8 @@ export class GameManager {
       if (option.kind === 'block' && this.blockedTargets.has(`${player.id}:${target.id}`)) {
         return false;
       }
+      // Nobody is charmed twice: the piper's flock grows by new names only.
+      if (option.kind === 'charm' && this.charmed.has(target.id)) return false;
       return true;
     });
   }
@@ -1341,6 +1355,7 @@ export class GameManager {
       linksLovers: role.linksLovers,
       guessesRoles: role.guessesRoles,
       thiefCards: this.thiefCards.get(playerId)?.map(card => ({ id: card.id, name: card.name })),
+      charmedIds: role.charms ? [...this.charmed] : undefined,
       scapegoat: role.scapegoat,
       judge: role.judge,
     };
@@ -1691,6 +1706,8 @@ export class GameManager {
     let raven: { sourceId: string; targetId: string } | null = null;
     let side: { playerId: string; actionId: string } | null = null;
     let model: { sourceId: string; targetId: string } | null = null;
+    // Every Piper at the table keeps his own flock.
+    const charmPlan = new Map<string, string[]>();
 
     // Read before the choices are tallied: the father's infection replaces the
     // pack's bite, so his own kill vote must not be counted.
@@ -1747,6 +1764,12 @@ export class GameManager {
           case 'model':
             model = { sourceId: playerId, targetId };
             break;
+          case 'charm': {
+            const targets = charmPlan.get(playerId) ?? [];
+            targets.push(targetId);
+            charmPlan.set(playerId, targets);
+            break;
+          }
         }
       });
     });
@@ -1924,6 +1947,48 @@ export class GameManager {
       this.actionLog.push(
         `Night ${this.round}: the raven marked ${marked?.name ?? mark.targetId}.`,
       );
+    }
+
+    if (charmPlan.size > 0) {
+      charmPlan.forEach((targets, piperId) => {
+        const piper = this.state.players.find(p => p.id === piperId);
+        if (!piper?.isAlive) return;
+
+        const fresh: string[] = [];
+        targets.forEach(targetId => {
+          if (this.charmed.has(targetId)) return;
+          const target = this.state.players.find(p => p.id === targetId);
+          if (!target?.isAlive) return;
+          this.charmed.add(targetId);
+          fresh.push(target.id);
+        });
+        if (fresh.length === 0) return;
+
+        const names = fresh.map(id => this.state.players.find(p => p.id === id)?.name ?? id);
+        this.actionLog.push(`Night ${this.round}: the piper charmed ${names.join(', ')}.`);
+
+        fresh.forEach(id => {
+          const message = 'The Pied Piper played for you: you are charmed.';
+          this.transport.sendToPlayer(id, {
+            type: 'SECRET_INFO',
+            payload: { message },
+            timestamp: Date.now(),
+          });
+          this.emit({ type: 'secret', playerId: id, message });
+        });
+
+        const flock = this.state.players
+          .filter(p => this.charmed.has(p.id))
+          .map(p => p.name)
+          .join(', ');
+        const message = `Your flock so far: ${flock}. Charm every player still alive and the game is yours.`;
+        this.transport.sendToPlayer(piperId, {
+          type: 'SECRET_INFO',
+          payload: { message },
+          timestamp: Date.now(),
+        });
+        this.emit({ type: 'secret', playerId: piperId, message });
+      });
     }
 
     if (pickedSide) {
@@ -2578,6 +2643,13 @@ export class GameManager {
       this.lovers.every(id => alive.some(p => p.id === id))
     ) {
       this.winnerLabel = 'The Lovers win.';
+      return 'Solitary';
+    }
+
+    // The Piper wins the moment everyone still standing dances to his tune.
+    const piper = alive.find(p => this.assignments.get(p.id)?.charms);
+    if (piper && alive.every(p => p.id === piper.id || this.charmed.has(p.id))) {
+      this.winnerLabel = 'The Pied Piper wins.';
       return 'Solitary';
     }
 

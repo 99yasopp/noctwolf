@@ -18,7 +18,8 @@ export type ActionKind =
   | 'spy'
   | 'curse'
   | 'side'
-  | 'model';
+  | 'model'
+  | 'charm';
 
 // One choice a role gets to make at night.
 export interface NightActionOption {
@@ -77,6 +78,8 @@ export interface PlayableRole {
   judge?: boolean;
   // Wins outright by the first night's bite or the first day's vote.
   angel?: boolean;
+  // The Pied Piper: two charms a night, and everyone charmed is his.
+  charms?: boolean;
 }
 
 export const WerewolfRole: PlayableRole = {
@@ -322,6 +325,19 @@ export const AngelRole: PlayableRole = {
   angel: true,
 };
 
+export const PiedPiperRole: PlayableRole = {
+  id: 'pied-piper',
+  name: 'Pied Piper',
+  team: 'Solitary',
+  description:
+    'Each night you charm two players. When every player still alive is charmed, the whole village dances for you and you win alone.',
+  nightActions: [
+    { id: 'charm-1', label: 'Charm a player (first)', kind: 'charm' },
+    { id: 'charm-2', label: 'Charm a player (second)', kind: 'charm' },
+  ],
+  charms: true,
+};
+
 
 export const CupidRole: PlayableRole = {
   id: 'cupid',
@@ -358,6 +374,7 @@ export const ALL_ROLES: PlayableRole[] = [
   VillageIdiotRole,
   StutteringJudgeRole,
   AngelRole,
+  PiedPiperRole,
 ];
 
 export const getRoleById = (id: string): PlayableRole | undefined =>

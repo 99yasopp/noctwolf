@@ -20,6 +20,8 @@ export interface OwnRole {
   guessesRoles?: boolean;
   // The Thief's two spare cards, only while the first night is open.
   thiefCards?: { id: string; name: string }[];
+  // The Piper's flock, so his panel does not offer them again.
+  charmedIds?: string[];
   // The phases where this card is asked for something of its own.
   scapegoat?: boolean;
   judge?: boolean;
@@ -110,6 +112,7 @@ export const ActionPanel: React.FC<Props> = ({
 
   const alive = targets.filter(target => target.isAlive);
   const allyIds = new Set((role.allies ?? []).map(ally => ally.id));
+  const charmedIds = new Set(role.charmedIds ?? []);
 
   if (phase === 'Revenge') {
     // Only the hunter who died gets this panel, so it comes before the
@@ -493,6 +496,8 @@ export const ActionPanel: React.FC<Props> = ({
                 if (target.id === selfId && !allowsSelf(option.kind)) return false;
                 if (wantsPack(option.kind) && !allyIds.has(target.id)) return false;
                 if (excludesPack(option.kind) && allyIds.has(target.id)) return false;
+                // A charm already stayed: the piper needs new names.
+                if (option.kind === 'charm' && charmedIds.has(target.id)) return false;
                 return true;
               });
 

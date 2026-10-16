@@ -16,6 +16,7 @@ import {
   HunterRole,
   InfectiousFatherRole,
   LittleGirlRole,
+  PiedPiperRole,
   PlayableRole,
   RavenRole,
   RedWolfRole,
@@ -3069,6 +3070,65 @@ console.log('\n35. the village settles its debts');
   settleSuccession(plainAngelGame);
   check('the angel is dead', !plainAngel.isAlive);
   check('and the game runs on', plainAngelGame.winner === null);
+}
+
+console.log('\n36. the piper collects the village');
+{
+  const pipeTable = makePlayers(4);
+  const pipeTransport = new RecordingTransport();
+  const pipeGame = new GameManager(pipeTable, pipeTransport);
+  pipeGame.start([PiedPiperRole, WerewolfRole, VillagerRole, VillagerRole]);
+  passElection(pipeGame);
+
+  const piper = findRole(pipeGame, pipeTable, 'pied-piper')!;
+  const pipeWolf = findRole(pipeGame, pipeTable, 'werewolf')!;
+  const pipeVillagers = pipeTable.filter(p => pipeGame.getRoleOf(p.id)?.id === 'villager');
+
+  check('two charms are offered', pipeGame.getRoleOf(piper.id)?.nightActions?.length === 2);
+  check('the first charm lands', pipeGame.handleNightAction(piper.id, 'charm-1', pipeVillagers[0].id));
+  check('and the second', pipeGame.handleNightAction(piper.id, 'charm-2', pipeVillagers[1].id));
+  pipeGame.advance();
+  settleSuccession(pipeGame);
+  check(
+    'both are charmed',
+    pipeGame.isCharmed(pipeVillagers[0].id) && pipeGame.isCharmed(pipeVillagers[1].id),
+  );
+  check('the wolf is not', !pipeGame.isCharmed(pipeWolf.id));
+  check('the game runs on', pipeGame.winner === null);
+  check(
+    'the piper is told his flock',
+    pipeTransport.directs.some(
+      d => d.playerId === piper.id && String(d.message.payload?.message ?? '').includes('flock'),
+    ),
+  );
+  check(
+    'and the charmed know it',
+    pipeTransport.directs.some(
+      d =>
+        d.playerId === pipeVillagers[0].id &&
+        String(d.message.payload?.message ?? '').includes('charmed'),
+    ),
+  );
+
+  pipeGame.advance();
+  pipeGame.advance();
+  settleSuccession(pipeGame);
+  check('the second night comes', pipeGame.state.currentPhase === 'Night');
+  check(
+    'the flock is not charmed twice',
+    !pipeGame.handleNightAction(piper.id, 'charm-1', pipeVillagers[0].id),
+  );
+  check('the wolf is the missing name', pipeGame.handleNightAction(piper.id, 'charm-1', pipeWolf.id));
+  pipeGame.advance();
+  settleSuccession(pipeGame);
+  check('everyone alive follows him', pipeGame.winner === 'Solitary');
+  check('and the label says so', pipeGame.getWinnerLabel() === 'The Pied Piper wins.');
+  check(
+    'the table is told',
+    pipeTransport.broadcasts.some(
+      m => m.type === 'GAME_OVER' && m.payload?.winnerLabel === 'The Pied Piper wins.',
+    ),
+  );
 }
 
 console.log(failures === 0 ? `\nAll checks passed.` : `\n${failures} check(s) failed.`);

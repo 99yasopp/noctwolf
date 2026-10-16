@@ -93,6 +93,7 @@ export const NarratorDashboard = () => {
         linksLovers: role.linksLovers,
         guessesRoles: role.guessesRoles,
         thiefCards: manager.getThiefCards(localPlayer.id),
+        charmedIds: role.charms ? manager.getCharmedIds() : undefined,
         scapegoat: role.scapegoat,
         judge: role.judge,
         allies:

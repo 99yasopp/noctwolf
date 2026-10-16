@@ -264,6 +264,7 @@ export const PlayerScreen = () => {
         linksLovers: role.linksLovers,
         guessesRoles: role.guessesRoles,
         thiefCards: role.thiefCards,
+        charmedIds: role.charmedIds,
         scapegoat: role.scapegoat,
         judge: role.judge,
         allies: role.allies ?? [],
