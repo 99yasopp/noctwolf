@@ -1,34 +1,12 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { theme } from '../theme/colors';
-import { PublicLogPayload } from '../../network/protocol';
-
-export interface InfoSection {
-  title: string;
-  lines: string[];
-}
-
-// The story grouped the way the table lived it: one block per round and phase,
-// newest first, so the day just played is the first thing read. The round and
-// the phase are in the heading, so the "Day 2:" the line carries goes.
-export const digestSections = (lines: PublicLogPayload[]): InfoSection[] => {
-  const groups: InfoSection[] = [];
-
-  lines.forEach(line => {
-    const title = `Round ${line.round} · ${line.phase}`;
-    const text = line.message.replace(/^Day \d+: /, '');
-    const last = groups[groups.length - 1];
-
-    if (last && last.title === title) last.lines.push(text);
-    else groups.push({ title, lines: [text] });
-  });
-
-  return groups.reverse();
-};
+import { InfoSection } from '../info';
 
 // Everything the table was told, in one place: who pointed at whom, who died
 // and what they were, what the seer said out loud, and the rules this table
-// plays by. The play screen keeps only what a player acts on.
+// plays by — each kind of news in its own block, so nothing runs together. The
+// play screen keeps only what a player acts on.
 export const InfoTab: React.FC<{ sections: InfoSection[] }> = ({ sections }) => (
   <>
     {sections.length === 0 ? (
@@ -39,10 +17,19 @@ export const InfoTab: React.FC<{ sections: InfoSection[] }> = ({ sections }) => 
       sections.map(section => (
         <View key={section.title} style={styles.card}>
           <Text style={styles.heading}>{section.title}</Text>
-          {section.lines.map((line, index) => (
-            <Text key={index} style={styles.line}>
-              {line}
-            </Text>
+          {section.groups.map((group, index) => (
+            <View key={`${index}-${group.label}`} style={index > 0 ? styles.group : undefined}>
+              {group.label ? (
+                <Text style={[styles.groupLabel, { color: group.color }]}>
+                  {group.label}
+                </Text>
+              ) : null}
+              {group.lines.map((line, lineIndex) => (
+                <Text key={lineIndex} style={styles.line}>
+                  {line}
+                </Text>
+              ))}
+            </View>
           ))}
         </View>
       ))
@@ -55,7 +42,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surface,
     borderRadius: theme.borderRadius,
     padding: theme.spacing.medium,
-    marginBottom: theme.spacing.small,
+    marginBottom: theme.spacing.medium,
   },
   heading: {
     color: theme.colors.primary,
@@ -63,9 +50,24 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 4,
   },
+  // A rule between the kinds, so a block of ballots does not run into the
+  // deaths that follow it.
+  group: {
+    marginTop: theme.spacing.small,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.raised,
+    paddingTop: theme.spacing.small,
+  },
+  groupLabel: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 3,
+  },
   line: {
     color: theme.colors.text,
     fontSize: 14,
-    marginBottom: 2,
+    marginBottom: 3,
   },
 });

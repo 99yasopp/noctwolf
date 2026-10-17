@@ -7,7 +7,8 @@ import { TabBar } from '../components/TabBar';
 import { NotesTab } from '../components/NotesTab';
 import { ChatTab } from '../components/ChatTab';
 import { RevealedRoles } from '../components/RevealedRoles';
-import { InfoTab, digestSections } from '../components/InfoTab';
+import { InfoTab } from '../components/InfoTab';
+import { digestSections, flatSection } from '../info';
 import { formatRemaining, winnerText } from '../format';
 import { useGame } from '../GameContext';
 import { Phase } from '../../engine/types';
@@ -90,7 +91,7 @@ export const NarratorDashboard = () => {
   // where he acts on them.
   const infoSections = [
     ...digestSections(manager.getPublicLogEntries()),
-    ...(seeEverything ? [{ title: 'Narrator log', lines: manager.actionLog }] : []),
+    ...(seeEverything ? [flatSection('Narrator log', manager.actionLog)] : []),
   ];
 
   // The card a dead player carries in a blind host's list, when the table

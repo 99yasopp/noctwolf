@@ -58,6 +58,7 @@ import { ALLOWED_ACTIONS as VALIDATED_ACTIONS } from '../src/engine/roleGenerato
 import { GameTransport } from '../src/engine/transport';
 import { Player } from '../src/engine/types';
 import { splitHostAddress } from '../src/network/address';
+import { digestSections, flatSection } from '../src/ui/info';
 import {
   NOTES_HISTORY_LIMIT,
   NOTES_PLAYER_LIMIT,
@@ -67,7 +68,11 @@ import {
   fitGameNotes,
   upsertEntry,
 } from '../src/services/notes';
-import { NetworkMessage, PhaseUpdatePayload } from '../src/network/protocol';
+import {
+  NetworkMessage,
+  PhaseUpdatePayload,
+  PublicLogPayload,
+} from '../src/network/protocol';
 import { MessageDecoder, encodeMessage } from '../src/network/framing';
 import { ClientLink } from '../src/network/clientLink';
 import {
@@ -4613,6 +4618,60 @@ console.log('\n39g. the vote writes itself down');
   check(
     'every entry carries the round and the phase the info window groups by',
     game.getPublicLogEntries().every(entry => entry.round >= 1 && !!entry.phase),
+  );
+}
+
+console.log('\n39h. the info window reads by kind');
+{
+  const lines: PublicLogPayload[] = [
+    { message: '4 players were dealt their roles.', phase: 'Election', round: 1 },
+    { message: 'P1 voted for P2.', phase: 'Election', round: 1 },
+    { message: "P3 didn't vote.", phase: 'Election', round: 1 },
+    {
+      message: 'Day 1: P4 did not survive the night. He was the Seer.',
+      phase: 'Day',
+      round: 2,
+    },
+    { message: 'Day 1: The seer saw P2 is a Werewolf.', phase: 'Day', round: 2 },
+    { message: 'Day 1: P2 was voted out. He was the Werewolf.', phase: 'Day', round: 2 },
+  ];
+
+  const sections = digestSections(lines);
+  const kindsOf = (title: string) =>
+    sections
+      .find(section => section.title === title)!
+      .groups.map(group => group.label)
+      .join(', ');
+  const dayLines = sections[0].groups.reduce<string[]>(
+    (all, group) => all.concat(group.lines),
+    [],
+  );
+
+  check('the newest round reads first', sections[0].title === 'Round 2 · Day');
+  check(
+    'the election keeps its ballots apart from the news',
+    kindsOf('Round 1 · Election') === 'The table, The vote',
+    kindsOf('Round 1 · Election'),
+  );
+  check(
+    'the day keeps the dead, the seer and the vote apart',
+    kindsOf('Round 2 · Day') === 'The dead, The seer, The vote',
+    kindsOf('Round 2 · Day'),
+  );
+  check(
+    'and the day goes with the heading, not the lines',
+    dayLines.every(line => !line.startsWith('Day ')),
+    dayLines.join(' / '),
+  );
+  check(
+    'the dead keep the card the table was told',
+    sections[0].groups[0].lines[0] === 'P4 did not survive the night. He was the Seer.',
+    sections[0].groups[0].lines[0],
+  );
+  check(
+    'a flat section carries its lines without a kind',
+    flatSection('Table rules', ['Wolf chat: On']).groups[0].lines[0] === 'Wolf chat: On' &&
+      flatSection('Table rules', []).groups[0].label === '',
   );
 }
 

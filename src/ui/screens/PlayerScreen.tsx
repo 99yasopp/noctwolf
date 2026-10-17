@@ -25,7 +25,8 @@ import { TabBar } from '../components/TabBar';
 import { NotesTab } from '../components/NotesTab';
 import { ChatTab } from '../components/ChatTab';
 import { RevealedRoles } from '../components/RevealedRoles';
-import { InfoTab, digestSections } from '../components/InfoTab';
+import { InfoTab } from '../components/InfoTab';
+import { digestSections, flatSection } from '../info';
 import { formatRemaining, winnerText } from '../format';
 
 export const PlayerScreen = () => {
@@ -501,12 +502,10 @@ export const PlayerScreen = () => {
     ...digestSections(publicLines),
     ...(rules
       ? [
-          {
-            title: 'Table rules',
-            lines: SETTING_DEFS.map(
-              def => `${def.label}: ${settingLabel(def, rules[def.id])}`,
-            ),
-          },
+          flatSection(
+            'Table rules',
+            SETTING_DEFS.map(def => `${def.label}: ${settingLabel(def, rules[def.id])}`),
+          ),
         ]
       : []),
   ];
