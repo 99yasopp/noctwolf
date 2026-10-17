@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { theme } from '../theme/colors';
 import { BackBar } from '../components/BackBar';
 import { useBack } from '../back';
+import { actionLabel, roleDescription, roleName, roleTips, teamName } from '../../i18n';
 import { ALL_ROLES, getCustomRoles } from '../../engine/roleSet';
 import { getRoleTips } from '../../engine/rolepedia';
 
@@ -74,15 +75,15 @@ export const RulesScreen = ({ onBack }: Props) => {
       {roles.map(role => (
         <View key={role.id} style={styles.card}>
           <Text style={styles.roleName}>
-            {role.name}
-            <Text style={styles.roleTeam}> — {role.team}</Text>
+            {roleName(role.id, role.name)}
+            <Text style={styles.roleTeam}> — {teamName(role.team)}</Text>
             {role.id.startsWith('custom-') ? (
               <Text style={styles.roleTeam}> (your own)</Text>
             ) : null}
           </Text>
-          <Text style={styles.text}>{role.description}</Text>
+          <Text style={styles.text}>{roleDescription(role.id, role.description)}</Text>
 
-          {getRoleTips(role.id).map((tip, index) => (
+          {roleTips(role.id, getRoleTips(role.id)).map((tip, index) => (
             <Text key={index} style={styles.tip}>
               {tip}
             </Text>
@@ -90,7 +91,7 @@ export const RulesScreen = ({ onBack }: Props) => {
 
           {role.nightActions?.map(action => (
             <Text key={action.id} style={styles.action}>
-              At night: {action.label}
+              At night: {actionLabel(role.id, action.id, action.label)}
               {action.oncePerGame ? ' (once per game)' : ''}
             </Text>
           ))}

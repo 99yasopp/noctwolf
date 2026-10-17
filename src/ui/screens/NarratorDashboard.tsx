@@ -13,7 +13,7 @@ import { InfoTab } from '../components/InfoTab';
 import { digestSections, flatSection } from '../info';
 import { formatRemaining, winnerText } from '../format';
 import { useI18n } from '../i18n';
-import { SaidLine, roleName } from '../../i18n';
+import { SaidLine, roleDescription, roleName, teamOf } from '../../i18n';
 import { packIsKnown } from '../../engine/gameManager';
 import { useGame } from '../GameContext';
 import { Phase } from '../../engine/types';
@@ -122,6 +122,7 @@ export const NarratorDashboard = () => {
 
   const ownRole: OwnRole | null = role
     ? {
+        roleId: role.id,
         name: role.name,
         team: role.team,
         description: role.description,
@@ -313,8 +314,12 @@ export const NarratorDashboard = () => {
         <Text style={styles.roleName}>
           {role ? roleName(role.id, role.name) : 'unassigned'}
         </Text>
-        <Text style={styles.roleTeam}>{role ? `${role.team} team` : ''}</Text>
-        {role && <Text style={styles.roleDescription}>{role.description}</Text>}
+        <Text style={styles.roleTeam}>{role ? teamOf(role.team) : ''}</Text>
+        {role && (
+          <Text style={styles.roleDescription}>
+            {roleDescription(role.id, role.description)}
+          </Text>
+        )}
         {ownRole &&
           ownRole.allies &&
           ownRole.allies.length > 0 &&

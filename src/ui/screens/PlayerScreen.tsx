@@ -24,7 +24,7 @@ import {
   SecretInfoPayload,
   VoteResultPayload,
 } from '../../network/protocol';
-import { SETTING_DEFS, Settings, settingLabel } from '../../engine/setup';
+import { SETTING_DEFS, Settings, settingLabel, settingName } from '../../engine/setup';
 import { TabBar } from '../components/TabBar';
 import { NotesTab } from '../components/NotesTab';
 import { ChatTab } from '../components/ChatTab';
@@ -33,7 +33,7 @@ import { InfoTab } from '../components/InfoTab';
 import { digestSections, flatSection } from '../info';
 import { formatRemaining, winnerText } from '../format';
 import { useI18n } from '../i18n';
-import { SaidLine, roleName } from '../../i18n';
+import { SaidLine, roleDescription, roleName, teamOf } from '../../i18n';
 
 export const PlayerScreen = () => {
   const { localPlayer, returnToLobby, gameId } = useGame();
@@ -336,6 +336,7 @@ export const PlayerScreen = () => {
 
   const ownRole: OwnRole | null = role
     ? {
+        roleId: role.roleId,
         name: role.roleName,
         team: role.team,
         description: role.description,
@@ -521,7 +522,7 @@ export const PlayerScreen = () => {
       ? [
           flatSection(
             'Table rules',
-            SETTING_DEFS.map(def => `${def.label}: ${settingLabel(def, rules[def.id])}`),
+            SETTING_DEFS.map(def => `${settingName(def)}: ${settingLabel(def, rules[def.id])}`),
           ),
         ]
       : []),
@@ -576,9 +577,17 @@ export const PlayerScreen = () => {
           />
         ) : (
           <>
-            <Text style={styles.roleName}>{role?.roleName ?? '...'}</Text>
-            <Text style={styles.roleTeam}>{role ? `${role.team} team` : ''}</Text>
-            {role && <Text style={styles.roleDescription}>{role.description}</Text>}
+            <Text style={styles.roleName}>
+              {role ? roleName(role.roleId, role.roleName) : '...'}
+            </Text>
+            <Text style={styles.roleTeam}>
+              {role ? teamOf(role.team) : ''}
+            </Text>
+            {role && (
+              <Text style={styles.roleDescription}>
+                {roleDescription(role.roleId, role.description)}
+              </Text>
+            )}
             {role && (
               <BaseButton
                 title="Hide my role"

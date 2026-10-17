@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity } from 'react-native';
 import { theme, teamColor } from '../theme/colors';
 import { PlayableRole } from '../../engine/roleSet';
+import { actionLabel, roleDescription, roleName, teamName } from '../../i18n';
 
 // The sides in the order the host reads them. A custom role may bring a side
 // of its own, which lands in the last group.
@@ -21,8 +22,12 @@ export const RoleGrid: React.FC<Props> = ({ roles, counts, onChange }) => {
   const [search, setSearch] = useState('');
 
   const query = search.trim().toLowerCase();
+  // The host searches in the words he sees; the name the card was dealt with
+  // stays searchable too, in case it is the one he remembers.
   const shown = query
-    ? roles.filter(role => role.name.toLowerCase().includes(query))
+    ? roles.filter(role =>
+        `${roleName(role.id, role.name)} ${role.name}`.toLowerCase().includes(query),
+      )
     : roles;
 
   const groups = [...TEAM_ORDER, OTHER]
@@ -51,12 +56,14 @@ export const RoleGrid: React.FC<Props> = ({ roles, counts, onChange }) => {
       {open && (
         <View style={[styles.card, { borderColor: teamColor(open.team) }]}>
           <Text style={[styles.cardName, { color: teamColor(open.team) }]}>
-            {open.name} — {open.team}
+            {roleName(open.id, open.name)} — {teamName(open.team)}
           </Text>
-          <Text style={styles.cardText}>{open.description}</Text>
+          <Text style={styles.cardText}>
+            {roleDescription(open.id, open.description)}
+          </Text>
           {open.nightActions?.map(action => (
             <Text key={action.id} style={styles.cardAction}>
-              • {action.label}
+              • {actionLabel(open.id, action.id, action.label)}
             </Text>
           ))}
           <TouchableOpacity onPress={() => setOpenRole(null)} activeOpacity={0.7}>
@@ -68,7 +75,7 @@ export const RoleGrid: React.FC<Props> = ({ roles, counts, onChange }) => {
       {groups.map(group => (
         <View key={group.team}>
           <Text style={[styles.groupHeader, { color: teamColor(group.team) }]}>
-            {group.team === OTHER ? 'Other sides' : group.team}
+            {group.team === OTHER ? 'Other sides' : teamName(group.team)}
           </Text>
           <View style={styles.grid}>
             {group.roles.map(role => {
@@ -84,7 +91,7 @@ export const RoleGrid: React.FC<Props> = ({ roles, counts, onChange }) => {
                     onPress={() => setOpenRole(role.id === openRole ? null : role.id)}
                     activeOpacity={0.7}
                   >
-                    <Text style={styles.tileName}>{role.name}</Text>
+                    <Text style={styles.tileName}>{roleName(role.id, role.name)}</Text>
                   </TouchableOpacity>
                   <View style={styles.tileButtons}>
                     <TouchableOpacity

@@ -96,6 +96,26 @@ export const roleDescription = (
   language: Language = current,
 ): string => translate(language, `role.${id}.description`, undefined, fallback);
 
+// The side a role plays for, and the same word in a sentence ("Wolf team").
+// A side nobody ships — a custom role's own — keeps the word it came with.
+export const teamName = (team: string, language: Language = current): string =>
+  translate(language, `team.${team}`, undefined, team);
+
+export const teamOf = (team: string, language: Language = current): string =>
+  translate(language, `teamOf.${team}`, undefined, team);
+
+// The tips a role shows on the rules page: one line each, in the reader's own
+// language. A role the host invented has none.
+export const roleTips = (
+  id: string,
+  fallback: string[],
+  language: Language = current,
+): string[] =>
+  (fallback.length === 0
+    ? []
+    : translate(language, `role.${id}.tips`, undefined, fallback.join('\n')).split('\n')
+  ).filter(line => line.trim().length > 0);
+
 export const actionLabel = (
   roleId: string,
   optionId: string,
@@ -118,5 +138,6 @@ export const translator = (language: Language): Translate =>
   ((key: string, params?: Params, fallback?: string) =>
     translate(language, key, params, fallback)) as Translate;
 
-// Every key the English catalog holds: what the other languages have to fill.
-export const catalogKeys = (): string[] => Object.keys(en);
+// Every key a catalog holds: what the other languages have to fill.
+export const catalogKeys = (language: Language = current): string[] =>
+  Object.keys(catalogs[language]);

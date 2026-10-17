@@ -4,6 +4,7 @@ import {
   VillagerRole,
   getCustomRoles,
 } from './roleSet';
+import { say } from '../i18n';
 
 // The rules a host can change for the whole table, as opposed to which roles
 // are dealt. One list is the single source of truth: the engine reads the
@@ -245,15 +246,26 @@ export const settingDefault = (id: string): SettingValue => {
 // The label of the value a setting holds now, for its button.
 export const settingLabel = (def: SettingDef, value: SettingValue | undefined): string => {
   const current = value === undefined ? def.default : value;
-  const choice = def.choices?.find(entry => entry.value === current);
-  if (choice) return choice.label;
+  const index = def.choices?.findIndex(entry => entry.value === current) ?? -1;
+  if (index >= 0 && def.choices) {
+    // The catalogue holds a word for every choice a shipped rule offers; a
+    // rule that came with the host's own list keeps its own.
+    return say(`rule.${def.id}.choice.${index}`, undefined, def.choices[index].label);
+  }
 
-  return current === true
-    ? 'On'
-    : current === false
-    ? 'Off'
-    : `${current}${def.count?.unit ?? ''}`;
+  if (current === true) return say('setting.on', undefined, 'On');
+  if (current === false) return say('setting.off', undefined, 'Off');
+
+  const unit = def.count?.unit;
+  return `${current}${unit ? say(`unit.${unit}`, undefined, unit) : ''}`;
 };
+
+// The rule's own name and the line that explains it, in the reader's language.
+export const settingName = (def: SettingDef): string =>
+  say(`rule.${def.id}.label`, undefined, def.label);
+
+export const settingHelp = (def: SettingDef): string =>
+  say(`rule.${def.id}.help`, undefined, def.help);
 
 // The value the next tap should store: the following choice, or the other
 // side of a toggle. Counts are stepped, never cycled.
@@ -333,17 +345,31 @@ export const setupProblem = (setup: RoleSetup, playerCount: number): string | nu
   if (playerCount <= 0) return null;
 
   const used = setupSeatsUsed(setup);
-  if (used === 0) return 'Choose the roles for this table.';
+  if (used === 0) {
+    return say('setup.problem.noRoles', undefined, 'Choose the roles for this table.');
+  }
 
   if (used < playerCount) {
-    return `${playerCount - used} seat${playerCount - used > 1 ? 's' : ''} still free. Fill the rest with villagers.`;
+    const free = playerCount - used;
+    return say(
+      'setup.problem.freeSeats',
+      { count: free },
+      `${free} seat${free > 1 ? 's' : ''} still free. Fill the rest with villagers.`,
+    );
   }
 
   if (used > playerCount) {
-    return `${used - playerCount} role${used - playerCount > 1 ? 's' : ''} too many for ${playerCount} players.`;
+    const extra = used - playerCount;
+    return say(
+      'setup.problem.tooMany',
+      { count: extra, players: playerCount },
+      `${extra} role${extra > 1 ? 's' : ''} too many for ${playerCount} players.`,
+    );
   }
 
-  if (setupWolfSeats(setup) === 0) return 'At least one wolf has to be in play.';
+  if (setupWolfSeats(setup) === 0) {
+    return say('setup.problem.noWolf', undefined, 'At least one wolf has to be in play.');
+  }
 
   return null;
 };

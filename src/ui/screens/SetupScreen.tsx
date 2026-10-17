@@ -6,6 +6,7 @@ import { BackBar } from '../components/BackBar';
 import { useBack } from '../back';
 import { RoleGrid } from '../components/RoleGrid';
 import { ALL_ROLES, getCustomRoles } from '../../engine/roleSet';
+import { say } from '../../i18n';
 import {
   SETTING_DEFS,
   SettingDef,
@@ -14,6 +15,8 @@ import {
   fillWithVillagers,
   nextSettingValue,
   settingLabel,
+  settingName,
+  settingHelp,
   setupProblem,
   setupSeatsUsed,
   setupSetting,
@@ -87,7 +90,7 @@ const Stepper: React.FC<{
               maxLength={3}
               selectTextOnFocus
             />
-            <Text style={styles.countUnit}>{unit}</Text>
+            <Text style={styles.countUnit}>{say(`unit.${unit}`, undefined, unit)}</Text>
           </View>
         ) : (
           <Text style={styles.count}>{count}</Text>
@@ -172,8 +175,8 @@ export const SetupScreen: React.FC<Props> = ({
         def.count ? (
           <Stepper
             key={def.id}
-            label={def.label}
-            note={def.help}
+            label={settingName(def)}
+            note={settingHelp(def)}
             count={countSetting(def)}
             unit={def.count.unit}
             onChange={value =>
@@ -186,13 +189,13 @@ export const SetupScreen: React.FC<Props> = ({
         ) : (
           <View key={def.id}>
             <BaseButton
-              title={`${def.label}: ${settingLabel(def, setupSetting(setup, def.id))}`}
+              title={`${settingName(def)}: ${settingLabel(def, setupSetting(setup, def.id))}`}
               variant="secondary"
               onPress={() =>
                 setSetting(def.id, nextSettingValue(def, setupSetting(setup, def.id)))
               }
             />
-            <Text style={styles.hint}>{def.help}</Text>
+            <Text style={styles.hint}>{settingHelp(def)}</Text>
           </View>
         ),
       )}

@@ -60,7 +60,8 @@ import { Player } from '../src/engine/types';
 import { splitHostAddress } from '../src/network/address';
 import { packIsKnown } from '../src/engine/gameManager';
 import { digestSections, flatSection } from '../src/ui/info';
-import { Params, translate, translator } from '../src/i18n';
+import { Language, Params, catalogKeys, translate, translator } from '../src/i18n';
+import { getRoleTips } from '../src/engine/rolepedia';
 
 // What a phone reads for a private line: the key, filled in English.
 const said = (payload: { key?: string; params?: Params } | undefined): string =>
@@ -4808,6 +4809,58 @@ console.log('\n40. every line the engine writes has words');
       key => translate('en', key) !== key && translate('en', `${key}Card`) !== `${key}Card`,
     ),
   );
+}
+
+console.log('\n41. the catalogue covers what the game can say');
+{
+  // The engine and the screens name roles, actions, tips and rules by key, so
+  // a missing line reads out as the key itself. English is the one language
+  // that must be complete; the others are checked for keys that do not exist.
+  const english = new Set(catalogKeys('en'));
+  const missing: string[] = [];
+
+  for (const role of ALL_ROLES) {
+    for (const key of [`role.${role.id}.name`, `role.${role.id}.description`]) {
+      if (!english.has(key)) missing.push(key);
+    }
+    for (const action of role.nightActions ?? []) {
+      const key = `action.${role.id}.${action.id}`;
+      if (!english.has(key)) missing.push(key);
+    }
+    if (getRoleTips(role.id).length > 0 && !english.has(`role.${role.id}.tips`)) {
+      missing.push(`role.${role.id}.tips`);
+    }
+  }
+
+  for (const def of SETTING_DEFS) {
+    for (const key of [`rule.${def.id}.label`, `rule.${def.id}.help`]) {
+      if (!english.has(key)) missing.push(key);
+    }
+    const choices = def.choices ?? [];
+    choices.forEach((_, index) => {
+      const key = `rule.${def.id}.choice.${index}`;
+      if (!english.has(key)) missing.push(key);
+    });
+    // The choice keys are read by position, so a rule that grew or lost a
+    // choice would otherwise read out its neighbour's word.
+    if (english.has(`rule.${def.id}.choice.${choices.length}`)) {
+      missing.push(`rule.${def.id}.choice.${choices.length} (one too many)`);
+    }
+  }
+
+  check(
+    'every role, action, tip and rule has its English words',
+    missing.length === 0,
+    missing.join(', '),
+  );
+
+  const others: Language[] = ['fr', 'ar'];
+  const stray = others.flatMap(language =>
+    catalogKeys(language)
+      .filter(key => !english.has(key))
+      .map(key => `${language}:${key}`),
+  );
+  check('no other language invents a key', stray.length === 0, stray.join(', '));
 }
 
 console.log(failures === 0 ? `\nAll checks passed.` : `\n${failures} check(s) failed.`);

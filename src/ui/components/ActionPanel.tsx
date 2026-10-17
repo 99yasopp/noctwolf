@@ -4,10 +4,14 @@ import { theme } from '../theme/colors';
 import { BaseButton } from './BaseButton';
 import { Phase } from '../../engine/types';
 import { ALL_ROLES, getCustomRoles } from '../../engine/roleSet';
+import { actionLabel } from '../../i18n';
 
 // The role as the local device knows it, normalised so the dashboard and the
 // player screen can share the same action UI.
 export interface OwnRole {
+  // The shipped role this card came from, so a phone can read its own words
+  // for it. A role the host invented carries its own id and keeps its text.
+  roleId?: string;
   name: string;
   team: string;
   description: string;
@@ -598,7 +602,7 @@ export const ActionPanel: React.FC<Props> = ({
         return (
           <View key={option.id}>
             <Text style={styles.heading}>
-              {option.label}
+              {actionLabel(role.roleId ?? '', option.id, option.label)}
               {typeof option.chargesLeft === 'number' && !upNow(option.kind)
                 ? ` (${option.chargesLeft} left)`
                 : ''}
