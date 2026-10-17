@@ -39,6 +39,10 @@ import {
 // healing someone she never saw attacked is not the rule.
 const STAGE_TWO_KINDS: ActionKind[] = ['heal', 'poison'];
 
+// The mayoral ballot holds three names at most: the fourth volunteer has
+// nowhere to stand.
+const MAYOR_CANDIDATE_LIMIT = 3;
+
 const stageOfKind = (kind: ActionKind): 1 | 2 =>
   STAGE_TWO_KINDS.includes(kind) ? 2 : 1;
 
@@ -2275,7 +2279,7 @@ export class GameManager {
         this.state.players
           .filter(player => player.isAlive && player.isBot && !this.mayorVolunteers.includes(player.id))
           .forEach(player => {
-            if (this.mayorVolunteers.length >= 3) return;
+            if (this.mayorVolunteers.length >= MAYOR_CANDIDATE_LIMIT) return;
             if (Math.random() < 0.35) this.volunteerForMayor(player.id);
           });
       }
@@ -2826,9 +2830,17 @@ export class GameManager {
     const actor = this.state.players.find(p => p.id === playerId);
     if (!actor?.isAlive) return false;
     if (this.mayorVolunteers.includes(playerId)) return false;
-    if (this.mayorVolunteers.length >= 3) return false;
+    if (this.mayorVolunteers.length >= MAYOR_CANDIDATE_LIMIT) return false;
 
     this.mayorVolunteers.push(playerId);
+
+    // The third name fills the ballot: there is nothing left for the window to
+    // wait on, so the table goes straight to the debate.
+    if (this.mayorVolunteers.length >= MAYOR_CANDIDATE_LIMIT) {
+      this.closeNominations();
+      return true;
+    }
+
     // The nomination list is public: every device redraws it as names come in.
     this.broadcastPhase();
     this.emit({ type: 'changed' });
@@ -2907,7 +2919,11 @@ export class GameManager {
         ? this.mayorVolunteers
         : alive.map(player => player.id);
 
-    this.state.presidentManager.startElection(this.state.players, 3, standing);
+    this.state.presidentManager.startElection(
+      this.state.players,
+      MAYOR_CANDIDATE_LIMIT,
+      standing,
+    );
 
     this.announce(
       `The candidates are ${this.getMayorCandidates().map(candidate => candidate.name).join(', ')}.`,

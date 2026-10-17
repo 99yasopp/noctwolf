@@ -726,10 +726,14 @@ console.log('\\n14. the table elects a mayor before the first night');
   check('the game opens on the election', game.state.currentPhase === 'Election');
   check('nobody is worth two votes yet', players.every(p => p.voteWeight === 1));
 
-  // The first three players to stand are the candidates.
+  // The first three players to stand are the candidates, and the third fills
+  // the ballot: the debate starts there instead of waiting out the window.
   check('the first player stands', game.volunteerForMayor(players[0].id));
   check('the second stands', game.volunteerForMayor(players[1].id));
-  check('the third stands', game.volunteerForMayor(players[2].id));
+  check('and the table is still nominating', game.state.currentPhase === 'Election');
+  check('the third fills the ballot', game.volunteerForMayor(players[2].id));
+  check('so the debate starts at once', game.state.currentPhase === 'Debate');
+  check('with no window left running', game.getDeadlineRemainingMs() === null);
   check('a fourth is turned away', !game.volunteerForMayor(players[3].id));
   check('nobody stands twice', !game.volunteerForMayor(players[0].id));
   check(
@@ -738,10 +742,7 @@ console.log('\\n14. the table elects a mayor before the first night');
     game.getElectionList().map(c => c.name).join(','),
   );
 
-  game.advance(); // the list closes and the candidates speak
-  check('the debate comes next', game.state.currentPhase === 'Debate');
-
-  game.advance(); // the ballot opens
+  game.advance(); // the candidates stop speaking: the ballot opens
   check(
     'the ballot opens',
     game.state.currentPhase === 'Election' && game.getElectionStage() === 'vote',
@@ -784,9 +785,9 @@ console.log('\\n14b. a tied seat is voted again, then given up');
 
   game.volunteerForMayor(players[0].id);
   game.volunteerForMayor(players[1].id);
+  // The third name fills the ballot, so the debate is already running here.
   game.volunteerForMayor(players[2].id);
-  game.advance(); // debate
-  game.advance(); // ballot
+  game.advance(); // the debate ends and the ballot opens
 
   // Two each for the first two, one stray vote for the third.
   game.handleMayorVote(players[0].id, players[0].id);
