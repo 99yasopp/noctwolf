@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TextInput, ScrollView, Platform } from 'react-n
 import { theme } from '../theme/colors';
 import { BaseButton } from '../components/BaseButton';
 import { GAME_PORT, HOST_PLAYER_ID, LOCAL_GUEST_ID, lobby } from '../../network/lobby';
+import { splitHostAddress } from '../../network/address';
 import { setCustomRoles } from '../../engine/roleSet';
 import { loadCustomRoles } from '../../services/customRoles';
 import { loadPreferences, savePreferences } from '../../services/preferences';
@@ -193,6 +194,9 @@ export const LobbyScreen = () => {
 
     const code = inputCode.trim().toUpperCase();
     const ip = inputIp.trim();
+    // What the error sentence reports: the port may have come with the typed
+    // address, and the game's own port fills in when it did not.
+    const address = splitHostAddress(ip, GAME_PORT);
 
     // Nothing to try: an empty code would just spend the search window.
     if (!code && !ip) {
@@ -220,7 +224,7 @@ export const LobbyScreen = () => {
       setError(
         code
           ? 'Could not find that room code. Check it, or clear it and join by the IP.'
-          : `Could not reach ${ip}:${GAME_PORT}. Check the address and that the host is hosting.`,
+          : `Could not reach ${address.host}:${address.port}. Check the address and that the host is hosting.`,
       );
       return;
     }

@@ -3,6 +3,7 @@ import { NarratorServer } from './socketServer';
 import { GuestClient, createGuestClient } from './socketClient';
 import { createZeroconf } from './nativeModules';
 import { NetworkMessage } from './protocol';
+import { splitHostAddress } from './address';
 import { GameTransport } from '../engine/transport';
 import { Platform } from 'react-native';
 import * as Network from 'expo-network';
@@ -426,8 +427,11 @@ export class LobbyManager implements GameTransport {
 
   // Join by typing the host's IP. This is the reliable path when mDNS is
   // blocked or when the two devices are on different subnets.
-  joinGameByIp(ip: string, player: Player, port: number = GAME_PORT): Promise<boolean> {
-    return this.connect(ip.trim(), player, port);
+  joinGameByIp(address: string, player: Player, port: number = GAME_PORT): Promise<boolean> {
+    // The address may carry the port the host's own screen shows, and then that
+    // port wins: copying the whole address has to work.
+    const typed = splitHostAddress(address, port);
+    return this.connect(typed.host, player, typed.port);
   }
 
   private connect(host: string, player: Player, port: number = GAME_PORT): Promise<boolean> {

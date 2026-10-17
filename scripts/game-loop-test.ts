@@ -56,6 +56,7 @@ import {
 import { ALLOWED_ACTIONS as VALIDATED_ACTIONS } from '../src/engine/roleGenerator';
 import { GameTransport } from '../src/engine/transport';
 import { Player } from '../src/engine/types';
+import { splitHostAddress } from '../src/network/address';
 import {
   NOTES_HISTORY_LIMIT,
   NOTES_PLAYER_LIMIT,
@@ -3864,6 +3865,115 @@ console.log('\n42. the private windows');
   settleSuccession(quietGame);
   check('the bond ends when one of the two dies', quietGame.getChatGroups(quietCupid.id).length === 0);
   check('and the widow cannot write', !quietGame.handleChat(quietCupid.id, 'lovers', 'are you there?'));
+}
+
+console.log('\n43. the last of the per-role rules');
+{
+  // The mayor's double vote can be turned off without losing the title.
+  const mayorTable = makePlayers(5);
+  const mayorGame = new GameManager(mayorTable, new RecordingTransport());
+  mayorGame.start([WerewolfRole, VillagerRole, VillagerRole, VillagerRole, VillagerRole], {
+    ...defaultSettings(),
+    'mayor.doubleVote': false,
+  });
+  passElection(mayorGame);
+
+  const singleMayor = mayorGame.getAlivePlayers().find(player => player.voteWeight === 2);
+  const mayorWolf = findRole(mayorGame, mayorTable, 'werewolf')!;
+  const mayorVillagers = mayorTable.filter(p => mayorGame.getRoleOf(p.id)?.id === 'villager');
+  check('the mayor is still elected', !!singleMayor);
+
+  mayorGame.handleNightAction(mayorWolf.id, 'kill', mayorVillagers.find(v => v.id !== singleMayor!.id)!.id);
+  mayorGame.advance();
+  settleSuccession(mayorGame);
+  mayorGame.advance();
+
+  const singleTarget = mayorVillagers.find(v => v.isAlive && v.id !== singleMayor!.id)!.id;
+  mayorGame.handleVote(singleMayor!.id, singleTarget);
+  mayorGame.advance();
+  settleSuccession(mayorGame);
+  const singleRow = mayorGame.lastVote?.tally.find(entry => entry.id === singleTarget);
+  check(
+    'a mayor without the double vote counts one',
+    singleRow?.count === 1,
+    String(singleRow?.count),
+  );
+
+  // A hunter dealt without his parting shot dies quietly.
+  const quietHunterTable = makePlayers(6);
+  const quietHunterGame = new GameManager(quietHunterTable, new RecordingTransport());
+  quietHunterGame.start(
+    [WerewolfRole, HunterRole, SeerRole, VillagerRole, VillagerRole, GuardRole],
+    { ...defaultSettings(), 'hunter.shoots': false },
+  );
+  passElection(quietHunterGame);
+
+  const quietHunter = findRole(quietHunterGame, quietHunterTable, 'hunter')!;
+  const hunterWolf = findRole(quietHunterGame, quietHunterTable, 'werewolf')!;
+  quietHunterGame.handleNightAction(hunterWolf.id, 'kill', quietHunter.id);
+  quietHunterGame.advance();
+  settleSuccession(quietHunterGame);
+  check(
+    'a hunter without his shot dies quietly',
+    !quietHunter.isAlive && quietHunterGame.state.currentPhase !== 'Revenge',
+  );
+
+  // A thief that keeps his own card is dealt no spares.
+  const thiefTable = makePlayers(5);
+  const thiefGame = new GameManager(thiefTable, new RecordingTransport());
+  thiefGame.start([ThiefRole, WerewolfRole, VillagerRole, VillagerRole, VillagerRole], {
+    ...defaultSettings(),
+    'thief.swap': false,
+  });
+  const keptThief = findRole(thiefGame, thiefTable, 'thief')!;
+  check('a thief with no spares holds his card', thiefGame.getThiefCards(keptThief.id).length === 0);
+  check('and cannot swap', !thiefGame.handleThiefSwap(keptThief.id, null));
+
+  // The little girl can be kept in bed, card and all.
+  const girlTable = makePlayers(5);
+  const girlTransport = new RecordingTransport();
+  const girlGame = new GameManager(girlTable, girlTransport);
+  girlGame.start([WerewolfRole, LittleGirlRole, VillagerRole, VillagerRole, VillagerRole], {
+    ...defaultSettings(),
+    'girl.spy': false,
+  });
+  passElection(girlGame);
+
+  const bedGirl = findRole(girlGame, girlTable, 'little-girl')!;
+  check('the little girl stays in bed', !girlGame.handleNightAction(bedGirl.id, 'spy', bedGirl.id));
+  const girlCard = girlTransport.directs
+    .filter(direct => direct.playerId === bedGirl.id && direct.message.type === 'ROLE_ASSIGN')
+    .pop();
+  check(
+    'and her card no longer offers it',
+    !(girlCard?.message.payload?.nightActions ?? []).some(
+      (option: { kind: string }) => option.kind === 'spy',
+    ),
+  );
+}
+
+console.log('\n44. the address a guest types');
+{
+  check(
+    'a bare address keeps the game port',
+    JSON.stringify(splitHostAddress('192.168.0.42', 12345)) ===
+      JSON.stringify({ host: '192.168.0.42', port: 12345 }),
+  );
+  check(
+    'a typed port wins, and is not doubled',
+    JSON.stringify(splitHostAddress('192.168.0.42:8080', 12345)) ===
+      JSON.stringify({ host: '192.168.0.42', port: 8080 }),
+  );
+  check(
+    'the address the host screen shows works as it is',
+    JSON.stringify(splitHostAddress('192.168.0.140:12345', 12345)) ===
+      JSON.stringify({ host: '192.168.0.140', port: 12345 }),
+  );
+  check(
+    'and an IPv6 address is left whole',
+    JSON.stringify(splitHostAddress('::1', 12345)) ===
+      JSON.stringify({ host: '::1', port: 12345 }),
+  );
 }
 
 console.log(failures === 0 ? `\nAll checks passed.` : `\n${failures} check(s) failed.`);
