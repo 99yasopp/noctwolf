@@ -43,6 +43,12 @@ const STAGE_TWO_KINDS: ActionKind[] = ['heal', 'poison'];
 // nowhere to stand.
 const MAYOR_CANDIDATE_LIMIT = 3;
 
+// When a wolf reads his pack. The reveal waits for the table's mayor: during
+// the election every seat is just a seat. A packmate always reads as a Wolf,
+// never as his card.
+export const packIsKnown = (phase: Phase): boolean =>
+  phase !== 'Election' && phase !== 'Debate';
+
 const stageOfKind = (kind: ActionKind): 1 | 2 =>
   STAGE_TWO_KINDS.includes(kind) ? 2 : 1;
 
@@ -1377,7 +1383,14 @@ export class GameManager {
     if (!player?.isAlive) return [];
 
     const groups: ChatGroup[] = [];
-    if (this.assignments.get(playerId)?.team === 'Wolf') groups.push('wolves');
+    // The pack window waits for the table's mayor, like the pack list does: a
+    // wolf is just another seat while the election runs.
+    if (
+      this.assignments.get(playerId)?.team === 'Wolf' &&
+      packIsKnown(this.state.currentPhase)
+    ) {
+      groups.push('wolves');
+    }
     if (
       this.lovers?.includes(playerId) &&
       this.lovers.every(id => this.state.players.find(p => p.id === id)?.isAlive)
@@ -3089,6 +3102,10 @@ export class GameManager {
     }
 
     this.emit({ type: 'changed' });
+
+    // The pack becomes readable here, so every wolf's phone hears about its
+    // window now rather than at the next death.
+    this.sendChatGroups();
 
     // Straight into the first night: the election is what opens the game.
     this.round = 1;

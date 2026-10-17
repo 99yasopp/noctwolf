@@ -6,6 +6,7 @@ import { ActionPanel, OwnRole } from '../components/ActionPanel';
 import { useGame } from '../GameContext';
 import { lobby } from '../../network/lobby';
 import { ChatGroup, ChatLine, Phase } from '../../engine/types';
+import { packIsKnown } from '../../engine/gameManager';
 import {
   ChatGroupsPayload,
   GameOverPayload,
@@ -497,6 +498,12 @@ export const PlayerScreen = () => {
     ...(reveal ? [{ id: 'roles', label: 'Roles' }] : []),
   ];
 
+  // The pack: a wolf sees who else wears the fur, never which card, and only
+  // once the table has its mayor.
+  const isWolf = ownRole?.team === 'Wolf';
+  const packReady = isWolf && phase !== null && packIsKnown(phase);
+  const packIds = new Set(packReady ? (ownRole?.allies ?? []).map(ally => ally.id) : []);
+
   // The Info tab reads by round and phase; the table's own rules close it.
   const infoSections = [
     ...digestSections(publicLines),
@@ -631,7 +638,10 @@ export const PlayerScreen = () => {
         </View>
       )}
 
-      {!outcome && ownRole?.allies && ownRole.allies.length > 0 && (
+      {!outcome &&
+        ownRole?.allies &&
+        ownRole.allies.length > 0 &&
+        (!isWolf || packReady) && (
         <View style={styles.secretCard}>
           <Text style={styles.secretHeading}>
             {ownRole.team === 'Wolf' ? 'Your pack' : 'Your alliance'}
@@ -639,6 +649,9 @@ export const PlayerScreen = () => {
           {ownRole.allies.map(ally => (
             <Text key={ally.id} style={styles.secretText}>
               {ally.name}
+              {/* The pack is wolves, and only wolves: the cards stay their
+                  owners'. */}
+              {isWolf ? ' — Wolf' : ''}
             </Text>
           ))}
         </View>
@@ -696,6 +709,8 @@ export const PlayerScreen = () => {
           {entry.isAlive ? '' : ' — dead'}
           {/* A table that reveals its dead hands every device the card. */}
           {entry.isAlive || !entry.role ? '' : ` (${entry.role})`}
+          {/* A wolf reads his pack as wolves, and nobody else does. */}
+          {entry.isAlive && packIds.has(entry.id) ? ' (Wolf)' : ''}
         </Text>
       ))}
 

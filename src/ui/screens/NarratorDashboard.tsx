@@ -10,6 +10,7 @@ import { RevealedRoles } from '../components/RevealedRoles';
 import { InfoTab } from '../components/InfoTab';
 import { digestSections, flatSection } from '../info';
 import { formatRemaining, winnerText } from '../format';
+import { packIsKnown } from '../../engine/gameManager';
 import { useGame } from '../GameContext';
 import { Phase } from '../../engine/types';
 import { lobby } from '../../network/lobby';
@@ -103,6 +104,10 @@ export const NarratorDashboard = () => {
       .map(ref => [ref.id, ref.role as string]),
   );
 
+  // The pack: the host is a player too, so his screen reads the pack the same
+  // way a guest's does — wolves only, and only once the table has its mayor.
+  const packReady = role?.team === 'Wolf' && packIsKnown(manager.state.currentPhase);
+
   const ownRole: OwnRole | null = role
     ? {
         name: role.name,
@@ -140,6 +145,10 @@ export const NarratorDashboard = () => {
             : [],
       }
     : null;
+
+  // The pack the host reads in his own list: the same names every guest sees,
+  // and the same wait for the mayor.
+  const packIds = new Set(packReady ? (ownRole?.allies ?? []).map(ally => ally.id) : []);
 
   const aliveCount = players.filter(p => p.isAlive).length;
   // The live roster, not the seat held since the lobby: a host who dies sees
@@ -287,7 +296,10 @@ export const NarratorDashboard = () => {
         <Text style={styles.roleName}>{role?.name ?? 'unassigned'}</Text>
         <Text style={styles.roleTeam}>{role ? `${role.team} team` : ''}</Text>
         {role && <Text style={styles.roleDescription}>{role.description}</Text>}
-        {ownRole && ownRole.allies && ownRole.allies.length > 0 && (
+        {ownRole &&
+          ownRole.allies &&
+          ownRole.allies.length > 0 &&
+          (ownRole.team !== 'Wolf' || packReady) && (
           <Text style={styles.roleDescription}>
             {ownRole.team === 'Wolf' ? 'Your pack' : 'Your alliance'}:{' '}
             {ownRole.allies.map(ally => ally.name).join(', ')}
@@ -527,6 +539,7 @@ export const NarratorDashboard = () => {
                   : revealedCards.has(player.id)
                   ? `dead — ${revealedCards.get(player.id)}`
                   : 'dead'}
+                {player.isAlive && packIds.has(player.id) ? ' — Wolf' : ''}
                 {dropped ? ' — no connection' : ''}
                 {manager.state.currentPhase === 'Vote' && player.isAlive && manager.hasVoted(player.id)
                   ? ' — voted'

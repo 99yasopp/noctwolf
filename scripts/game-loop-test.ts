@@ -58,6 +58,7 @@ import { ALLOWED_ACTIONS as VALIDATED_ACTIONS } from '../src/engine/roleGenerato
 import { GameTransport } from '../src/engine/transport';
 import { Player } from '../src/engine/types';
 import { splitHostAddress } from '../src/network/address';
+import { packIsKnown } from '../src/engine/gameManager';
 import { digestSections, flatSection } from '../src/ui/info';
 import {
   NOTES_HISTORY_LIMIT,
@@ -72,6 +73,7 @@ import {
   NetworkMessage,
   PhaseUpdatePayload,
   PublicLogPayload,
+  RoleAssignPayload,
 } from '../src/network/protocol';
 import { MessageDecoder, encodeMessage } from '../src/network/framing';
 import { ClientLink } from '../src/network/clientLink';
@@ -3916,7 +3918,7 @@ console.log('\n42. the private windows');
   const chatVillagers = chatTable.filter(p => chatGame.getRoleOf(p.id)?.id === 'villager');
 
   check(
-    'the pack learns its window with the deal',
+    'the pack holds its window once the game runs',
     chatTransport.directs.some(
       direct => direct.playerId === chatWolves[0].id && direct.message.payload?.groups?.includes('wolves'),
     ),
@@ -4672,6 +4674,58 @@ console.log('\n39h. the info window reads by kind');
     'a flat section carries its lines without a kind',
     flatSection('Table rules', ['Wolf chat: On']).groups[0].lines[0] === 'Wolf chat: On' &&
       flatSection('Table rules', []).groups[0].label === '',
+  );
+}
+
+console.log('\n39i. the pack waits for the mayor');
+{
+  check(
+    'a wolf reads his pack once the table has its mayor',
+    !packIsKnown('Election') &&
+      !packIsKnown('Debate') &&
+      packIsKnown('Night') &&
+      packIsKnown('Day') &&
+      packIsKnown('Vote'),
+  );
+
+  const packPlayers = makePlayers(5);
+  const packTransport = new RecordingTransport();
+  const packGame = new GameManager(packPlayers, packTransport);
+  packGame.start([
+    WerewolfRole,
+    WhiteWerewolfRole,
+    SeerRole,
+    VillagerRole,
+    VillagerRole,
+  ]);
+
+  const plainWolf = findRole(packGame, packPlayers, 'werewolf')!;
+  const whiteWolf = findRole(packGame, packPlayers, 'white-werewolf')!;
+  const assign = packTransport.directs.find(
+    direct => direct.playerId === plainWolf.id && direct.message.type === 'ROLE_ASSIGN',
+  );
+  const allies = (assign?.message.payload as RoleAssignPayload | undefined)?.allies ?? [];
+
+  check(
+    'and the pack holds the wolves, never their cards',
+    allies.length === 1 &&
+      allies[0].id === whiteWolf.id &&
+      !allies.some(ally => ally.role) &&
+      !JSON.stringify(allies).includes('White'),
+    JSON.stringify(allies),
+  );
+
+  check(
+    'the pack window waits with it',
+    packGame.state.currentPhase === 'Election' &&
+      packGame.getChatGroups(plainWolf.id).length === 0,
+  );
+
+  passElection(packGame);
+  check(
+    'and opens once the mayor is in',
+    packGame.state.currentPhase === 'Night' &&
+      packGame.getChatGroups(plainWolf.id).includes('wolves'),
   );
 }
 
