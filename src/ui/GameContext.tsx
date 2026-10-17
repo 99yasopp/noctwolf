@@ -78,6 +78,13 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
+      // "Don't shoot", "done pointing": the player closes his own turn instead
+      // of letting the window run out.
+      if (message.type === 'DECLINE') {
+        current.handleDecline(playerId, message.payload?.phase);
+        return;
+      }
+
       if (message.type === 'MAYOR_VOLUNTEER') {
         current.volunteerForMayor(playerId);
         return;

@@ -99,6 +99,9 @@ export class GameManager {
   // The pack's vote left several names level: whoever breaks the tie, and the
   // names themselves, wait here until the victim is named.
   private packTieOpen = false;
+  // The night's one window is spent, whether it ended in a name or in the
+  // clock: an empty tally does not get to ask the father twice.
+  private packTieSettled = false;
   private packTie: string[] = [];
   private packTiePick: string | null = null;
   // How many times a player has used each action, keyed `playerId:actionId`.
@@ -175,6 +178,13 @@ export class GameManager {
   private successionDeaths: Player[] = [];
   // The host's clock for the current phase, if one was set.
   private timer: { endsAt: number; totalMs: number } | null = null;
+  // The window a stage waits on: every decision the table has to make has one,
+  // and it is counted from an absolute moment, so a host phone that slept
+  // through it wakes up past due instead of never noticing.
+  private deadline: { endsAt: number; totalMs: number } | null = null;
+  // One "you were skipped" note per window: the stage may need a second tick
+  // to carry the night past a window that already ran out.
+  private notedLate = false;
   private listeners = new Set<(event: GameEvent) => void>();
 
   constructor(
@@ -257,10 +267,13 @@ export class GameManager {
     this.revengeDeaths = [];
     this.revoteCandidates = [];
     this.timer = null;
+    this.deadline = null;
+    this.notedLate = false;
     this.nightStage = 1;
     this.packTieOpen = false;
     this.packTie = [];
     this.packTiePick = null;
+    this.packTieSettled = false;
     this.chatLog = [];
     this.chatTimes.clear();
     this.mayorVolunteers = [];
@@ -341,9 +354,14 @@ export class GameManager {
 
     switch (this.state.currentPhase) {
       case 'Night':
-        // The pack's vote left two names level: nothing resolves until one of
-        // them is named, by the father or by the host.
-        if (this.nightStage === 1 && this.packTieOpen && !this.packTiePick) return;
+        // The father's window is his to close: the night waits for his name
+        // until his clock runs out, and then the pack either loses its bite or
+        // has one of the names it left level drawn at random.
+        if (this.nightStage === 1 && this.packTieOpen && !this.packTiePick) {
+          if (!this.isDeadlineDue()) return;
+          this.closePackTie();
+          return;
+        }
         // First press: a split pack opens the tie window, or the wolves are
         // done and the witch wakes. Second press: the night resolves. A table
         // with no witch and no tie skips straight through.
@@ -894,6 +912,12 @@ export class GameManager {
   handleNightAction(playerId: string, actionId: string, targetId: string): boolean {
     if (this.winner) return false;
     if (this.state.currentPhase !== 'Night') return false;
+    // The stage's window is the table's answer: a name that lands after it was
+    // never part of the night.
+    if (this.isDeadlineDue()) return false;
+    // While the father is naming the victim the stage is his, and no further
+    // vote changes what the pack picked.
+    if (this.packTieOpen && !this.packTiePick) return false;
 
     const actor = this.state.players.find(p => p.id === playerId);
     if (!actor || !actor.isAlive) return false;
@@ -927,6 +951,7 @@ export class GameManager {
   passNightAction(playerId: string, actionId: string): boolean {
     if (this.winner) return false;
     if (this.state.currentPhase !== 'Night') return false;
+    if (this.isDeadlineDue()) return false;
 
     const actor = this.state.players.find(p => p.id === playerId);
     if (!actor || !actor.isAlive) return false;
@@ -947,6 +972,8 @@ export class GameManager {
   handleRevenge(playerId: string, targetId: string): boolean {
     if (this.winner) return false;
     if (this.state.currentPhase !== 'Revenge') return false;
+    // The window is the table's answer: a shot after it was never fired.
+    if (this.isDeadlineDue()) return false;
     if (this.pendingRevenge !== playerId) return false;
 
     const hunter = this.state.players.find(p => p.id === playerId);
@@ -964,6 +991,7 @@ export class GameManager {
   handleSuccession(playerId: string, targetId: string): boolean {
     if (this.winner) return false;
     if (this.state.currentPhase !== 'Succession') return false;
+    if (this.isDeadlineDue()) return false;
     if (this.pendingSuccession !== playerId) return false;
 
     const mayor = this.state.players.find(p => p.id === playerId);
@@ -986,37 +1014,62 @@ export class GameManager {
     if (dyingMayorId && choice?.mayorId === dyingMayorId) {
       const successor = this.state.players.find(p => p.id === choice.targetId);
 
-      if (successor?.isAlive) {
-        this.state.presidentManager.handleSuccession(
-          dyingMayorId,
-          successor.id,
-          this.state.players,
-        );
-        this.announce(`${successor.name} takes the mayor's seat.`);
-
-        this.transport.broadcast({
-          type: 'MAYOR_ELECTED',
-          payload: { playerId: successor.id, playerName: successor.name },
-          timestamp: Date.now(),
-        });
-      }
+      if (successor?.isAlive) this.seatSuccessor(dyingMayorId, successor);
     } else if (dyingMayorId) {
-      // The seat goes unfilled, and the dead mayor's double vote goes with it.
-      const mayor = this.state.players.find(p => p.id === dyingMayorId);
-      if (mayor) mayor.voteWeight = 1;
+      // Nobody was named in time: one of the other candidates takes the seat,
+      // and a living player at random when the ballot holds none of them left.
+      const successor = this.pickSuccessor();
 
-      this.announce('The mayor died without naming anyone: the seat stays empty.');
-      // No successor means nobody wears the double vote until a new election.
-      this.state.presidentManager.clearPresident(this.state.players);
+      if (successor) {
+        this.seatSuccessor(dyingMayorId, successor);
+      } else {
+        const mayor = this.state.players.find(p => p.id === dyingMayorId);
+        if (mayor) mayor.voteWeight = 1;
+
+        this.announce('The mayor is dead, and nobody is left to take the seat.');
+        this.state.presidentManager.clearPresident(this.state.players);
+      }
     }
 
     this.emit({ type: 'changed' });
     this.enterAfterDeaths(this.successionOrigin, this.successionDeaths);
   }
 
+  // The seat passes: the double vote, the announcement that goes with it, and
+  // the roster update every phone reads.
+  private seatSuccessor(dyingMayorId: string, successor: Player) {
+    this.state.presidentManager.handleSuccession(
+      dyingMayorId,
+      successor.id,
+      this.state.players,
+    );
+    this.announce(`${successor.name} takes the mayor's seat.`);
+
+    this.transport.broadcast({
+      type: 'MAYOR_ELECTED',
+      payload: { playerId: successor.id, playerName: successor.name },
+      timestamp: Date.now(),
+    });
+  }
+
+  // The seat a dying mayor never named: the candidates the table watched
+  // stand, in that order, and a living player at random when none is left.
+  private pickSuccessor(): Player | null {
+    const alive = this.state.players.filter(player => player.isAlive);
+    if (alive.length === 0) return null;
+
+    const candidate = this.state.presidentManager
+      .getCandidates()
+      .map(id => alive.find(player => player.id === id))
+      .find((player): player is Player => !!player);
+
+    return candidate ?? alive[Math.floor(Math.random() * alive.length)];
+  }
+
   handleVote(voterId: string, targetId: string): boolean {
     if (this.winner) return false;
     if (this.state.currentPhase !== 'Vote') return false;
+    if (this.isDeadlineDue()) return false;
 
     const voter = this.state.players.find(p => p.id === voterId);
     if (!voter || !voter.isAlive) return false;
@@ -1075,12 +1128,22 @@ export class GameManager {
     const deaths: Player[] = [];
     if (correct) {
       this.killInDay(target, deaths);
+      // The table hears the guess and the card it named: a right guess is
+      // public, and so is the role it struck down.
+      this.announce(
+        `Day ${this.round}: the Alien named ${target.name} as the ${truth?.name} — and was right. ${target.name}, the ${truth?.name}, is dead.`,
+      );
       this.sendAlienResult(
         alienId,
         `${target.name} was ${truth?.name} and is dead. Point again, or let the day go on.`,
       );
     } else {
       this.killInDay(alien, deaths);
+      // A wrong guess kills the Alien and nothing else: the table is told that
+      // much, and never what he pointed at.
+      this.announce(
+        `Day ${this.round}: the Alien guessed wrong, and his guess has killed him. ${alien.name} was the Alien.`,
+      );
       this.sendAlienResult(alienId, `${target.name} was not that role. The guess has killed you.`);
     }
 
@@ -1102,8 +1165,12 @@ export class GameManager {
       this.alienGuess = alienId;
     }
 
-    // Everyone the guess took is announced, never why.
-    deaths.forEach(dead => this.announce(`Day ${this.round}: ${dead.name} has died.`));
+    // Whoever else the guess took — a partner who followed, the chain behind
+    // it — keeps the plain line: only the Alien's own two outcomes name a role.
+    const blamed = correct ? target.id : alienId;
+    deaths.forEach(dead => {
+      if (dead.id !== blamed) this.announce(`Day ${this.round}: ${dead.name} has died.`);
+    });
 
     this.enterAfterDeaths(dayEnds ? 'Vote' : 'Day', deaths);
     return true;
@@ -1126,6 +1193,7 @@ export class GameManager {
   handleThiefSwap(playerId: string, roleId: string | null): boolean {
     if (this.winner) return false;
     if (this.state.currentPhase !== 'Night' || this.round !== 1) return false;
+    if (this.isDeadlineDue()) return false;
 
     const player = this.state.players.find(p => p.id === playerId);
     if (!player?.isAlive) return false;
@@ -1185,6 +1253,7 @@ export class GameManager {
   handleJudgeRepeat(playerId: string): boolean {
     if (this.winner) return false;
     if (this.state.currentPhase !== 'Judge') return false;
+    if (this.isDeadlineDue()) return false;
 
     const judge = this.state.players.find(p => p.id === playerId);
     const role = this.assignments.get(playerId);
@@ -1207,6 +1276,7 @@ export class GameManager {
   handleScapegoatBan(playerId: string, targetId: string): boolean {
     if (this.winner) return false;
     if (this.state.currentPhase !== 'Scapegoat') return false;
+    if (this.isDeadlineDue()) return false;
     if (this.scapegoatPending !== playerId) return false;
 
     const goat = this.state.players.find(p => p.id === playerId);
@@ -1217,6 +1287,28 @@ export class GameManager {
     this.scapegoatBans.add(targetId);
     this.announce(`Day ${this.round}: the scapegoat bars ${target.name} from voting tomorrow.`);
     this.emit({ type: 'changed' });
+    return true;
+  }
+
+  // A player with a decision in front of him who wants none of it: the phase
+  // moves on now instead of waiting his window out. The phase he names is
+  // checked against the engine's own and against what he is actually owed, so
+  // a phone can only ever close its own turn.
+  handleDecline(playerId: string, phase: Phase): boolean {
+    if (this.winner) return false;
+    if (this.state.currentPhase !== phase) return false;
+    if (this.isDeadlineDue()) return false;
+
+    const owed =
+      (phase === 'Revenge' && this.pendingRevenge === playerId) ||
+      (phase === 'Succession' && this.pendingSuccession === playerId) ||
+      (phase === 'Scapegoat' && this.scapegoatPending === playerId) ||
+      (phase === 'Judge' &&
+        this.judgeDeaths.length > 0 &&
+        this.livingJudges().includes(playerId));
+    if (!owed) return false;
+
+    this.advance();
     return true;
   }
 
@@ -1625,6 +1717,11 @@ export class GameManager {
     const player = this.state.players.find(p => p.id === playerId);
     if (player && !player.isAlive) this.sendRevealTo(playerId);
 
+    // A phone that comes back owes whatever its stage is still waiting on.
+    if (this.deadline && this.deadlineRecipients().includes(playerId)) {
+      this.sendDeadlineTo(playerId);
+    }
+
     // The house rules, in case the deal's copy was sent before this screen was
     // listening: without them a guest cannot read the table's rules back, and a
     // raven in a before-the-vote game never sees his day panel.
@@ -1830,6 +1927,8 @@ export class GameManager {
   private wakeTheWitch() {
     this.nightStage = 2;
     this.broadcastNightStage();
+    // Her half of the night runs on its own clock, armed from the start of it.
+    this.setDeadline('nightSeconds');
 
     this.state.players.forEach(player => {
       if (player.isAlive && this.hearsTheVictim(player.id)) this.sendNightStageTo(player.id);
@@ -1887,12 +1986,22 @@ export class GameManager {
   // names in front of him, and a test game lets the host answer for him.
   // With neither, one of the tied names is taken at random.
   private openPackTie(): boolean {
+    // One window a night, whether it ended in a name or in the clock: without
+    // this an empty tally would ask the father again every time the night
+    // moved a step.
+    if (this.packTieSettled) return false;
     if (this.packTieOpen || this.packTiePick) return false;
 
     const leaders = this.packTieLeaders();
-    if (leaders.length === 0) return false;
-
     const breaker = this.packTieBreaker();
+    // An empty tally is the father's own window: he may name anyone outside
+    // the pack. A single leading name needs no window at all, and a pack that
+    // named nobody gets none, so a peaceful night and a silenced pack both go
+    // by with no death.
+    const empty = this.attackTally().size === 0;
+    if (!empty && leaders.length === 0) return false;
+    if (empty && (!breaker || !this.canStillBite(breaker.id))) return false;
+
     if (!breaker && this.setting('testGame') !== true) {
       // One of the tied names, at random, and the narrator log hears about it
       // like every other pick.
@@ -1901,12 +2010,52 @@ export class GameManager {
     }
 
     this.packTieOpen = true;
-    this.packTie = leaders.map(player => player.id);
+    // A tie keeps him to the names the pack itself left level; an empty tally
+    // lets him name anyone the pack could have bitten.
+    this.packTie = (empty ? this.attackablePlayers() : leaders).map(player => player.id);
     if (breaker) this.sendPackTieTo(breaker.id);
+
+    // His window runs on the night's own clock, armed anew.
+    this.setDeadline('nightSeconds');
 
     this.autoPlayBots();
     this.emit({ type: 'changed' });
     return true;
+  }
+
+  // The window closed with no name in it. A tie is drawn from the names the
+  // pack left level; a pack that named nobody loses its bite for the night.
+  private closePackTie() {
+    const leaders = this.packTieLeaders();
+
+    this.packTieOpen = false;
+    this.packTie = [];
+    this.packTieSettled = true;
+
+    if (leaders.length > 0) {
+      this.setPackTiePick(leaders[Math.floor(Math.random() * leaders.length)].id);
+      return;
+    }
+
+    this.packTiePick = null;
+    this.actionLog.push(`Night ${this.round}: the pack named nobody, and no one was taken.`);
+    this.emit({ type: 'changed' });
+  }
+
+  // Everyone the pack's bite could land on: the same list its own attack
+  // offers, for the father asked to name a victim on an empty night.
+  private attackablePlayers(): Player[] {
+    return this.state.players.filter(
+      player => player.isAlive && this.assignments.get(player.id)?.team !== 'Wolf',
+    );
+  }
+
+  // Whether this player still has an action the engine would offer him: a
+  // father silenced or out of bites is not worth waking.
+  private canStillBite(playerId: string): boolean {
+    const role = this.assignments.get(playerId);
+    if (!role?.nightActions) return false;
+    return role.nightActions.some(option => this.isOptionOffered(playerId, option, true));
   }
 
   private sendPackTieTo(playerId: string) {
@@ -1920,6 +2069,7 @@ export class GameManager {
   // The infectious father names the victim among the pack's tied picks.
   handleTieBreak(playerId: string, targetId: string): boolean {
     if (this.state.currentPhase !== 'Night' || this.nightStage !== 1) return false;
+    if (this.isDeadlineDue()) return false;
     if (!this.packTieOpen || this.packTiePick) return false;
     if (this.packTieBreaker()?.id !== playerId) return false;
     if (!this.packTie.includes(targetId)) return false;
@@ -1932,6 +2082,7 @@ export class GameManager {
   handlePackTie(targetId: string): boolean {
     if (this.setting('testGame') !== true) return false;
     if (this.state.currentPhase !== 'Night' || this.nightStage !== 1) return false;
+    if (this.isDeadlineDue()) return false;
     if (!this.packTieOpen || this.packTiePick) return false;
     if (!this.packTie.includes(targetId)) return false;
 
@@ -1941,6 +2092,7 @@ export class GameManager {
   private setPackTiePick(targetId: string): boolean {
     this.packTiePick = targetId;
     this.packTieOpen = false;
+    this.packTieSettled = true;
 
     const target = this.state.players.find(player => player.id === targetId);
     if (target) {
@@ -1968,6 +2120,7 @@ export class GameManager {
       this.packTieOpen = false;
       this.packTie = [];
       this.packTiePick = null;
+      this.packTieSettled = false;
     }
 
     if (phase === 'Vote') {
@@ -1980,6 +2133,10 @@ export class GameManager {
 
     // Any phase change retires the clock: the next phase needs its own.
     this.timer = null;
+
+    // Every stage that waits on a decision arms its own window; the talking
+    // phases keep the host's clock and his press instead.
+    this.armDeadline(phase);
 
     this.broadcastPhase(extra);
 
@@ -2664,6 +2821,7 @@ export class GameManager {
   volunteerForMayor(playerId: string): boolean {
     if (this.winner) return false;
     if (this.state.currentPhase !== 'Election' || this.electionStage !== 'nominate') return false;
+    if (this.isDeadlineDue()) return false;
 
     const actor = this.state.players.find(p => p.id === playerId);
     if (!actor?.isAlive) return false;
@@ -2726,6 +2884,7 @@ export class GameManager {
   handleMayorVote(voterId: string, targetId: string): boolean {
     if (this.winner) return false;
     if (this.state.currentPhase !== 'Election' || this.electionStage !== 'vote') return false;
+    if (this.isDeadlineDue()) return false;
 
     const voter = this.state.players.find(p => p.id === voterId);
     if (!voter?.isAlive) return false;
@@ -3078,12 +3237,11 @@ export class GameManager {
 
   // The host runs the clock, not the engine: the host UI ticks once a second
   // and asks whether the phase is up. That keeps the loop deterministic and
-  // runnable in plain Node, with no timers of its own.
+  // runnable in plain Node, with no timers of its own. This one is the talking
+  // clock alone: every decision has its own window.
   startTimer(seconds: number): boolean {
     if (this.winner) return false;
-    // The clock runs the talking phases: the day, the vote, and the election
-    // debate are all "decide now or the host moves on".
-    const timed: Phase[] = ['Day', 'Vote', 'Debate', 'Election'];
+    const timed: Phase[] = ['Day', 'Debate'];
     if (!timed.includes(this.state.currentPhase)) return false;
     if (!(seconds > 0)) return false;
 
@@ -3125,6 +3283,209 @@ export class GameManager {
       payload,
       timestamp: Date.now(),
     });
+  }
+
+  // ------------------------------------------------------- the decision window
+
+  // Every stage that waits on a decision carries a window: the night's two
+  // halves, the day vote, the election's two votes, and the four last calls.
+  // It runs on the host's tick, like the talking clock does, so the engine
+  // itself stays free of timers.
+  getDeadlineRemainingMs(): number | null {
+    if (!this.deadline) return null;
+    return Math.max(0, this.deadline.endsAt - Date.now());
+  }
+
+  isDeadlineDue(): boolean {
+    return !!this.deadline && this.getDeadlineRemainingMs() === 0;
+  }
+
+  // What the host's screen counts down: the decision window while one is open,
+  // and his own clock for the talking phases otherwise.
+  getClockRemainingMs(): number | null {
+    return this.getDeadlineRemainingMs() ?? this.getTimerRemainingMs();
+  }
+
+  private armDeadline(phase: Phase) {
+    switch (phase) {
+      case 'Night':
+        this.setDeadline('nightSeconds');
+        return;
+      case 'Vote':
+        this.setDeadline('voteSeconds');
+        return;
+      case 'Election':
+        this.setDeadline('electionSeconds');
+        return;
+      case 'Revenge':
+      case 'Succession':
+      case 'Scapegoat':
+      case 'Judge':
+        this.setDeadline('lastCallSeconds');
+        return;
+      default:
+        // The talking phases have no window: the host's press ends them.
+        this.clearDeadline();
+    }
+  }
+
+  private setDeadline(settingId: string) {
+    const seconds = Number(this.setting(settingId)) || 0;
+    if (seconds <= 0) {
+      this.clearDeadline();
+      return;
+    }
+
+    this.deadline = { endsAt: Date.now() + seconds * 1000, totalMs: seconds * 1000 };
+    this.notedLate = false;
+    this.deadlineRecipients().forEach(playerId => this.sendDeadlineTo(playerId));
+    this.emit({ type: 'changed' });
+  }
+
+  private clearDeadline() {
+    if (!this.deadline) return;
+    this.deadline = null;
+    this.emit({ type: 'changed' });
+  }
+
+  // The countdown goes to the phones that still owe an answer, and nobody
+  // else: the rest of the table has nothing to lose by waiting.
+  private sendDeadlineTo(playerId: string) {
+    if (!this.deadline) return;
+
+    const payload: TimeSyncPayload = {
+      remainingMs: this.getDeadlineRemainingMs(),
+      totalMs: this.deadline.totalMs,
+      decision: true,
+    };
+
+    this.transport.sendToPlayer(playerId, {
+      type: 'TIME_SYNC',
+      payload,
+      timestamp: Date.now(),
+    });
+  }
+
+  private deadlineRecipients(): string[] {
+    switch (this.state.currentPhase) {
+      case 'Night': {
+        const waiting = this.getPendingNightActors().map(player => player.id);
+        // The father's window is a decision like any other: his phone counts
+        // it down even when his own vote is already in.
+        if (this.packTieOpen && !this.packTiePick) {
+          const breaker = this.packTieBreaker();
+          if (breaker) waiting.push(breaker.id);
+        }
+        return waiting;
+      }
+      case 'Vote':
+        return this.getPendingVoters().map(player => player.id);
+      case 'Election':
+        // Anyone alive may stand or vote.
+        return this.state.players.filter(player => player.isAlive).map(player => player.id);
+      case 'Revenge':
+        return this.pendingRevenge ? [this.pendingRevenge] : [];
+      case 'Succession':
+        return this.pendingSuccession ? [this.pendingSuccession] : [];
+      case 'Scapegoat':
+        return this.scapegoatPending ? [this.scapegoatPending] : [];
+      case 'Judge':
+        return this.judgeDeaths.length > 0 ? this.livingJudges() : [];
+      default:
+        return [];
+    }
+  }
+
+  private livingJudges(): string[] {
+    return this.state.players
+      .filter(
+        player =>
+          player.isAlive &&
+          this.assignments.get(player.id)?.judge &&
+          !this.judgeUsed.has(player.id),
+      )
+      .map(player => player.id);
+  }
+
+  // The host's tick. A stage ends the moment its actors are all done, and the
+  // window ends it for the table when someone never will: no press is needed
+  // anywhere but the talking phases.
+  pump(): boolean {
+    if (this.winner) return false;
+    if (!this.stageIsSettled()) return false;
+
+    this.noteMissingAnswer();
+    this.advance();
+    return true;
+  }
+
+  private stageIsSettled(): boolean {
+    const due = this.isDeadlineDue();
+
+    switch (this.state.currentPhase) {
+      case 'Night':
+        // The father has named the victim: nothing the pack's tally says can
+        // change it, so the night steps on with him.
+        if (this.packTiePick) return true;
+        if (this.packTieOpen && !this.packTiePick) return due;
+        return due || this.getPendingNightActors().length === 0;
+      case 'Vote':
+        return due || this.getPendingVoters().length === 0;
+      case 'Election':
+        // Nobody has to stand, so the nominations wait the window out; the
+        // vote ends with the last ballot in.
+        return this.electionStage === 'nominate'
+          ? due
+          : due || this.state.players.every(player => !player.isAlive || this.votes.has(player.id));
+      case 'Revenge':
+        return due || !!this.revengeChoice;
+      case 'Succession':
+        return due || !!this.successionChoice;
+      case 'Scapegoat':
+      case 'Judge':
+        // They point or bang until they say they are done, or the window ends.
+        return due;
+      default:
+        // Day and the debate are talking: the host moves them on.
+        return false;
+    }
+  }
+
+  // A window that ran out costs whoever let it: a private word, and a line in
+  // the host's own log. The table is never told, because a skipped turn names
+  // a role to anyone paying attention.
+  private noteMissingAnswer() {
+    if (!this.isDeadlineDue() || this.notedLate) return;
+    this.notedLate = true;
+
+    if (!['Night', 'Vote', 'Revenge', 'Succession', 'Scapegoat', 'Judge'].includes(this.state.currentPhase)) {
+      return;
+    }
+
+    this.missingAnswerRecipients().forEach(playerId => {
+      const player = this.state.players.find(candidate => candidate.id === playerId);
+      if (!player) return;
+
+      this.transport.sendToPlayer(playerId, {
+        type: 'SECRET_INFO',
+        payload: { message: 'You did not answer in time. The game moved on without you.' },
+        timestamp: Date.now(),
+      });
+      this.actionLog.push(`${player.name} did not answer in time.`);
+    });
+  }
+
+  // Whoever truly owes the stage an answer. The father's window is a decision
+  // too, but a father waiting on a tie has already answered: he is not skipped.
+  private missingAnswerRecipients(): string[] {
+    switch (this.state.currentPhase) {
+      case 'Night':
+        return this.getPendingNightActors().map(player => player.id);
+      case 'Vote':
+        return this.getPendingVoters().map(player => player.id);
+      default:
+        return this.deadlineRecipients();
+    }
   }
 
   private checkWin(): Team | null {

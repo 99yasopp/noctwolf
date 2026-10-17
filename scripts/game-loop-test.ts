@@ -90,6 +90,33 @@ const check = (label: string, condition: boolean, detail = '') => {
   }
 };
 
+// The engine reads the wall clock for its decision windows. The tests move it
+// forward instead of sleeping through them: one shared offset, so every window
+// already running expires at once.
+let clockSkew = 0;
+const realNow = Date.now;
+Date.now = () => realNow() + clockSkew;
+const passTime = (ms: number) => {
+  clockSkew += ms;
+};
+
+// The host phone's tick, run with the clock: a stage whose actors are all done
+// closes itself, and a window that ran out ends the stage for the table. The
+// steps are bounded so a stuck phase fails a check instead of hanging the run.
+const runClock = (game: GameManager, steps = 6) => {
+  for (let step = 0; step < steps; step += 1) {
+    passTime(60_000);
+    if (!game.pump()) return;
+  }
+};
+
+// A window that was just armed: 40 seconds minus the real milliseconds the
+// test itself took to ask. A device clock is never read twice at the same tick.
+const justArmed = (game: GameManager) => {
+  const remaining = game.getDeadlineRemainingMs() ?? 0;
+  return remaining > 39_000 && remaining <= 40_000;
+};
+
 const makePlayers = (count: number, isBot = false): Player[] =>
   Array.from({ length: count }, (_, index) => ({
     id: `p${index + 1}`,
@@ -843,7 +870,7 @@ console.log('\\n14c. a dying mayor hands the title on');
   );
 }
 
-console.log('\\n14d. a mayor who names nobody leaves the seat empty');
+console.log('\n14d. a mayor who names nobody hands the seat on');
 {
   const players = makePlayers(5);
   const game = new GameManager(players, new RecordingTransport());
@@ -865,12 +892,52 @@ console.log('\\n14d. a mayor who names nobody leaves the seat empty');
   game.advance(); // the host moves on without a name
 
   check('the day still follows', game.state.currentPhase === 'Day');
-  check('the seat stays empty', game.getMayor() === null);
+  // A seat nobody named is still a seat: the next candidate takes it, and a
+  // living player at random when the ballot holds none left.
+  const seated = game.getMayor();
+  check('the seat is filled anyway', !!seated && seated.id !== mayor.id);
+  check('the new mayor is alive', !!seated?.isAlive);
   check(
-    'and no living player carries the double vote',
-    game.getAlivePlayers().every(p => p.voteWeight === 1),
+    'and the double vote goes with him',
+    players.find(p => p.id === seated?.id)?.voteWeight === 2,
   );
   check("the dead mayor's double vote is gone too", mayor.voteWeight === 1);
+}
+
+console.log('\n14e. a seat nobody named goes to the next candidate');
+{
+  const players = makePlayers(6);
+  const game = new GameManager(players, new RecordingTransport());
+  game.start([WerewolfRole, SeerRole, VillagerRole, VillagerRole, VillagerRole, VillagerRole]);
+
+  // Two candidates, in the order the table watched them stand. Neither of them
+  // is the wolf: a pack that bites its own mayor is a different test.
+  const wolf = findRole(game, players, 'werewolf')!;
+  const mayor = players.find(p => p.id !== wolf.id)!;
+  const rival = players.find(p => p.id !== mayor.id && p.id !== wolf.id)!;
+  const backers = players.filter(p => p.id !== mayor.id && p.id !== rival.id).slice(0, 2);
+
+  game.volunteerForMayor(mayor.id);
+  game.volunteerForMayor(rival.id);
+  game.advance(); // the nominations close
+  game.advance(); // the candidates speak, and the vote opens
+  backers.forEach(backer => game.handleMayorVote(backer.id, mayor.id));
+  game.advance(); // the ballot lands
+  settleSuccession(game);
+  check('the better-backed candidate is mayor', game.getMayor()?.id === mayor.id);
+  check(
+    'and the ballot order is kept',
+    game.getMayorCandidates().map(candidate => candidate.id).join() === `${mayor.id},${rival.id}`,
+  );
+
+  const seer = findRole(game, players, 'seer')!;
+  check('the wolf bites the mayor', game.handleNightAction(wolf.id, 'kill', mayor.id));
+  check('the seer looks away', game.passNightAction(seer.id, 'peek'));
+  check('the night closes itself', game.pump());
+  check('the table waits on the dying mayor', game.state.currentPhase === 'Succession');
+  check('nobody else may name the successor', !game.handleSuccession(wolf.id, rival.id));
+  check('he leaves it to the table', game.handleDecline(mayor.id, 'Succession'));
+  check('and the seat passes to the next candidate', game.getMayor()?.id === rival.id);
 }
 
 console.log('\n15. the lovers are tied together');
@@ -1180,19 +1247,25 @@ console.log('\n20. a tie is voted again once');
   );
 }
 
-console.log('\n21. the host clock');
+console.log('\n21. the host clock and the stage windows');
 {
   const players = makePlayers(4);
   const transport = new RecordingTransport();
   const game = new GameManager(players, transport, true);
   game.start([WerewolfRole, SeerRole, VillagerRole, VillagerRole]);
 
-  // The clock also runs the election debate, which is the first thing the
-  // table needs a limit on.
-  check('a clock can be set during the nomination', game.startTimer(60));
-  check('the nomination clock is broadcast', transport.broadcasts.some(m => m.type === 'TIME_SYNC'));
+  // The nomination runs on the election's own window now: the host has no
+  // clock to set on it.
+  check('the nomination opens a decision window', game.getDeadlineRemainingMs() !== null);
+  check('and it is not due at once', !game.isDeadlineDue());
+  check(
+    'the window goes to the phones that owe an answer',
+    transport.directs.some(entry => entry.message.type === 'TIME_SYNC'),
+  );
+  check('a clock cannot be set on the nomination', !game.startTimer(60));
 
   passElection(game);
+  check('the night opens its own window', game.getDeadlineRemainingMs() !== null);
   check('a clock cannot be set at night', !game.startTimer(60));
 
   game.advance(); // quiet night -> Day
@@ -1201,6 +1274,7 @@ console.log('\n21. the host clock');
   check('the time is broadcast', transport.broadcasts.some(m => m.type === 'TIME_SYNC'));
   check('it is not due immediately', !game.isTimerDue());
   check('the remaining time is under a minute', (game.getTimerRemainingMs() ?? 0) <= 60000);
+  check('the day has no window of its own', game.getDeadlineRemainingMs() === null);
 
   game.clearTimer();
   check('the host can stop the clock', game.getTimerRemainingMs() === null);
@@ -1208,17 +1282,16 @@ console.log('\n21. the host clock');
   game.startTimer(1);
   check('a one second clock is still ticking', !game.isTimerDue());
 
-  // Waiting out the clock is the only way to make it due, so shorten it by
-  // starting from a negative time is not possible; drop the timer instead and
-  // check the phase clock is retired with the phase.
   game.advance(); // Day -> Vote
   settleSuccession(game);
   check('a phase change retires the clock', game.getTimerRemainingMs() === null);
+  check('the vote opens its own window', game.getDeadlineRemainingMs() !== null);
+  check('a clock cannot be set on the vote', !game.startTimer(60));
 
-  check('a clock can be set on the vote', game.startTimer(60));
-  game.advance(); // the vote resolves, nobody voted
+  // Nobody votes, and the window ends the vote by itself.
+  runClock(game);
   settleSuccession(game);
-  check('the clock leaves with the vote round', game.getTimerRemainingMs() === null);
+  check('the vote resolves when its window runs out', game.state.currentPhase !== 'Vote');
 }
 
 console.log('\n22. the pack decides the bite');
@@ -2147,8 +2220,18 @@ console.log('\n30. the red wolf silences and the alien guesses');
   wrongGame.advance();
   settleSuccession(wrongGame);
   const innocent = wrong.find(p => p.id !== wrongAlien.id && p.isAlive)!;
+  const logBefore = wrongGame.getPublicLog().length;
   check('a wrong guess kills the alien', wrongGame.handleAlienGuess(wrongAlien.id, innocent.id, 'witch') && !wrongAlien.isAlive);
   check('nobody else died, and the day is not frozen', wrong.filter(p => !p.isAlive).length === 1 && !wrongGame.isDayFrozen());
+  const guessLog = wrongGame.getPublicLog().slice(logBefore);
+  check(
+    'the table hears the mistake and the Alien it killed',
+    guessLog.some(line => line.includes('guessed wrong') && line.includes(wrongAlien.name)),
+  );
+  check(
+    'and never the target or the card he named',
+    guessLog.length > 0 && !guessLog.some(line => line.includes(innocent.name)),
+  );
   wrongGame.advance();
   check('the day still reaches its vote', wrongGame.state.currentPhase === 'Vote');
 
@@ -2164,6 +2247,15 @@ console.log('\n30. the red wolf silences and the alien guesses');
   rightGame.advance();
   settleSuccession(rightGame);
   check('a right guess kills the target', rightGame.handleAlienGuess(rightAlien.id, plain.id, 'villager') && !plain.isAlive);
+  check(
+    'the table hears the name and the card it named',
+    rightGame
+      .getPublicLog()
+      .some(
+        line =>
+          line.includes(plain.name) && line.includes('Villager') && line.includes('and was right'),
+      ),
+  );
   check('the day waits for him', rightGame.isDayFrozen());
   rightGame.advance();
   check('the host cannot move on', rightGame.state.currentPhase === 'Day');
@@ -2327,9 +2419,10 @@ console.log('\n31. the pack learns new teeth');
   const victims = villagersOf(tableGame, table);
 
   // A night with nobody bitten infects nobody, and the charge is not wasted.
+  // The empty tally hands the father his own window, and the clock ends it
+  // with no victim, exactly as the hosting phone would.
   check('the father can switch his power on', tableGame.handleNightAction(father.id, 'infect', father.id));
-  tableGame.advance();
-  tableGame.advance();
+  runClock(tableGame);
   settleSuccession(tableGame);
   check(
     'a night with no victim leaves the charge alone',
@@ -2853,9 +2946,11 @@ console.log('\n34. the first night decides who people are');
   );
 
   // Press through the rest of the first night, the day and its vote: a card
-  // the thief took may wake in a second stage and cost an extra press.
+  // the thief took may wake in a second stage and cost an extra press, and a
+  // card that leaves the pack silent hands the night to its own clock.
   let thiefGuard = 0;
   while (thiefGame.round === 1 && thiefGuard++ < 8) {
+    passTime(60_000);
     thiefGame.advance();
     settleSuccession(thiefGame);
   }
@@ -2973,7 +3068,9 @@ console.log('\n35. the village settles its debts');
   check('he bars one', goatGame.handleScapegoatBan(goat.id, goatBanned.id));
   check('and not twice', !goatGame.handleScapegoatBan(goat.id, goatBanned.id));
 
-  goatGame.advance();
+  check('the scapegoat has a window of his own', justArmed(goatGame));
+  check('and only he may close it', !goatGame.handleDecline(sideA.id, 'Scapegoat'));
+  check('his own phone ends it early', goatGame.handleDecline(goat.id, 'Scapegoat'));
   settleSuccession(goatGame);
   check('the scapegoat dies', !goat.isAlive && goatGame.state.currentPhase === 'Night');
   check('his ban outlives him', goatGame.getBarredVoters().includes(goatBanned.id));
@@ -3047,7 +3144,15 @@ console.log('\n35. the village settles its debts');
     .forEach(voter => muteGame.handleVote(voter.id, muteVictim.id));
   muteGame.advance();
   check('the judge is asked again', muteGame.state.currentPhase === 'Judge');
-  muteGame.advance();
+  check('with a window of his own', justArmed(muteGame));
+  check(
+    'and nobody else may close it',
+    !muteGame.handleDecline(
+      muteTable.find(p => p.isAlive && p.id !== muteJudge.id)!.id,
+      'Judge',
+    ),
+  );
+  check('his own phone lets the vote stand', muteGame.handleDecline(muteJudge.id, 'Judge'));
   settleSuccession(muteGame);
   check('silence ends the day', muteGame.state.currentPhase === 'Night' && !muteVictim.isAlive);
 
@@ -3354,6 +3459,50 @@ console.log('\n37. the pack splits its vote');
   hostGame.advance();
   settleSuccession(hostGame);
   check('and that one dies', !hostVillagers[1].isAlive && hostVillagers[0].isAlive);
+
+  // A father who never names anyone: the clock draws from the tied names he
+  // was shown, and the night takes that one.
+  const lateTable = makePlayers(6);
+  const lateTransport = new RecordingTransport();
+  const lateGame = new GameManager(lateTable, lateTransport);
+  lateGame.start([
+    InfectiousFatherRole,
+    WerewolfRole,
+    SeerRole,
+    VillagerRole,
+    VillagerRole,
+    VillagerRole,
+  ]);
+  passElection(lateGame);
+
+  const lateFather = findRole(lateGame, lateTable, 'infectious-father')!;
+  const lateWolf = findRole(lateGame, lateTable, 'werewolf')!;
+  const lateSeer = findRole(lateGame, lateTable, 'seer')!;
+  const lateVillagers = lateTable.filter(p => lateGame.getRoleOf(p.id)?.id === 'villager');
+  lateGame.handleNightAction(lateFather.id, 'kill', lateVillagers[0].id);
+  lateGame.handleNightAction(lateWolf.id, 'kill', lateVillagers[1].id);
+  lateGame.advance();
+  check('the father is asked for a name', lateGame.hasOpenPackTie());
+  check('and has his own window on it', justArmed(lateGame));
+
+  passTime(40_000);
+  check('the window is up', lateGame.isDeadlineDue());
+  check('a name after it is refused', !lateGame.handleTieBreak(lateFather.id, lateVillagers[0].id));
+  check('the tick draws for him', lateGame.pump());
+  check('the tie is closed', !lateGame.hasOpenPackTie());
+  lateGame.pump();
+  check(
+    'one of the tied names is taken',
+    lateVillagers[0].isAlive !== lateVillagers[1].isAlive,
+  );
+  check(
+    'the seer who never looked is told on his own phone',
+    lateTransport.directs.some(
+      direct =>
+        direct.playerId === lateSeer.id &&
+        `${direct.message.payload?.message ?? ''}`.includes('did not answer'),
+    ),
+  );
 }
 
 console.log('\n38. the rules live in one list');
@@ -4076,6 +4225,225 @@ console.log('\n45. the dead see every card');
     'a player the vote takes is handed the cards too',
     revealTo(revealSeer.id).length === revealTable.length,
   );
+}
+
+console.log('\n39. every stage runs on its own clock');
+{
+  // A full table: the night's actors all answer, and the night steps on with
+  // no press from anyone.
+  const players = makePlayers(7);
+  const transport = new RecordingTransport();
+  const game = new GameManager(players, transport);
+  game.start(
+    [
+      WerewolfRole,
+      InfectiousFatherRole,
+      WitchRole,
+      SeerRole,
+      HunterRole,
+      VillagerRole,
+      VillagerRole,
+    ],
+    { peacefulFirstNight: false },
+  );
+
+  const wolf = findRole(game, players, 'werewolf')!;
+  const father = findRole(game, players, 'infectious-father')!;
+  const witch = findRole(game, players, 'witch')!;
+  const seer = findRole(game, players, 'seer')!;
+  const victim = players.find(p => game.getRoleOf(p.id)?.id === 'villager')!;
+  // The chair goes to someone the night will not touch: this block measures the
+  // night's clock, not a dying mayor's succession.
+  passElection(game, players.find(p => p.id !== victim.id && p.id !== wolf.id)!.id);
+
+  check('the night opens a window', justArmed(game));
+  check('and waits on its own actors', game.getPendingNightActors().length === 3);
+  check('nothing resolves before they answer', !game.pump());
+
+  check('the wolf bites', game.handleNightAction(wolf.id, 'kill', victim.id));
+  check(
+    'the father sits it out',
+    game.passNightAction(father.id, 'infect') && game.passNightAction(father.id, 'kill'),
+  );
+  check('the seer looks', game.handleNightAction(seer.id, 'peek', wolf.id));
+  check('nobody is left to answer', game.getPendingNightActors().length === 0);
+  check('so the night steps on by itself', game.pump());
+
+  check('the witch wakes on a fresh window', justArmed(game));
+  check('and she is the only one waited on', game.getPendingNightActors().length === 1);
+  check('the victim is hers to save', game.getHealTarget()?.id === victim.id);
+  check('she saves him', game.handleNightAction(witch.id, 'heal', victim.id));
+  check('and keeps her poison', game.passNightAction(witch.id, 'poison'));
+  check('and the night closes again', game.pump());
+  check('nobody died', victim.isAlive && game.state.currentPhase === 'Day');
+  check('the day itself carries no window', game.getDeadlineRemainingMs() === null);
+}
+
+console.log('\n39b. a silent table loses its vote');
+{
+  const players = makePlayers(4);
+  const transport = new RecordingTransport();
+  const game = new GameManager(players, transport);
+  game.start([WerewolfRole, SeerRole, VillagerRole, VillagerRole]);
+  // The wolf wears the chain: nobody's death lands on a dying mayor, so the
+  // vote's own clock is what this block measures.
+  const mayorWolf = findRole(game, players, 'werewolf')!;
+  passElection(game, mayorWolf.id);
+
+  game.advance(); // the night resolves with nobody bitten
+  settleSuccession(game);
+  check('the day follows the night', game.state.currentPhase === 'Day');
+  check('and holds no window of its own', game.getDeadlineRemainingMs() === null);
+
+  game.advance(); // Day -> Vote
+  check('the vote opens a window', justArmed(game));
+  check(
+    'and the whole living table owes it a ballot',
+    game.getPendingVoters().length === game.getAlivePlayers().length,
+  );
+
+  const seer = findRole(game, players, 'seer')!;
+  const voter = game.getAlivePlayers().find(p => p.id !== seer.id)!;
+  check('a ballot inside the window lands', game.handleVote(voter.id, seer.id));
+  const silent = game.getPendingVoters().find(p => p.id !== voter.id)!;
+
+  passTime(40_000);
+  check('the window runs out', game.isDeadlineDue());
+  check('a ballot after it is refused', !game.handleVote(silent.id, voter.id));
+
+  check('the tick closes the vote', game.pump());
+  check('the vote is on the record', game.lastVote !== null);
+  check('and the night follows it', game.state.currentPhase === 'Night');
+  check(
+    'the silent voter hears it on his own phone',
+    transport.directs.some(
+      direct =>
+        direct.playerId === silent.id &&
+        `${direct.message.payload?.message ?? ''}`.includes('did not answer in time'),
+    ),
+  );
+  check(
+    'the narrator log keeps the skip',
+    game.actionLog.some(line => line.includes('did not answer in time')),
+  );
+  check(
+    'and the journal never tells the table who it was',
+    !game.getPublicLog().some(line => line.includes('did not answer')),
+  );
+}
+
+console.log('\n39c. an empty night belongs to the father');
+{
+  const players = makePlayers(6);
+  const transport = new RecordingTransport();
+  const game = new GameManager(players, transport);
+  game.start(
+    [InfectiousFatherRole, WerewolfRole, SeerRole, VillagerRole, VillagerRole, VillagerRole],
+    { peacefulFirstNight: false },
+  );
+  passElection(game);
+
+  const father = findRole(game, players, 'infectious-father')!;
+  const wolf = findRole(game, players, 'werewolf')!;
+  const seer = findRole(game, players, 'seer')!;
+
+  check(
+    'the father sits it out',
+    game.passNightAction(father.id, 'infect') && game.passNightAction(father.id, 'kill'),
+  );
+  check('the seer looks', game.handleNightAction(seer.id, 'peek', father.id));
+  check('the pack names nobody', game.getPendingNightActors().map(p => p.id).join() === wolf.id);
+  check('so the night waits for its window', !game.pump());
+
+  passTime(40_000);
+  check('the window is up', game.isDeadlineDue());
+  check('a night action after it is refused', !game.handleNightAction(wolf.id, 'kill', seer.id));
+  check('and the tick hands the night to the father', game.pump() && game.hasOpenPackTie());
+  check('on a window of his own', justArmed(game));
+  check('with the whole village to choose from', game.getPackTieTargets().length === 4);
+
+  const chosen = players.find(p => p.id === game.getPackTieTargets()[0].id)!;
+  check('he names one', game.handleTieBreak(father.id, chosen.id));
+  check('and the night closes on it', game.pump());
+  check('that one dies', !chosen.isAlive);
+}
+
+console.log('\n39d. the last calls have their own window');
+{
+  // A hunter killed on the first night, sitting in his own phase.
+  const revengeTable = () => {
+    const table = makePlayers(6);
+    const transport = new RecordingTransport();
+    const game = new GameManager(table, transport);
+    game.start([HunterRole, WerewolfRole, SeerRole, VillagerRole, VillagerRole, VillagerRole], {
+      peacefulFirstNight: false,
+    });
+
+    const hunter = findRole(game, table, 'hunter')!;
+    const wolf = findRole(game, table, 'werewolf')!;
+    const seer = findRole(game, table, 'seer')!;
+    // A chair the hunter does not hold: his own death must not open a
+    // succession on top of his parting shot.
+    passElection(game, table.find(p => p.id !== hunter.id)!.id);
+
+    game.handleNightAction(wolf.id, 'kill', hunter.id);
+    game.passNightAction(seer.id, 'peek');
+    game.pump();
+
+    return { table, transport, game, hunter, wolf };
+  };
+
+  const shot = revengeTable();
+  check('the hunter is owed a shot', shot.game.state.currentPhase === 'Revenge');
+  check('on a window of its own', justArmed(shot.game));
+  check('a stranger cannot decline for him', !shot.game.handleDecline(shot.wolf.id, 'Revenge'));
+  check('and a phase he is not in is refused', !shot.game.handleDecline(shot.hunter.id, 'Vote'));
+  check('nor shoot for him', !shot.game.handleRevenge(shot.wolf.id, shot.wolf.id));
+  check('his own phone can decline', shot.game.handleDecline(shot.hunter.id, 'Revenge'));
+  check('and the day comes round', shot.game.state.currentPhase === 'Day');
+  check('with nobody shot', shot.wolf.isAlive);
+
+  const late = revengeTable();
+  passTime(40_000);
+  check('a shot past the window is refused', !late.game.handleRevenge(late.hunter.id, late.wolf.id));
+  check('and a decline too', !late.game.handleDecline(late.hunter.id, 'Revenge'));
+  check('the tick carries the phase on', late.game.pump());
+  check('the day still comes', late.game.state.currentPhase === 'Day');
+  check('with nobody shot', late.wolf.isAlive);
+  check(
+    'the silent hunter is told privately',
+    late.transport.directs.some(
+      direct =>
+        direct.playerId === late.hunter.id &&
+        `${direct.message.payload?.message ?? ''}`.includes('did not answer in time'),
+    ),
+  );
+}
+
+console.log('\n39e. the nomination ends on its own clock');
+{
+  const players = makePlayers(5);
+  const game = new GameManager(players, new RecordingTransport());
+  game.start([WerewolfRole, SeerRole, VillagerRole, VillagerRole, VillagerRole]);
+
+  check('the nomination is open', game.state.currentPhase === 'Election');
+  check('with a window on it', justArmed(game));
+  check('and nobody standing yet', game.getMayorCandidates().length === 0);
+
+  runClock(game);
+  check('the clock closes the nominations', game.state.currentPhase === 'Debate');
+  check('and the empty table puts three names up', game.getMayorCandidates().length === 3);
+
+  // The candidates speak for as long as they like: only the host moves the
+  // debate on.
+  passTime(600_000);
+  check('the debate is not on the clock', !game.pump() && game.state.currentPhase === 'Debate');
+  game.advance();
+  check('the vote opens', game.state.currentPhase === 'Election' && game.getElectionStage() === 'vote');
+
+  passTime(60_000);
+  check('the empty ballot leaves no mayor', game.pump() && game.getMayor() === null);
+  check('and the night begins', game.state.currentPhase === 'Night');
 }
 
 console.log(failures === 0 ? `\nAll checks passed.` : `\n${failures} check(s) failed.`);

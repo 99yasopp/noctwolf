@@ -35,6 +35,7 @@ export type MessageType =
   | 'CHAT_SEND'
   | 'CHAT_MESSAGE'
   | 'CHAT_GROUPS'
+  | 'DECLINE'
   | 'REVEAL';
 
 export interface NetworkMessage {
@@ -169,6 +170,9 @@ export interface TimeSyncPayload {
   // still shows the right countdown.
   remainingMs: number | null;
   totalMs?: number;
+  // True when this is the window a stage is waiting on, not the host's own
+  // clock for the talking phases: only then is a silent answer a lost turn.
+  decision?: boolean;
 }
 
 // The night runs in two stages: everyone acts first, then the witch wakes and
@@ -213,4 +217,11 @@ export interface RevealEntry {
 
 export interface RevealPayload {
   reveal: RevealEntry[];
+}
+
+// A player who holds a decision in front of him and wants none of it: "don't
+// shoot", "done pointing", "let the vote stand". The engine checks the phase
+// against its own before it moves anything.
+export interface DeclinePayload {
+  phase: Phase;
 }

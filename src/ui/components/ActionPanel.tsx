@@ -133,16 +133,23 @@ export const ActionPanel: React.FC<Props> = ({
         {submitted.includes('revenge') ? (
           <Text style={styles.body}>Chosen. Waiting for the host...</Text>
         ) : (
-          alive
-            .filter(target => target.id !== selfId)
-            .map(target => (
-              <BaseButton
-                key={target.id}
-                title={target.name}
-                onPress={() => onChoose('revenge', target.id)}
-                variant="secondary"
-              />
-            ))
+          <>
+            {alive
+              .filter(target => target.id !== selfId)
+              .map(target => (
+                <BaseButton
+                  key={target.id}
+                  title={target.name}
+                  onPress={() => onChoose('revenge', target.id)}
+                  variant="secondary"
+                />
+              ))}
+            <BaseButton
+              title="Don't shoot"
+              onPress={() => onChoose('decline', 'Revenge')}
+              variant="secondary"
+            />
+          </>
         )}
       </View>
     );
@@ -174,6 +181,11 @@ export const ActionPanel: React.FC<Props> = ({
                     variant="secondary"
                   />
                 ))}
+              <BaseButton
+                title="Leave it to the table"
+                onPress={() => onChoose('decline', 'Succession')}
+                variant="secondary"
+              />
             </>
           )
         ) : (
@@ -415,8 +427,7 @@ export const ActionPanel: React.FC<Props> = ({
           <>
             <Text style={styles.body}>
               You die for the tied vote. Point at the players who may not vote
-              tomorrow, as many as you like, or at nobody. Then let the host
-              move the day on.
+              tomorrow, as many as you like, or at nobody, then press done.
             </Text>
             {alive
               .filter(target => target.id !== selfId)
@@ -428,6 +439,11 @@ export const ActionPanel: React.FC<Props> = ({
                   variant="secondary"
                 />
               ))}
+            <BaseButton
+              title="Done pointing"
+              onPress={() => onChoose('decline', 'Scapegoat')}
+              variant="secondary"
+            />
           </>
         ) : (
           <Text style={styles.body}>
@@ -451,6 +467,11 @@ export const ActionPanel: React.FC<Props> = ({
               night falls.
             </Text>
             <BaseButton title="One more vote" onPress={() => onChoose('judgeRepeat', '')} />
+            <BaseButton
+              title="Let the vote stand"
+              onPress={() => onChoose('decline', 'Judge')}
+              variant="secondary"
+            />
           </>
         ) : (
           <Text style={styles.body}>Wait for the judge's word.</Text>

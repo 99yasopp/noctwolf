@@ -9,6 +9,7 @@ import { ChatTab } from '../components/ChatTab';
 import { RevealedRoles } from '../components/RevealedRoles';
 import { formatRemaining, winnerText } from '../format';
 import { useGame } from '../GameContext';
+import { Phase } from '../../engine/types';
 import { lobby } from '../../network/lobby';
 
 export const NarratorDashboard = () => {
@@ -131,7 +132,10 @@ export const NarratorDashboard = () => {
   const pendingVoters = manager.getPendingVoters();
   const pendingHunter = manager.getPendingRevengeHunter();
   const revoteCandidates = manager.getRevoteCandidates();
-  const remaining = manager.getTimerRemainingMs();
+  // The host's screen counts one thing at a time: the stage's own window while
+  // one is open, and his clock for the talking phases otherwise.
+  const remaining = manager.getClockRemainingMs();
+  const deadline = manager.getDeadlineRemainingMs();
 
   // What each wolf has picked tonight, so the host can relay the pack's aim.
   const packPicks = players
@@ -159,52 +163,39 @@ export const NarratorDashboard = () => {
     manager.advance();
   };
 
-  // One tick a second while a clock is running: it moves the countdown and,
-  // when it is up, moves the game on for the host.
+  // One tick a second while a countdown is running: it moves the countdown,
+  // closes a stage whose actors are all done, and ends a window that ran out.
+  // The talking phases keep the host's own press.
   useEffect(() => {
     if (remaining === null) return;
 
     const handle = setInterval(() => {
       forceRender(n => n + 1);
-      if (manager.isTimerDue()) advanceOnce();
+      if (manager.isTimerDue()) {
+        advanceOnce();
+        setSubmitted([]);
+      } else if (manager.pump()) {
+        setSubmitted([]);
+      }
     }, 1000);
 
     return () => clearInterval(handle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [remaining === null, manager]);
 
+  // Only the talking phases have a press left: every decision closes itself
+  // when its actors are all done, or when its window runs out.
   const nextLabel = manager.winner
     ? null
-    : phase === 'Election'
-    ? manager.getElectionStage() === 'nominate'
-      ? 'Close the nominations → the candidates speak'      : 'Announce the mayor → night 1'
     : phase === 'Debate'
     ? 'Start the vote for mayor'
-    : phase === 'Succession'
-    ? 'Carry out the succession'
-    : phase === 'Scapegoat'
-    ? 'The scapegoat dies → night'
-    : phase === 'Judge'
-    ? 'No second vote → night'
-    : phase === 'Night'
-    ? manager.hasOpenPackTie()
-      ? isTestGame
-        ? 'The pack is split → choose the victim'
-        : 'Waiting on the pack to settle its vote'
-      : manager.isWakingTheWitchNext()
-      ? 'Wake the witch'
-      : `Resolve night ${round} → Day`
     : phase === 'Day'
     ? // The Alien's turn is his own, but a phone that went to sleep must not
       // hold the whole table: the host can force the vote.
       manager.isDayFrozen()
       ? 'Force the vote'
       : 'Start the vote'
-    : phase === 'Vote'
-    ? 'Resolve the vote → Night'
-    : phase === 'Revenge'
-    ? 'Carry out the revenge'
-    : 'Start the night';
+    : null;
 
   const submitLocalAction = (actionId: string, targetId: string, roleId?: string) => {
     const ok =
@@ -232,6 +223,8 @@ export const NarratorDashboard = () => {
         ? manager.handleRevenge(localPlayer.id, targetId)
         : actionId === 'pass'
         ? manager.passNightAction(localPlayer.id, targetId)
+        : actionId === 'decline'
+        ? manager.handleDecline(localPlayer.id, targetId as Phase)
         : actionId === 'tieBreak'
         ? manager.handleTieBreak(localPlayer.id, targetId)
         : actionId === 'ravenMark'
@@ -333,13 +326,16 @@ export const NarratorDashboard = () => {
           <Text style={styles.ready}>Everyone has voted.</Text>
         )}
 
-        {/* The clock is the host's: a party game dies when the day never ends. */}
-        {(phase === 'Day' || phase === 'Vote' || phase === 'Debate' || phase === 'Election') &&
-          !manager.winner && (
+        {/* The clock is the host's: a party game dies when the day never ends.
+            Only the talking phases get it: every decision carries its own
+            window, shown below. */}
+        {(phase === 'Day' || phase === 'Debate') && !manager.winner && (
           <View style={styles.timerRow}>
-            {remaining !== null ? (
+            {manager.getTimerRemainingMs() !== null ? (
               <>
-                <Text style={styles.timerText}>{formatRemaining(remaining)} left</Text>
+                <Text style={styles.timerText}>
+                  {formatRemaining(manager.getTimerRemainingMs() ?? 0)} left
+                </Text>
                 <BaseButton title="Stop the clock" onPress={() => manager.clearTimer()} variant="secondary" />
               </>
             ) : (
@@ -353,6 +349,14 @@ export const NarratorDashboard = () => {
               </>
             )}
           </View>
+        )}
+
+        {/* The stage's own window: it closes itself the moment every actor has
+            answered, so this only ever counts down to a decision. */}
+        {deadline !== null && !manager.winner && (
+          <Text style={[styles.timerText, deadline <= 10_000 && styles.urgentText]}>
+            {formatRemaining(deadline)} left on this stage
+          </Text>
         )}
       </View>
 
@@ -699,6 +703,9 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     marginBottom: theme.spacing.small,
+  },
+  urgentText: {
+    color: theme.colors.danger,
   },
   ready: {
     color: theme.colors.secondary,

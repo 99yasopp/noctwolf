@@ -78,9 +78,13 @@ export const PlayerScreen = () => {
   const [log, setLog] = useState<string[]>([]);
   // The countdown is anchored when TIME_SYNC arrives, never on the raw clock,
   // because two phones rarely agree on the time.
-  const [clock, setClock] = useState<{ remainingMs: number; receivedAt: number } | null>(
-    null,
-  );
+  const [clock, setClock] = useState<{
+    remainingMs: number;
+    receivedAt: number;
+    // True when this is a decision this phone still owes, not the host's talk
+    // clock: only then is a silent answer a lost turn.
+    decision: boolean;
+  } | null>(null);
   const [tickNow, setTickNow] = useState(Date.now());
   // The round as the message handler knows it: the handler outlives any single
   // render, so it reads the round from here rather than from state.
@@ -190,7 +194,11 @@ export const PlayerScreen = () => {
           const remainingMs = message.payload?.remainingMs;
           setClock(
             typeof remainingMs === 'number'
-              ? { remainingMs, receivedAt: Date.now() }
+              ? {
+                  remainingMs,
+                  receivedAt: Date.now(),
+                  decision: !!message.payload?.decision,
+                }
               : null,
           );
           break;
@@ -413,6 +421,14 @@ export const PlayerScreen = () => {
         senderId: localPlayer.id,
         timestamp: Date.now(),
       });
+    } else if (actionId === 'decline') {
+      // The phase travels in targetId: the engine checks it against its own.
+      client.sendMessage({
+        type: 'DECLINE',
+        payload: { phase: targetId },
+        senderId: localPlayer.id,
+        timestamp: Date.now(),
+      });
     } else if (actionId === 'tieBreak') {
       client.sendMessage({
         type: 'TIE_BREAK',
@@ -528,6 +544,14 @@ export const PlayerScreen = () => {
     [],
   );
 
+  // The countdown as this phone sees it: TIME_SYNC is anchored on arrival, so
+  // a wrong device clock changes nothing. A decision window turns red for its
+  // last ten seconds: that is a turn about to be lost.
+  const ticksLeft = clock
+    ? Math.max(0, clock.remainingMs - (tickNow - clock.receivedAt))
+    : 0;
+  const urgent = !!clock?.decision && ticksLeft > 0 && ticksLeft <= 10_000;
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.header}>Werewolf</Text>
@@ -609,8 +633,9 @@ export const PlayerScreen = () => {
             </Text>
           )}
           {clock && (
-            <Text style={styles.timerText}>
-              {formatRemaining(clock.remainingMs - (tickNow - clock.receivedAt))} left
+            <Text style={[styles.timerText, urgent && styles.urgentText]}>
+              {clock.decision ? 'Your answer' : 'Clock'}: {formatRemaining(ticksLeft)} left
+              {urgent ? ' — the game moves on without you.' : ''}
             </Text>
           )}
           {deaths.length > 0 && (
@@ -829,6 +854,9 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     marginTop: theme.spacing.small,
+  },
+  urgentText: {
+    color: theme.colors.danger,
   },
   ballotText: {
     color: '#999',
