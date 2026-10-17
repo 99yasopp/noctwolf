@@ -1,5 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, ScrollView, Platform } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  ScrollView,
+  Platform,
+  TouchableOpacity,
+} from 'react-native';
 import { theme } from '../theme/colors';
 import { BaseButton } from '../components/BaseButton';
 import { BackBar } from '../components/BackBar';
@@ -34,6 +42,14 @@ const WEB = Platform.OS === 'web';
 // for the life of the app run so leaving a game does not rename the player.
 const initialPlayerName = randomPlayerName();
 
+// The highest bot number on the roster, so a fresh bot never takes an id that
+// is already in use.
+const lastBotNumber = () =>
+  lobby.getPlayers().reduce((max, p) => {
+    const n = p.isBot ? Number(p.id.split('-')[1]) : 0;
+    return n > max ? n : max;
+  }, 0);
+
 export const LobbyScreen = () => {
   const { startHostGame, enterPlayerMode } = useGame();
 
@@ -58,6 +74,8 @@ export const LobbyScreen = () => {
   const [prefsLoaded, setPrefsLoaded] = useState(false);
   // Lets the setup picker show Custom only once there are roles to deal.
   const [customRoleCount, setCustomRoleCount] = useState(0);
+  // A room the host left and came back to may already have bots on it.
+  const botSeq = React.useRef(lastBotNumber());
 
   useEffect(() => {
     loadCustomRoles().then(roles => {
@@ -261,7 +279,9 @@ export const LobbyScreen = () => {
   // Lets the host exercise a full game without extra devices. Bots act and
   // vote on their own.
   const addTestPlayer = () => {
-    const botNumber = lobby.getPlayers().filter(p => p.isBot).length + 1;
+    // Bot seats are numbered once and never reused, so removing one and adding
+    // another cannot land on the same id.
+    const botNumber = ++botSeq.current;
 
     lobby.addPlayer({
       id: `bot-${botNumber}`,
@@ -275,6 +295,13 @@ export const LobbyScreen = () => {
     });
 
     setPlayers([...lobby.getPlayers()]);
+  };
+
+  // A bot that no longer fits the table goes back out without a restart.
+  const removeBot = (id: string) => {
+    lobby.removePlayer(id);
+    setPlayers([...lobby.getPlayers()]);
+    setError('');
   };
 
   const backToMenu = () => {
@@ -387,11 +414,22 @@ export const LobbyScreen = () => {
             <Text style={styles.text}>Players connected ({players.length}):</Text>
 
             {players.map(p => (
-              <Text key={p.id} style={styles.playerText}>
-                {p.name}
-                {p.id === HOST_PLAYER_ID ? ' (host)' : ''}
-                {p.isBot ? ' [bot]' : ''}
-              </Text>
+              <View key={p.id} style={styles.playerRow}>
+                <Text style={styles.playerText}>
+                  {p.name}
+                  {p.id === HOST_PLAYER_ID ? ' (host)' : ''}
+                  {p.isBot ? ' [bot]' : ''}
+                </Text>
+                {isHost && p.isBot && (
+                  <TouchableOpacity
+                    style={styles.removeButton}
+                    onPress={() => removeBot(p.id)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.removeText}>Remove</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             ))}
 
             {isHost && setup && (
@@ -515,6 +553,23 @@ const styles = StyleSheet.create({
     fontSize: 18,
     textAlign: 'center',
     marginVertical: 4,
+  },
+  playerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  removeButton: {
+    paddingHorizontal: theme.spacing.small,
+    paddingVertical: 4,
+    borderRadius: theme.borderRadius,
+    borderWidth: 1,
+    borderColor: theme.colors.danger,
+    marginLeft: theme.spacing.small,
+  },
+  removeText: {
+    color: theme.colors.danger,
+    fontSize: 13,
   },
   text: {
     color: theme.colors.text,
