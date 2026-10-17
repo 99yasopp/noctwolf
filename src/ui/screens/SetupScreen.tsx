@@ -2,6 +2,8 @@ import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity } from 'react-native';
 import { theme } from '../theme/colors';
 import { BaseButton } from '../components/BaseButton';
+import { BackBar } from '../components/BackBar';
+import { useBack } from '../back';
 import { RoleGrid } from '../components/RoleGrid';
 import { ALL_ROLES, getCustomRoles } from '../../engine/roleSet';
 import {
@@ -125,6 +127,9 @@ export const SetupScreen: React.FC<Props> = ({
   const setCount = (roleId: string, count: number) =>
     onChange({ ...setup, counts: { ...setup.counts, [roleId]: count } });
 
+  // The phone's back gesture means what the screen's back control means.
+  useBack(onBack);
+
   const setSetting = (id: string, value: SettingValue) =>
     onChange({ ...setup, settings: { ...setup.settings, [id]: value } });
 
@@ -134,7 +139,9 @@ export const SetupScreen: React.FC<Props> = ({
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <View style={styles.container}>
+      <BackBar label="Back to the waiting room" />
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>The table</Text>
       <Text style={styles.hint}>
         {seats} of {playerCount} seats filled.
@@ -190,8 +197,8 @@ export const SetupScreen: React.FC<Props> = ({
         ),
       )}
 
-      <BaseButton title="Back to the waiting room" onPress={onBack} variant="danger" />
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 };
 

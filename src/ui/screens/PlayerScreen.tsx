@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { theme } from '../theme/colors';
 import { BaseButton } from '../components/BaseButton';
+import { BackBar } from '../components/BackBar';
+import { useBack } from '../back';
 import { ActionPanel, OwnRole } from '../components/ActionPanel';
 import { useGame } from '../GameContext';
 import { lobby } from '../../network/lobby';
@@ -525,8 +527,13 @@ export const PlayerScreen = () => {
     : 0;
   const urgent = !!clock?.decision && ticksLeft > 0 && ticksLeft <= 10_000;
 
+  // The phone's back gesture leaves the table, like the button used to.
+  useBack(returnToLobby);
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <View style={styles.container}>
+      <BackBar label="Back to lobby" />
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.header}>Werewolf</Text>
 
       <TabBar
@@ -714,7 +721,6 @@ export const PlayerScreen = () => {
         </Text>
       ))}
 
-      <BaseButton title="Back to Lobby" onPress={returnToLobby} variant="danger" />
         </>
       )}
 
@@ -739,7 +745,8 @@ export const PlayerScreen = () => {
       )}
 
       {tab === 'roles' && <RevealedRoles entries={reveal ?? []} />}
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 };
 

@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, ScrollView, Platform } from 'react-native';
 import { theme } from '../theme/colors';
 import { BaseButton } from '../components/BaseButton';
+import { BackBar } from '../components/BackBar';
+import { useBack } from '../back';
 import { GAME_PORT, HOST_PLAYER_ID, LOCAL_GUEST_ID, lobby } from '../../network/lobby';
 import { splitHostAddress } from '../../network/address';
 import { setCustomRoles } from '../../engine/roleSet';
@@ -286,6 +288,16 @@ export const LobbyScreen = () => {
     setView('menu');
   };
 
+  // The back gesture means what the screen's own back control means. The table
+  // picker, the rules and the settings bring theirs with them.
+  useBack(
+    view === 'host' || view === 'join'
+      ? () => setView('menu')
+      : view === 'waiting'
+      ? backToMenu
+      : null,
+  );
+
   const renderView = () => {
     switch (view) {
       case 'menu':
@@ -321,7 +333,6 @@ export const LobbyScreen = () => {
           <View style={styles.menu}>
             <Text style={styles.text}>Hosting...</Text>
             <BaseButton title="Generate Code & Start" onPress={hostGame} />
-            <BaseButton title="Back" onPress={() => setView('menu')} variant="danger" />
           </View>
         );
 
@@ -354,7 +365,6 @@ export const LobbyScreen = () => {
                 : "The IP is the fallback: fill it only if the code search finds nothing."}
             </Text>
             <BaseButton title={busy ? 'Joining...' : 'Join'} onPress={joinGame} />
-            <BaseButton title="Back" onPress={() => setView('menu')} variant="danger" />
           </View>
         );
 
@@ -416,8 +426,6 @@ export const LobbyScreen = () => {
             )}
 
             {!isHost && <Text style={styles.hint}>Waiting for the host to start...</Text>}
-
-            <BaseButton title="Back" onPress={backToMenu} variant="danger" />
           </ScrollView>
         );
     }
@@ -454,9 +462,12 @@ export const LobbyScreen = () => {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Werewolf Manager</Text>
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      {renderView()}
+      {view !== 'menu' && <BackBar />}
+      <View style={styles.center}>
+        <Text style={styles.title}>Werewolf Manager</Text>
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+        {renderView()}
+      </View>
     </View>
   );
 };
@@ -478,6 +489,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: theme.colors.background,
+  },
+  // The main menu sits in the middle of the screen; the back bar stays on top.
+  center: {
+    flex: 1,
     justifyContent: 'center',
     padding: theme.spacing.medium,
   },

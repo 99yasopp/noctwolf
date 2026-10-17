@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { theme } from '../theme/colors';
 import { BaseButton } from '../components/BaseButton';
+import { BackBar } from '../components/BackBar';
+import { useBack } from '../back';
 import { ActionPanel, OwnRole } from '../components/ActionPanel';
 import { TabBar } from '../components/TabBar';
 import { NotesTab } from '../components/NotesTab';
@@ -262,8 +264,13 @@ export const NarratorDashboard = () => {
     if (ok) setSubmitted(prev => [...prev, actionId === 'pass' ? targetId : actionId]);
   };
 
+  // The phone's back gesture leaves the table, like the button used to.
+  useBack(returnToLobby);
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <View style={styles.container}>
+      <BackBar label="Back to lobby" />
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.header}>Narrator Dashboard</Text>
 
       <TabBar
@@ -565,7 +572,6 @@ export const NarratorDashboard = () => {
         {droppedGuests > 0 ? ' — a dropped guest keeps their seat and can rejoin' : ''}
       </Text>
 
-      <BaseButton title="Back to Lobby" onPress={returnToLobby} variant="danger" />
         </>
       )}
 
@@ -594,6 +600,7 @@ export const NarratorDashboard = () => {
 
       {tab === 'roles' && <RevealedRoles entries={manager.getReveal()} />}
     </ScrollView>
+    </View>
   );
 };
 

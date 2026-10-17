@@ -11,6 +11,8 @@ import {
 import * as SecureStore from 'expo-secure-store';
 import { theme } from '../theme/colors';
 import { BaseButton } from '../components/BaseButton';
+import { BackBar } from '../components/BackBar';
+import { useBack } from '../back';
 import { RoleDraftScreen } from './RoleDraftScreen';
 import { PlayableRole } from '../../engine/roleSet';
 import { DraftRole, translateGeneratedRole } from '../../engine/generatedRole';
@@ -39,6 +41,10 @@ export const SettingsScreen = ({ onBack }: Props) => {
       });
     }
   }, []);
+
+  // The phone's back gesture means what the screen's back control means: out
+  // of a draft first, then out of the workshop.
+  useBack(draft ? () => setDraft(null) : onBack);
 
   const saveKey = async () => {
     if (Platform.OS === 'web') {
@@ -109,7 +115,9 @@ export const SettingsScreen = ({ onBack }: Props) => {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <View style={styles.container}>
+      <BackBar />
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.header}>Advanced Settings</Text>
 
       <Text style={styles.text}>AI API key (needed to invent roles):</Text>
@@ -171,8 +179,8 @@ export const SettingsScreen = ({ onBack }: Props) => {
         ))
       )}
 
-      <BaseButton title="Back" onPress={onBack} variant="danger" />
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 };
 

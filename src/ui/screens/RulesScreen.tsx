@@ -1,7 +1,8 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { theme } from '../theme/colors';
-import { BaseButton } from '../components/BaseButton';
+import { BackBar } from '../components/BackBar';
+import { useBack } from '../back';
 import { ALL_ROLES, getCustomRoles } from '../../engine/roleSet';
 import { getRoleTips } from '../../engine/rolepedia';
 
@@ -40,8 +41,13 @@ export const RulesScreen = ({ onBack }: Props) => {
   const customRoles = getCustomRoles();
   const roles = [...ALL_ROLES, ...customRoles];
 
+  // The phone's back gesture means what the screen's back control means.
+  useBack(onBack);
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <View style={styles.container}>
+      <BackBar />
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.header}>How to Play</Text>
 
       {HOW_TO_PLAY.map((line, index) => (
@@ -95,8 +101,8 @@ export const RulesScreen = ({ onBack }: Props) => {
         </View>
       ))}
 
-      <BaseButton title="Back" onPress={onBack} variant="danger" />
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 };
 
