@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity } from 'react-native';
 import { theme } from '../theme/colors';
 import { BaseButton } from '../components/BaseButton';
 import { RoleGrid } from '../components/RoleGrid';
@@ -26,40 +26,81 @@ interface Props {
 }
 
 // One row of the table: a role, how many seats it takes, and a way to change
-// that without typing a number.
+// that without typing a number. A row with a unit is a duration instead, so it
+// carries the figure itself and the host can write it down in one go.
 const Stepper: React.FC<{
   label: string;
   note?: string;
   count: number;
+  unit?: string;
   onChange: (count: number) => void;
-}> = ({ label, note, count, onChange }) => (
-  <View style={styles.stepperRow}>
-    <View style={styles.stepperLabel}>
-      <Text style={styles.roleName}>
-        {label}
-        {count > 0 ? ` ×${count}` : ''}
-      </Text>
-      {note ? <Text style={styles.roleNote}>{note}</Text> : null}
+}> = ({ label, note, count, unit, onChange }) => {
+  // What the host is halfway through writing, if anything: the digits he typed
+  // stay on screen while the value behind them is stored as he goes, so
+  // leaving the field — or the screen — never loses the time he wrote. The
+  // bounds are the caller's, and it clamps what it is handed.
+  const [typed, setTyped] = React.useState<string | null>(null);
+
+  const step = (delta: number) => {
+    setTyped(null);
+    // A role count can never go below zero; a duration's bounds are the host's
+    // rules, and the caller holds those.
+    onChange(unit ? count + delta : Math.max(0, count + delta));
+  };
+
+  const write = (text: string) => {
+    const digits = text.replace(/[^0-9]/g, '');
+    setTyped(digits);
+    if (digits.length === 0) return;
+    const written = Number.parseInt(digits, 10);
+    if (written !== count) onChange(written);
+  };
+
+  return (
+    <View style={styles.stepperRow}>
+      <View style={styles.stepperLabel}>
+        <Text style={styles.roleName}>
+          {label}
+          {!unit && count > 0 ? ` ×${count}` : ''}
+        </Text>
+        {note ? <Text style={styles.roleNote}>{note}</Text> : null}
+      </View>
+      <View style={styles.stepperButtons}>
+        <TouchableOpacity
+          style={[styles.stepButton, count <= 0 && styles.stepButtonOff]}
+          onPress={() => step(-1)}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.stepText}>−</Text>
+        </TouchableOpacity>
+        {unit ? (
+          <View style={styles.typedCount}>
+            <TextInput
+              style={styles.countInput}
+              value={typed ?? `${count}`}
+              onChangeText={write}
+              onBlur={() => setTyped(null)}
+              onSubmitEditing={() => setTyped(null)}
+              keyboardType="number-pad"
+              maxLength={3}
+              selectTextOnFocus
+            />
+            <Text style={styles.countUnit}>{unit}</Text>
+          </View>
+        ) : (
+          <Text style={styles.count}>{count}</Text>
+        )}
+        <TouchableOpacity
+          style={styles.stepButton}
+          onPress={() => step(1)}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.stepText}>+</Text>
+        </TouchableOpacity>
+      </View>
     </View>
-    <View style={styles.stepperButtons}>
-      <TouchableOpacity
-        style={[styles.stepButton, count <= 0 && styles.stepButtonOff]}
-        onPress={() => onChange(Math.max(0, count - 1))}
-        activeOpacity={0.7}
-      >
-        <Text style={styles.stepText}>−</Text>
-      </TouchableOpacity>
-      <Text style={styles.count}>{count}</Text>
-      <TouchableOpacity
-        style={styles.stepButton}
-        onPress={() => onChange(count + 1)}
-        activeOpacity={0.7}
-      >
-        <Text style={styles.stepText}>+</Text>
-      </TouchableOpacity>
-    </View>
-  </View>
-);
+  );
+};
 
 // The host's table: which roles are dealt, how many potions the witch holds,
 // and the house rules. Everything here is saved, so the next evening opens on
@@ -127,6 +168,7 @@ export const SetupScreen: React.FC<Props> = ({
             label={def.label}
             note={def.help}
             count={countSetting(def)}
+            unit={def.count.unit}
             onChange={value =>
               setSetting(
                 def.id,
@@ -231,6 +273,29 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     minWidth: 32,
     textAlign: 'center',
+  },
+  // A duration is a figure the host writes, so it reads as a field with the
+  // unit sitting next to it: "40s", not a tap count.
+  typedCount: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 4,
+  },
+  countInput: {
+    color: theme.colors.text,
+    fontSize: 18,
+    fontWeight: 'bold',
+    minWidth: 40,
+    textAlign: 'center',
+    paddingVertical: 2,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.secondary,
+  },
+  countUnit: {
+    color: theme.colors.text,
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginLeft: 2,
   },
   problemCard: {
     backgroundColor: theme.colors.surface,

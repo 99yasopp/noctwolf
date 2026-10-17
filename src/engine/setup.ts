@@ -21,8 +21,9 @@ export interface SettingDef {
   help: string;
   // A rule with choices is cycled through them; without, it is on or off.
   choices?: { value: SettingValue; label: string }[];
-  // A rule with a count is a stepper between two bounds.
-  count?: { min: number; max: number };
+  // A rule with a count is a stepper between two bounds. A unit means the
+  // number is a plain figure the host types rather than taps out: seconds.
+  count?: { min: number; max: number; unit?: string };
   // Only shown when this role takes at least one seat.
   whenRole?: string;
   default: SettingValue;
@@ -59,7 +60,7 @@ export const SETTING_DEFS: SettingDef[] = [
     label: 'Night time',
     group: 'Table',
     help: 'How long each half of the night waits for the roles acting in it: the first half is every night role at once, the second is the witch alone. The night moves on without whoever stays silent.',
-    count: { min: 10, max: 180 },
+    count: { min: 10, max: 180, unit: 's' },
     default: 40,
   },
   {
@@ -67,7 +68,7 @@ export const SETTING_DEFS: SettingDef[] = [
     label: 'Vote time',
     group: 'Table',
     help: 'How long the day vote waits. A player who does not vote in time abstains, and the vote resolves itself.',
-    count: { min: 10, max: 180 },
+    count: { min: 10, max: 180, unit: 's' },
     default: 40,
   },
   {
@@ -75,7 +76,7 @@ export const SETTING_DEFS: SettingDef[] = [
     label: 'Election time',
     group: 'Table',
     help: 'How long the nominations and the election vote wait. The candidates speak for as long as they like.',
-    count: { min: 10, max: 180 },
+    count: { min: 10, max: 180, unit: 's' },
     default: 40,
   },
   {
@@ -83,7 +84,7 @@ export const SETTING_DEFS: SettingDef[] = [
     label: 'Last calls',
     group: 'Table',
     help: "How long the dying wait: the hunter's shot, the mayor's successor, the scapegoat's bans and the judge's extra vote.",
-    count: { min: 10, max: 180 },
+    count: { min: 10, max: 180, unit: 's' },
     default: 40,
   },
   {
@@ -236,7 +237,11 @@ export const settingLabel = (def: SettingDef, value: SettingValue | undefined): 
   const choice = def.choices?.find(entry => entry.value === current);
   if (choice) return choice.label;
 
-  return current === true ? 'On' : current === false ? 'Off' : String(current);
+  return current === true
+    ? 'On'
+    : current === false
+    ? 'Off'
+    : `${current}${def.count?.unit ?? ''}`;
 };
 
 // The value the next tap should store: the following choice, or the other

@@ -3541,6 +3541,20 @@ console.log('\n38. the rules live in one list');
       settingLabel(firstNight, undefined).includes('Auto'),
   );
 
+  // A duration is written down, not tapped out: every count in seconds carries
+  // its unit, and no other count borrows one.
+  const timed = SETTING_DEFS.filter(def => def.count?.unit === 's');
+  check(
+    'the four stage windows read as seconds',
+    timed.map(def => def.id).join() ===
+      'nightSeconds,voteSeconds,electionSeconds,lastCallSeconds',
+  );
+  check(
+    'and a written duration says so',
+    timed.every(def => settingLabel(def, 40) === '40s') &&
+      settingLabel(SETTING_DEFS.find(def => def.id === 'witch.healCharges')!, 1) === '1',
+  );
+
   // The engine reads through the list: a rule the table never set behaves as
   // its default says, and the deal carries the rules to every phone.
   const barePlayers = makePlayers(3);
