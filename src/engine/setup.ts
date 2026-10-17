@@ -32,6 +32,17 @@ export type Settings = Record<string, SettingValue>;
 
 export const SETTING_DEFS: SettingDef[] = [
   {
+    id: 'testGame',
+    label: 'Test game',
+    group: 'Table',
+    help: 'A test game prints every role, every secret and the pack\'s aim on the host\'s screen. Turned off, the host is just another player: he sees what any phone sees.',
+    choices: [
+      { value: false, label: 'Normal game' },
+      { value: true, label: 'Test game' },
+    ],
+    default: false,
+  },
+  {
     id: 'peacefulFirstNight',
     label: 'First night',
     group: 'Table',
@@ -104,17 +115,6 @@ export const SETTING_DEFS: SettingDef[] = [
     ],
     whenRole: 'raven',
     default: 'night',
-  },
-  {
-    id: 'wolfTieBreak',
-    label: 'Tie between wolves',
-    group: 'Wolves',
-    help: 'When the pack splits its vote, the infectious father names the victim if he is alive. This decides who names it when he is not.',
-    choices: [
-      { value: 'random', label: 'Random victim' },
-      { value: 'host', label: 'The host picks' },
-    ],
-    default: 'random',
   },
   {
     id: 'wolfChat',

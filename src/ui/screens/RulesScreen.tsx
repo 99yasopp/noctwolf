@@ -10,7 +10,7 @@ interface Props {
 }
 
 const HOW_TO_PLAY = [
-  'The host plays too: the phone that hosts is the narrator and one of the players.',
+  'The host plays too: hosting is only how the table is wired, his phone is one of the players.',
   'Everyone else joins with the host address shown in the lobby.',
   'The game opens with the mayoral election, then the first night falls.',
   'At a three-player table the first night is peaceful: the wolves only look around, so the first day vote decides who leaves.',

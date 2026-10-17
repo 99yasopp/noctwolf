@@ -25,6 +25,8 @@ import {
   NightStagePayload,
   PhaseUpdatePayload,
   PlayerRef,
+  RevealEntry,
+  RevealPayload,
   RoleAssignPayload,
   SecretInfoPayload,
   TimeSyncPayload,
@@ -128,8 +130,6 @@ export class GameManager {
   private chatTimes = new Map<string, number[]>();
   // What the seer found, held until the morning so the village can be told.
   private seerSighting: string | null = null;
-  // Set by the host when the wolves spotted the little girl tonight.
-  private girlCaught = false;
   // The Thief's two spare cards, live only while the first night is.
   private thiefCards = new Map<string, PlayableRole[]>();
   // Who each Wild Child is watching.
@@ -242,7 +242,6 @@ export class GameManager {
     this.foxLost.clear();
     this.ravenTarget = null;
     this.seerSighting = null;
-    this.girlCaught = false;
     this.thiefCards.clear();
     this.roleModels.clear();
     this.noVote.clear();
@@ -437,6 +436,7 @@ export class GameManager {
     // A death closes the dead player's windows and ends the bond if he was one
     // of the two.
     if (deaths.length > 0) this.sendChatGroups();
+    deaths.forEach(dead => this.sendRevealTo(dead.id));
 
     const mayorId = this.state.presidentManager.getPresidentId();
 
@@ -663,7 +663,8 @@ export class GameManager {
     return this.round <= (this.silencedUntil.get(playerId) ?? 0);
   }
 
-  // The Little Girl, if she spied tonight: the host's catch is hers to take.
+  // The Little Girl, if she spied tonight: she saw the wolves awake, and
+  // nothing else comes of it.
   private whoSpied(): string | null {
     let found: string | null = null;
 
@@ -698,30 +699,6 @@ export class GameManager {
   // The day waits for the Alien: no vote, and the host cannot move it on.
   isDayFrozen(): boolean {
     return this.alienGuess !== null;
-  }
-
-  // True when a Little Girl sits at this table. The host asked for her card,
-  // so this only tells his own screen when the button is worth showing.
-  hasLittleGirl(): boolean {
-    return this.state.players.some(
-      p => p.isAlive && this.assignments.get(p.id)?.id === 'little-girl',
-    );
-  }
-
-  // The host decides: the wolves spotted the little girl tonight, so she dies
-  // in the victim's place. A night she did not spy on changes nothing.
-  catchLittleGirl(): boolean {
-    if (this.winner) return false;
-    if (this.state.currentPhase !== 'Night' || this.girlCaught) return false;
-
-    this.girlCaught = true;
-    this.actionLog.push(`Night ${this.round}: the little girl was caught.`);
-    this.emit({ type: 'changed' });
-    return true;
-  }
-
-  isGirlCaught(): boolean {
-    return this.girlCaught;
   }
 
   isCharmed(playerId: string): boolean {
@@ -863,8 +840,6 @@ export class GameManager {
     // The father is about to infect the pack's victim instead of killing
     // them, so there is no death to save.
     if (this.pendingInfection()) return null;
-    // The wolves have the little girl instead: the victim walks away unhurt.
-    if (this.girlCaught && this.whoSpied()) return null;
     return victim;
   }
 
@@ -1646,6 +1621,10 @@ export class GameManager {
     const role = this.assignments.get(playerId);
     if (role) this.sendRoleAssign(playerId, role, true);
 
+    // A dead player who reconnects is handed the table's cards again.
+    const player = this.state.players.find(p => p.id === playerId);
+    if (player && !player.isAlive) this.sendRevealTo(playerId);
+
     // The house rules, in case the deal's copy was sent before this screen was
     // listening: without them a guest cannot read the table's rules back, and a
     // raven in a before-the-vote game never sees his day panel.
@@ -1805,18 +1784,39 @@ export class GameManager {
     };
   }
 
+  // Every card on the table, for a player who is out of the game.
+  getReveal(): RevealEntry[] {
+    return this.buildReveal();
+  }
+
+  private buildReveal(): RevealEntry[] {
+    return this.state.players.map(p => ({
+      id: p.id,
+      name: p.name,
+      role: p.role,
+      team: p.team,
+      isAlive: p.isAlive,
+    }));
+  }
+
   private buildGameOverPayload(): GameOverPayload {
     return {
       winner: this.winner ?? 'Village',
       winnerLabel: this.winnerLabel ?? undefined,
-      reveal: this.state.players.map(p => ({
-        id: p.id,
-        name: p.name,
-        role: p.role,
-        team: p.team,
-        isAlive: p.isAlive,
-      })),
+      reveal: this.buildReveal(),
     };
+  }
+
+  // A player who is out of the game is handed every card on the table: he can
+  // no longer act on it, and there is nothing left to keep from him.
+  private sendRevealTo(playerId: string) {
+    const payload: RevealPayload = { reveal: this.buildReveal() };
+
+    this.transport.sendToPlayer(playerId, {
+      type: 'REVEAL',
+      payload,
+      timestamp: Date.now(),
+    });
   }
 
   private toRefs(players: Player[]): PlayerRef[] {
@@ -1884,8 +1884,8 @@ export class GameManager {
 
   // Called by the host's press on the night. True when a tie has to be named
   // before the night can move on: the infectious father is woken with the tied
-  // names in front of him, or the host is asked to choose when the setting
-  // says so. With neither, one of the tied names is taken at random.
+  // names in front of him, and a test game lets the host answer for him.
+  // With neither, one of the tied names is taken at random.
   private openPackTie(): boolean {
     if (this.packTieOpen || this.packTiePick) return false;
 
@@ -1893,7 +1893,7 @@ export class GameManager {
     if (leaders.length === 0) return false;
 
     const breaker = this.packTieBreaker();
-    if (!breaker && this.setting('wolfTieBreak') !== 'host') {
+    if (!breaker && this.setting('testGame') !== true) {
       // One of the tied names, at random, and the narrator log hears about it
       // like every other pick.
       this.setPackTiePick(leaders[Math.floor(Math.random() * leaders.length)].id);
@@ -1927,9 +1927,10 @@ export class GameManager {
     return this.setPackTiePick(targetId);
   }
 
-  // The host's own tap: the whole rule when the table asked for it, and a way
-  // out when a father will not answer his phone.
+  // The host's own tap: only a test game lets him answer for a pack that
+  // cannot agree, because in a normal game the victim is the wolves' business.
   handlePackTie(targetId: string): boolean {
+    if (this.setting('testGame') !== true) return false;
     if (this.state.currentPhase !== 'Night' || this.nightStage !== 1) return false;
     if (!this.packTieOpen || this.packTiePick) return false;
     if (!this.packTie.includes(targetId)) return false;
@@ -2302,15 +2303,7 @@ export class GameManager {
     } else if (biteTarget) {
       const target = this.state.players.find(p => p.id === biteTarget);
       if (target?.isAlive) {
-        const spy = this.girlCaught ? this.whoSpied() : null;
-        const girl = spy ? this.state.players.find(p => p.id === spy) : undefined;
-        if (girl?.isAlive) {
-          // The wolves took her instead of the victim: nobody else is hurt,
-          // and the victim never learns how close it was.
-          girl.isAlive = false;
-          deaths.push(girl);
-          this.actionLog.push(`Night ${this.round}: the wolves caught ${girl.name} spying.`);
-        } else if (infection) {
+        if (infection) {
           // Spent whether or not it lands: the father used his one charge.
           this.spendCharge(infection.playerId, infection.actionId);
           this.resendRoleTo(infection.playerId);
@@ -2333,8 +2326,8 @@ export class GameManager {
       });
     }
 
-    // The little girl's night: if the host caught her the bite above already
-    // took her, otherwise she saw exactly who was awake.
+    // The little girl's night: she saw exactly who was awake, and that is all
+    // her spying buys her.
     const spy = this.whoSpied();
     const spyPlayer = spy ? this.state.players.find(p => p.id === spy) : undefined;
     if (spy && spyPlayer?.isAlive) {
@@ -2534,9 +2527,6 @@ export class GameManager {
     if (deaths.length === 0) {
       this.actionLog.push(`Night ${this.round}: nobody died.`);
     }
-
-    // The catch was for one night only.
-    this.girlCaught = false;
 
     return deaths;
   }

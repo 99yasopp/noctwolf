@@ -2587,7 +2587,8 @@ console.log('\n33. the village learns what it can');
     ),
   );
 
-  // Caught, she dies in the victim's place and the victim walks away.
+  // She spies, and nothing comes of it but what she saw: the pack's own pick
+  // decides who dies, and no one can execute her for opening her eyes.
   const caughtTable = makePlayers(5);
   const caughtTransport = new RecordingTransport();
   const caughtGame = new GameManager(caughtTable, caughtTransport);
@@ -2603,20 +2604,27 @@ console.log('\n33. the village learns what it can');
       caughtGame.getRoleOf(p.id)?.id === 'villager',
   )!;
 
-  check('the table has a girl to catch', caughtGame.hasLittleGirl());
   check('she spies', caughtGame.handleNightAction(caughtGirl.id, 'spy', caughtGirl.id));
   check('the wolf picks a victim', caughtGame.handleNightAction(caughtWolf.id, 'kill', caughtVictim.id));
-  check('the host marks the catch', caughtGame.catchLittleGirl() && caughtGame.isGirlCaught());
-  check('and cannot mark it twice', !caughtGame.catchLittleGirl());
 
   caughtGame.advance();
   settleSuccession(caughtGame);
-  check('the girl dies instead of the victim', !caughtGirl.isAlive && caughtVictim.isAlive);
-  check(
-    'the morning names her',
-    caughtGame.getPublicLog().some(l => l.includes(caughtGirl.name) && l.includes('did not survive')),
-  );
-  check('and the catch is over with the night', !caughtGame.isGirlCaught());
+  check('spying costs her nothing', caughtGirl.isAlive && !caughtVictim.isAlive);
+
+  // The pack may still bite her like anyone else.
+  const takeTable = makePlayers(5);
+  const takeGame = new GameManager(takeTable, new RecordingTransport());
+  takeGame.start([LittleGirlRole, WerewolfRole, VillagerRole, VillagerRole, SeerRole]);
+  passElection(takeGame);
+
+  const takeGirl = findRole(takeGame, takeTable, 'little-girl')!;
+  const takeWolf = findRole(takeGame, takeTable, 'werewolf')!;
+  takeGame.handleNightAction(takeGirl.id, 'spy', takeGirl.id);
+  check('and the pack may bite her', takeGame.handleNightAction(takeWolf.id, 'kill', takeGirl.id));
+
+  takeGame.advance();
+  settleSuccession(takeGame);
+  check('the bite takes her like any player', !takeGirl.isAlive);
 
   // The bear growls for a wolf next door, whatever the seating.
   const bearTable = makePlayers(4);
@@ -3280,6 +3288,7 @@ console.log('\n37. the pack splits its vote');
   check('the wolf cannot answer for the father', !tieGame.handleTieBreak(tieWolf.id, tieVillagers[0].id));
   check('a name outside the tie is refused', !tieGame.handleTieBreak(tieFather.id, tieWitch.id));
   check('the host cannot name a stranger either', !tieGame.handlePackTie(tieWitch.id));
+  check('and cannot take the tie for himself', !tieGame.handlePackTie(tieVillagers[0].id));
   check('the father names the victim', tieGame.handleTieBreak(tieFather.id, tieVillagers[0].id));
   check('and the tie closes', !tieGame.hasOpenPackTie());
   check('the father cannot answer twice', !tieGame.handleTieBreak(tieFather.id, tieVillagers[1].id));
@@ -3321,13 +3330,13 @@ console.log('\n37. the pack splits its vote');
     randomVillagers[0].isAlive !== randomVillagers[1].isAlive,
   );
 
-  // The host asked for the tie to be his to call.
+  // A test game hands the tie to the host: the only game where he may decide.
   const hostTable = makePlayers(6);
   const hostTransport = new RecordingTransport();
   const hostGame = new GameManager(hostTable, hostTransport);
   hostGame.start(
     [WerewolfRole, WerewolfRole, SeerRole, VillagerRole, VillagerRole, VillagerRole],
-    { peacefulFirstNight: false, guardNoRepeat: true, wolfTieBreak: 'host' },
+    { peacefulFirstNight: false, testGame: true },
   );
   passElection(hostGame);
 
@@ -3606,7 +3615,7 @@ console.log('\n41. the count the night and the vote agree on');
   const blockGame = new GameManager(blockTable, blockTransport);
   blockGame.start(
     [RedWolfRole, WerewolfRole, SeerRole, VillagerRole, VillagerRole, VillagerRole],
-    { ...defaultSettings(), wolfTieBreak: 'host' },
+    defaultSettings(),
   );
   passElection(blockGame);
 
@@ -4011,6 +4020,61 @@ console.log('\n44. the address a guest types');
     'and an IPv6 address is left whole',
     JSON.stringify(splitHostAddress('::1', 12345)) ===
       JSON.stringify({ host: '::1', port: 12345 }),
+  );
+}
+
+console.log('\n45. the dead see every card');
+{
+  const revealTable = makePlayers(5);
+  const revealTransport = new RecordingTransport();
+  const revealGame = new GameManager(revealTable, revealTransport);
+  revealGame.start([WerewolfRole, VillagerRole, VillagerRole, VillagerRole, SeerRole]);
+  passElection(revealGame);
+
+  const revealWolf = findRole(revealGame, revealTable, 'werewolf')!;
+  const revealSeer = findRole(revealGame, revealTable, 'seer')!;
+  const revealVictim = revealTable.find(
+    p => p.id !== revealWolf.id && revealGame.getRoleOf(p.id)?.id === 'villager',
+  )!;
+
+  const revealTo = (playerId: string) =>
+    (revealTransport.directs
+      .filter(direct => direct.playerId === playerId && direct.message.type === 'REVEAL')
+      .pop()?.message.payload?.reveal ?? []) as { id: string; role: string }[];
+  const revealCount = (playerId: string) =>
+    revealTransport.directs.filter(
+      direct => direct.playerId === playerId && direct.message.type === 'REVEAL',
+    ).length;
+
+  revealGame.handleNightAction(revealWolf.id, 'kill', revealVictim.id);
+  revealGame.advance();
+  settleSuccession(revealGame);
+
+  const deadReveal = revealTo(revealVictim.id);
+  check('the dead are handed every card', deadReveal.length === revealTable.length);
+  check(
+    'and the cards are the right ones',
+    deadReveal.every(entry => entry.role === revealGame.getRoleOf(entry.id)?.name),
+  );
+  check('the living are handed nothing', revealCount(revealSeer.id) === 0);
+
+  // A phone that reconnects after the fact is handed the table again.
+  const onceDead = revealCount(revealVictim.id);
+  revealGame.sendStateTo(revealVictim.id);
+  check('a reconnecting corpse sees the table again', revealCount(revealVictim.id) > onceDead);
+  const onceLiving = revealCount(revealSeer.id);
+  revealGame.sendStateTo(revealSeer.id);
+  check('and a living reconnect gets none', revealCount(revealSeer.id) === onceLiving);
+
+  // The vote kills too, and that death is handed the same list.
+  revealGame.advance(); // Day -> Vote
+  settleSuccession(revealGame);
+  revealGame.getAlivePlayers().forEach(player => revealGame.handleVote(player.id, revealSeer.id));
+  revealGame.advance();
+  settleSuccession(revealGame);
+  check(
+    'a player the vote takes is handed the cards too',
+    revealTo(revealSeer.id).length === revealTable.length,
   );
 }
 

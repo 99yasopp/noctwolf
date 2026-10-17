@@ -6,6 +6,7 @@ import { ActionPanel, OwnRole } from '../components/ActionPanel';
 import { TabBar } from '../components/TabBar';
 import { NotesTab } from '../components/NotesTab';
 import { ChatTab } from '../components/ChatTab';
+import { RevealedRoles } from '../components/RevealedRoles';
 import { formatRemaining, winnerText } from '../format';
 import { useGame } from '../GameContext';
 import { lobby } from '../../network/lobby';
@@ -15,13 +16,10 @@ export const NarratorDashboard = () => {
   const [, forceRender] = useState(0);
   const [secrets, setSecrets] = useState<string[]>([]);
   const [submitted, setSubmitted] = useState<string[]>([]);
-  // The narrator view prints every role and every secret on this screen, so a
-  // host who is playing the game has to ask for it on purpose.
-  const [narratorView, setNarratorView] = useState(false);
-  const [confirmingNarrator, setConfirmingNarrator] = useState(false);
   // Which page of the dashboard is open: the running game, the host's own
-  // notes about it, or the private windows he holds as a player.
-  const [tab, setTab] = useState<'play' | 'notes' | 'chat'>('play');
+  // notes about it, the private windows he holds as a player, or — once he is
+  // out of the game — every card on the table.
+  const [tab, setTab] = useState<'play' | 'notes' | 'chat' | 'roles'>('play');
 
   useEffect(() => {
     if (!manager || !localPlayer) return;
@@ -41,10 +39,6 @@ export const NarratorDashboard = () => {
   // would otherwise open with the notes from the game before.
   useEffect(() => {
     setSecrets([]);
-    // A host who opened the narrator view once does not stay in it for the
-    // next game.
-    setNarratorView(false);
-    setConfirmingNarrator(false);
   }, [gameId]);
 
   // Roster changes (a guest joining, dropping or being removed) are not game
@@ -80,10 +74,11 @@ export const NarratorDashboard = () => {
   const hostGroups = manager.getChatGroups(localPlayer.id);
   const hostOpen = manager.getOpenChatGroups(localPlayer.id);
 
-  // A table with test players in the seats is a test game: there is nothing to
-  // keep from the host, because he is the only real player in it.
-  const isTestGame = players.some(player => player.isBot);
-  const seeEverything = isTestGame || narratorView;
+  // Only a test game prints every role on the host's screen: a real table
+  // bought his place the same way anyone else did, so he sees what any phone
+  // sees.
+  const isTestGame = manager.getSettings()['testGame'] === true;
+  const seeEverything = isTestGame;
   // The pack's aim is the host's business when he is in the pack, and nobody
   // else's.
   const hostIsWolf = role?.team === 'Wolf';
@@ -127,6 +122,9 @@ export const NarratorDashboard = () => {
     : null;
 
   const aliveCount = players.filter(p => p.isAlive).length;
+  // The live roster, not the seat held since the lobby: a host who dies sees
+  // the Roles tab like any other dead player.
+  const selfAlive = players.find(player => player.id === localPlayer.id)?.isAlive ?? true;
   const guests = players.filter(p => p.id !== localPlayer.id && !p.isBot);
   const droppedGuests = lobby.disconnectedPlayers().length;
   const pendingActors = manager.getPendingNightActors();
@@ -190,7 +188,9 @@ export const NarratorDashboard = () => {
     ? 'No second vote → night'
     : phase === 'Night'
     ? manager.hasOpenPackTie()
-      ? 'The pack is split → choose the victim'
+      ? isTestGame
+        ? 'The pack is split → choose the victim'
+        : 'Waiting on the pack to settle its vote'
       : manager.isWakingTheWitchNext()
       ? 'Wake the witch'
       : `Resolve night ${round} → Day`
@@ -250,9 +250,10 @@ export const NarratorDashboard = () => {
           { id: 'play', label: 'Play' },
           { id: 'notes', label: 'Notes' },
           ...(hostGroups.length > 0 ? [{ id: 'chat', label: 'Chat' }] : []),
+          ...(selfAlive ? [] : [{ id: 'roles', label: 'Roles' }]),
         ]}
         active={tab}
-        onSelect={id => setTab(id as 'play' | 'notes' | 'chat')}
+        onSelect={id => setTab(id as 'play' | 'notes' | 'chat' | 'roles')}
       />
 
       {tab === 'play' && (
@@ -260,17 +261,8 @@ export const NarratorDashboard = () => {
       {isTestGame && (
         <View style={styles.testBanner}>
           <Text style={styles.bannerText}>
-            TEST GAME — roles visible. The seats filled by test players are not
-            real players, so nothing here has to be hidden from the table.
-          </Text>
-        </View>
-      )}
-
-      {!isTestGame && narratorView && (
-        <View style={styles.godBanner}>
-          <Text style={styles.bannerText}>
-            NARRATOR VIEW — every role and every secret is printed on this
-            screen. Only open it while the phone is out of the table's sight.
+            TEST GAME — every role and every secret is printed on this screen.
+            Turn Test game off in the house rules to play it straight.
           </Text>
         </View>
       )}
@@ -413,19 +405,11 @@ export const NarratorDashboard = () => {
         </View>
       )}
 
-      {phase === 'Night' && manager.hasLittleGirl() && !manager.isGirlCaught() && (
-        <BaseButton
-          title="The wolves caught the little girl"
-          variant="secondary"
-          onPress={() => manager.catchLittleGirl()}
-        />
-      )}
-
-      {manager.hasOpenPackTie() && (
+      {phase === 'Night' && isTestGame && manager.hasOpenPackTie() && (
         <>
           <Text style={styles.hint}>
             {manager.getPackTieBreakerId()
-              ? 'The pack split its vote: the infectious father names the victim, and you can answer for him.'
+              ? 'The pack split its vote: the infectious father names the victim, and a test game lets you answer for him.'
               : 'The pack split its vote. Choose the victim.'}
           </Text>
           {manager.getPackTieTargets().map(target => (
@@ -538,14 +522,11 @@ export const NarratorDashboard = () => {
       })}
 
       <Text style={styles.subHeader}>Log</Text>
-      {isTestGame && (
-        <Text style={styles.hint}>Everything the narrator saw, test game or not.</Text>
-      )}
-      {!isTestGame && !narratorView && (
-        <Text style={styles.hint}>
-          What the table has been told so far. The narrator view has the rest.
-        </Text>
-      )}
+      <Text style={styles.hint}>
+        {isTestGame
+          ? 'Everything the narrator saw, test game or not.'
+          : 'What the table has been told so far.'}
+      </Text>
       {(seeEverything ? manager.actionLog : manager.getPublicLog()).map((entry, index) => (
         <Text key={index} style={styles.logText}>
           {entry}
@@ -556,42 +537,6 @@ export const NarratorDashboard = () => {
         Guests connected: {guests.length - droppedGuests} / {guests.length}
         {droppedGuests > 0 ? ' — a dropped guest keeps their seat and can rejoin' : ''}
       </Text>
-
-      {!isTestGame &&
-        (narratorView ? (
-          <BaseButton
-            title="Hide the narrator view"
-            variant="secondary"
-            onPress={() => setNarratorView(false)}
-          />
-        ) : confirmingNarrator ? (
-          <>
-            <Text style={styles.hint}>
-              The narrator view prints every player's role, the pack's aim and
-              the secret half of the log on this screen. Only open it while the
-              phone is out of the table's sight.
-            </Text>
-            <BaseButton
-              title="Yes — show every role"
-              variant="danger"
-              onPress={() => {
-                setNarratorView(true);
-                setConfirmingNarrator(false);
-              }}
-            />
-            <BaseButton
-              title="Cancel"
-              variant="secondary"
-              onPress={() => setConfirmingNarrator(false)}
-            />
-          </>
-        ) : (
-          <BaseButton
-            title="Narrator view"
-            variant="secondary"
-            onPress={() => setConfirmingNarrator(true)}
-          />
-        ))}
 
       <BaseButton title="Back to Lobby" onPress={returnToLobby} variant="danger" />
         </>
@@ -617,6 +562,8 @@ export const NarratorDashboard = () => {
           }}
         />
       )}
+
+      {tab === 'roles' && <RevealedRoles entries={manager.getReveal()} />}
     </ScrollView>
   );
 };
@@ -787,12 +734,6 @@ const styles = StyleSheet.create({
   },
   testBanner: {
     backgroundColor: '#1F3A2A',
-    padding: theme.spacing.medium,
-    borderRadius: theme.borderRadius,
-    marginBottom: theme.spacing.medium,
-  },
-  godBanner: {
-    backgroundColor: '#3A1E1E',
     padding: theme.spacing.medium,
     borderRadius: theme.borderRadius,
     marginBottom: theme.spacing.medium,

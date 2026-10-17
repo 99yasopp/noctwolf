@@ -14,6 +14,8 @@ import {
   PhaseUpdatePayload,
   PlayerRef,
   PublicLogPayload,
+  RevealEntry,
+  RevealPayload,
   RoleAssignPayload,
   RulesUpdatePayload,
   VoteResultPayload,
@@ -22,16 +24,19 @@ import { SETTING_DEFS, Settings, settingLabel } from '../../engine/setup';
 import { TabBar } from '../components/TabBar';
 import { NotesTab } from '../components/NotesTab';
 import { ChatTab } from '../components/ChatTab';
+import { RevealedRoles } from '../components/RevealedRoles';
 import { formatRemaining, winnerText } from '../format';
 
 export const PlayerScreen = () => {
   const { localPlayer, returnToLobby, gameId } = useGame();
 
   // Which of the phone's pages is open. Play is the game itself.
-  const [tab, setTab] = useState<'play' | 'journal' | 'notes' | 'chat'>('play');
+  const [tab, setTab] = useState<'play' | 'journal' | 'notes' | 'chat' | 'roles'>('play');
   // The notes page belongs to one game: a fresh deal opens a new one. On a
   // guest phone the game id never moves, so the deal counts instead.
   const [deal, setDeal] = useState(0);
+  // Every card on the table, handed over the moment this player dies.
+  const [reveal, setReveal] = useState<RevealEntry[] | null>(null);
   // The journal: every line the table heard, in order, with the round it
   // belonged to.
   const [publicLines, setPublicLines] = useState<PublicLogPayload[]>([]);
@@ -176,6 +181,7 @@ export const PlayerScreen = () => {
           setPublicLines([]);
           setChatGroups([]);
           setChatLines([]);
+          setReveal(null);
           setClock(null);
           break;
         }
@@ -279,6 +285,13 @@ export const PlayerScreen = () => {
           const payload = message.payload as MayorElectedPayload;
           setMayorId(payload.playerId);
           setLog(prev => [`${payload.playerName} is the mayor.`, ...prev]);
+          break;
+        }
+
+        case 'REVEAL': {
+          // Out of the game, and handed every card on the table.
+          const payload = message.payload as RevealPayload;
+          setReveal(payload?.reveal ?? []);
           break;
         }
 
@@ -500,6 +513,7 @@ export const PlayerScreen = () => {
     { id: 'journal', label: 'Journal' },
     { id: 'notes', label: 'Notes' },
     ...(chatGroups.length > 0 ? [{ id: 'chat', label: 'Chat' }] : []),
+    ...(reveal ? [{ id: 'roles', label: 'Roles' }] : []),
   ];
 
   // The journal reads by round: a heading whenever the round or the phase turns.
@@ -521,7 +535,7 @@ export const PlayerScreen = () => {
       <TabBar
         tabs={tabs}
         active={tab}
-        onSelect={id => setTab(id as 'play' | 'journal' | 'notes' | 'chat')}
+        onSelect={id => setTab(id as 'play' | 'journal' | 'notes' | 'chat' | 'roles')}
       />
 
       {tab === 'play' && (
@@ -772,6 +786,8 @@ export const PlayerScreen = () => {
           onSend={sendChat}
         />
       )}
+
+      {tab === 'roles' && <RevealedRoles entries={reveal ?? []} />}
     </ScrollView>
   );
 };

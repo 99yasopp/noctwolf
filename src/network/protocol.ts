@@ -34,7 +34,8 @@ export type MessageType =
   | 'PUBLIC_LOG'
   | 'CHAT_SEND'
   | 'CHAT_MESSAGE'
-  | 'CHAT_GROUPS';
+  | 'CHAT_GROUPS'
+  | 'REVEAL';
 
 export interface NetworkMessage {
   type: MessageType;
@@ -197,5 +198,19 @@ export interface GameOverPayload {
   // The engine's own words when 'Solitary' is not the lovers. The reveal below
   // names everyone anyway.
   winnerLabel?: string;
-  reveal: { id: string; name: string; role: string; team: Team; isAlive: boolean }[];
+  reveal: RevealEntry[];
+}
+
+// One seat and its card: what the table is told at the end, and what a dead
+// player is handed the moment he dies.
+export interface RevealEntry {
+  id: string;
+  name: string;
+  role: string;
+  team: Team;
+  isAlive: boolean;
+}
+
+export interface RevealPayload {
+  reveal: RevealEntry[];
 }
