@@ -1,20 +1,24 @@
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { RoleSetup, migrateSetup } from '../engine/setup';
+import { Language } from '../i18n';
 
 // Small conveniences that should survive a restart: the address of the last
-// host, and the setup this host likes. Kept in one record so a single read
-// covers the whole screen.
+// host, the setup this host likes, and the language this device reads.
+// Kept in one record so a single read covers the whole screen.
 
 export interface Preferences {
   lastHost: string;
   // The composition the host built by hand, so the next evening opens on it.
   setup: RoleSetup | null;
+  // English unless this device chose otherwise: a phone joins a table it did
+  // not set up, and English is the one language most tables share.
+  language: Language;
 }
 
 const STORAGE_KEY = 'preferences';
 
-const defaults: Preferences = { lastHost: '', setup: null };
+const defaults: Preferences = { lastHost: '', setup: null, language: 'en' };
 
 // expo-secure-store has no web implementation, so the web build works from
 // memory instead of throwing.

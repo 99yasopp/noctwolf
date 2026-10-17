@@ -13,6 +13,8 @@ import { theme } from '../theme/colors';
 import { BaseButton } from '../components/BaseButton';
 import { BackBar } from '../components/BackBar';
 import { useBack } from '../back';
+import { useI18n } from '../i18n';
+import { LANGUAGES } from '../../i18n';
 import { RoleDraftScreen } from './RoleDraftScreen';
 import { PlayableRole } from '../../engine/roleSet';
 import { DraftRole, translateGeneratedRole } from '../../engine/generatedRole';
@@ -24,6 +26,7 @@ interface Props {
 }
 
 export const SettingsScreen = ({ onBack }: Props) => {
+  const { language, setLanguage } = useI18n();
   const [apiKey, setApiKey] = useState('');
   const [prompt, setPrompt] = useState('');
   const [draft, setDraft] = useState<DraftRole | null>(null);
@@ -119,6 +122,20 @@ export const SettingsScreen = ({ onBack }: Props) => {
       <BackBar />
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.header}>Advanced Settings</Text>
+
+      <Text style={styles.subHeader}>Language</Text>
+      <Text style={styles.hint}>
+        Every device reads the game in its own language, so each player picks
+        his own here.
+      </Text>
+      {LANGUAGES.map(entry => (
+        <BaseButton
+          key={entry.id}
+          title={entry.label}
+          variant={language === entry.id ? 'primary' : 'secondary'}
+          onPress={() => setLanguage(entry.id)}
+        />
+      ))}
 
       <Text style={styles.text}>AI API key (needed to invent roles):</Text>
       <TextInput

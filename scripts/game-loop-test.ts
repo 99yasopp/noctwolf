@@ -60,6 +60,11 @@ import { Player } from '../src/engine/types';
 import { splitHostAddress } from '../src/network/address';
 import { packIsKnown } from '../src/engine/gameManager';
 import { digestSections, flatSection } from '../src/ui/info';
+import { Params, translate, translator } from '../src/i18n';
+
+// What a phone reads for a private line: the key, filled in English.
+const said = (payload: { key?: string; params?: Params } | undefined): string =>
+  payload?.key ? translate('en', payload.key, payload.params) : '';
 import {
   NOTES_HISTORY_LIMIT,
   NOTES_PLAYER_LIMIT,
@@ -1741,8 +1746,8 @@ console.log('\n27. the table only hears what it should');
 
   check(
     'the narrator sees the save and the poison',
-    game.actionLog.some(line => line.includes(`the guard saved ${bitten.name}`)) &&
-      game.actionLog.some(line => line.includes(`${poisoned.name} was poisoned`)),
+    game.getActionLog().some(line => line.includes(`the guard saved ${bitten.name}`)) &&
+      game.getActionLog().some(line => line.includes(`${poisoned.name} was poisoned`)),
   );
   check(
     'the public log never learns the cause',
@@ -1760,7 +1765,7 @@ console.log('\n27. the table only hears what it should');
   const morning = game.getPublicLog().join('\n');
   check(
     'the morning names the dead without the cause',
-    morning.includes(`Day 1: ${poisoned.name} did not survive the night.`) &&
+    morning.includes(`${poisoned.name} did not survive the night.`) &&
       !morning.includes('poisoned'),
     morning,
   );
@@ -1802,7 +1807,7 @@ console.log('\n27. the table only hears what it should');
   small.advance();
   check(
     'the peaceful night itself stays a narrator line',
-    small.actionLog.some(line => line.includes('Night 1 was peaceful')) &&
+    small.getActionLog().some(line => line.includes('Night 1 was peaceful')) &&
       !small.getPublicLog().some(line => line.includes('peaceful')),
     small.getPublicLog().join('\n'),
   );
@@ -1845,7 +1850,7 @@ console.log('\n27b. cupid ties his knot in the dark');
 
   check(
     'the narrator knows the pair',
-    game.actionLog.some(line =>
+    game.getActionLog().some(line =>
       line.includes(`Cupid tied ${cupid.name} and ${seer.name}`),
     ),
   );
@@ -1856,14 +1861,14 @@ console.log('\n27b. cupid ties his knot in the dark');
 
   check(
     'the heartbreak is the narrator\u2019s detail',
-    game.actionLog.some(line => line.includes(`${seer.name} died of a broken heart`)) &&
+    game.getActionLog().some(line => line.includes(`${seer.name} died of a broken heart`)) &&
       !game.getPublicLog().some(line => line.includes('broken heart')),
   );
   const morning = game.getPublicLog().join('\n');
   check(
     'the morning counts both lovers',
-    morning.includes(`Day 1: ${cupid.name}, ${seer.name} did not survive the night.`) ||
-      morning.includes(`Day 1: ${seer.name}, ${cupid.name} did not survive the night.`),
+    morning.includes(`${cupid.name}, ${seer.name} did not survive the night.`) ||
+      morning.includes(`${seer.name}, ${cupid.name} did not survive the night.`),
     morning,
   );
 }
@@ -2175,7 +2180,7 @@ console.log('\n30. the red wolf silences and the alien guesses');
       d =>
         d.message.type === 'SECRET_INFO' &&
         d.playerId === seer.id &&
-        String(d.message.payload.message).includes('silenced'),
+        said(d.message.payload).includes('silenced'),
     ),
   );
   check('the silenced seer is out of powers', game.isSilenced(seer.id));
@@ -2317,7 +2322,12 @@ console.log('\n30. the red wolf silences and the alien guesses');
   settleSuccession(lastGame);
   check('the alien wins the table', lastGame.winner === 'Solitary' && lastAlien.isAlive);
   const over = lastTransport.broadcasts.filter(m => m.type === 'GAME_OVER').pop();
-  check('the game over names him', over?.payload.winnerLabel === 'The Alien wins.', JSON.stringify(over?.payload.winnerLabel));
+  check(
+    'the game over names him',
+    translate('en', over?.payload.winnerKey ?? '', over?.payload.winnerParams) ===
+      'The Alien wins.',
+    JSON.stringify(over?.payload.winnerKey),
+  );
 }
 
 console.log('\n31. the pack learns new teeth');
@@ -2345,7 +2355,7 @@ console.log('\n31. the pack learns new teeth');
   check('both victims are dead', !meal.isAlive && !packmate.isAlive);
   check(
     'the narrator sees the second bite',
-    game.actionLog.some(line => line.includes('the Big Bad Wolf')),
+    game.getActionLog().some(line => line.includes('the Big Bad Wolf')),
   );
 
   game.advance();
@@ -2409,7 +2419,7 @@ console.log('\n31. the pack learns new teeth');
   check('the packmate is dead', !kin.isAlive);
   check(
     'the narrator sees who did it',
-    wolfGame.actionLog.some(line => line.includes('the White Werewolf')),
+    wolfGame.getActionLog().some(line => line.includes('the White Werewolf')),
   );
 
   // The Infectious Father turns the pack's victim into a wolf instead.
@@ -2471,7 +2481,7 @@ console.log('\n31. the pack learns new teeth');
       d =>
         d.playerId === victims[0].id &&
         d.message.type === 'SECRET_INFO' &&
-        String(d.message.payload.message).includes('infected'),
+        said(d.message.payload).includes('infected'),
     ),
   );
   check(
@@ -2633,11 +2643,10 @@ console.log('\n33. the village learns what it can');
   const seatOf = (id: string) => table.findIndex(p => p.id === id);
 
   const lastFoxWord = () =>
-    String(
+    said(
       [...transport.directs]
         .reverse()
-        .find(d => d.playerId === fox.id && d.message.type === 'SECRET_INFO')?.message.payload
-        ?.message ?? '',
+        .find(d => d.playerId === fox.id && d.message.type === 'SECRET_INFO')?.message.payload,
     );
 
   check('the fox sniffs at the wolf', game.handleNightAction(fox.id, 'sniff', wolf.id));
@@ -2690,7 +2699,7 @@ console.log('\n33. the village learns what it can');
       d =>
         d.playerId === girl.id &&
         d.message.type === 'SECRET_INFO' &&
-        String(d.message.payload?.message).includes(spyWolf.name),
+        said(d.message.payload).includes(spyWolf.name),
     ),
   );
 
@@ -2843,7 +2852,7 @@ console.log('\n34. the first night decides who people are');
       d =>
         d.playerId === dog.id &&
         d.message.type === 'SECRET_INFO' &&
-        String(d.message.payload?.message).includes('wolves now'),
+        said(d.message.payload).includes('wolves now'),
     ),
   );
 
@@ -2874,7 +2883,7 @@ console.log('\n34. the first night decides who people are');
     stayTransport.directs.some(
       d =>
         d.playerId === stayer.id &&
-        String(d.message.payload?.message ?? '').includes('stay with the village'),
+        said(d.message.payload).includes('stay with the village'),
     ),
   );
 
@@ -2907,7 +2916,7 @@ console.log('\n34. the first night decides who people are');
     childTransport.directs.some(
       d =>
         d.playerId === child.id &&
-        String(d.message.payload?.message ?? '').includes(model.name),
+        said(d.message.payload).includes(model.name),
     ),
   );
   check('he is still a villager', childGame.getRoleOf(child.id)?.team === 'Village');
@@ -2956,7 +2965,7 @@ console.log('\n34. the first night decides who people are');
   );
   check(
     'the log names the card',
-    thiefGame.actionLog.some(line => line.includes(`the ${thiefCards[0].name}`)),
+    thiefGame.getActionLog().some(line => line.includes(`the ${thiefCards[0].name}`)),
   );
 
   // Press through the rest of the first night, the day and its vote: a card
@@ -3316,7 +3325,7 @@ console.log('\n36. the piper collects the village');
   check(
     'the piper is told his flock',
     pipeTransport.directs.some(
-      d => d.playerId === piper.id && String(d.message.payload?.message ?? '').includes('flock'),
+      d => d.playerId === piper.id && said(d.message.payload).includes('flock'),
     ),
   );
   check(
@@ -3324,7 +3333,7 @@ console.log('\n36. the piper collects the village');
     pipeTransport.directs.some(
       d =>
         d.playerId === pipeVillagers[0].id &&
-        String(d.message.payload?.message ?? '').includes('charmed'),
+        said(d.message.payload).includes('charmed'),
     ),
   );
 
@@ -3344,7 +3353,10 @@ console.log('\n36. the piper collects the village');
   check(
     'the table is told',
     pipeTransport.broadcasts.some(
-      m => m.type === 'GAME_OVER' && m.payload?.winnerLabel === 'The Pied Piper wins.',
+      m =>
+        m.type === 'GAME_OVER' &&
+        translate('en', m.payload?.winnerKey ?? '', m.payload?.winnerParams) ===
+          'The Pied Piper wins.',
     ),
   );
 }
@@ -3514,7 +3526,7 @@ console.log('\n37. the pack splits its vote');
     lateTransport.directs.some(
       direct =>
         direct.playerId === lateSeer.id &&
-        `${direct.message.payload?.message ?? ''}`.includes('did not answer'),
+        said(direct.message.payload).includes('did not answer'),
     ),
   );
 }
@@ -3638,7 +3650,7 @@ console.log('\n39. the village powers keep their own rules');
     seerTransport.directs.some(
       d =>
         d.playerId === nightSeer.id &&
-        String(d.message.payload?.message ?? '').includes('the Werewolf'),
+        said(d.message.payload).includes('the Werewolf'),
     ),
   );
 
@@ -3724,7 +3736,7 @@ console.log('\n40. the journal and the notes');
     'and every line carries its round and phase',
     journalLines.every(
       message =>
-        typeof message.payload?.message === 'string' &&
+        typeof message.payload?.key === 'string' &&
         message.payload?.round === 1 &&
         !!message.payload?.phase,
     ),
@@ -4347,12 +4359,12 @@ console.log('\n39b. a silent table loses its vote');
     transport.directs.some(
       direct =>
         direct.playerId === silent.id &&
-        `${direct.message.payload?.message ?? ''}`.includes('did not answer in time'),
+        said(direct.message.payload).includes('did not answer in time'),
     ),
   );
   check(
     'the narrator log keeps the skip',
-    game.actionLog.some(line => line.includes('did not answer in time')),
+    game.getActionLog().some(line => line.includes('did not answer in time')),
   );
   check(
     'the skip keeps the night\u2019s wording to itself',
@@ -4448,7 +4460,7 @@ console.log('\n39d. the last calls have their own window');
     late.transport.directs.some(
       direct =>
         direct.playerId === late.hunter.id &&
-        `${direct.message.payload?.message ?? ''}`.includes('did not answer in time'),
+        said(direct.message.payload).includes('did not answer in time'),
     ),
   );
 }
@@ -4510,7 +4522,7 @@ console.log('\n39f. the dead carry their cards');
     .find(line => line.includes(`${shown.seer.name} did not survive`));
   check(
     'the morning names the dead and the card',
-    shownLine === `Day 1: ${shown.seer.name} did not survive the night. He was the Seer.`,
+    shownLine === `${shown.seer.name} did not survive the night. He was the Seer.`,
     shownLine ?? 'nothing',
   );
   const refs = shown.game.getPlayerRefs();
@@ -4529,7 +4541,7 @@ console.log('\n39f. the dead carry their cards');
     .find(line => line.includes(`${hidden.seer.name} did not survive`));
   check(
     'a closed table buries the card',
-    hiddenLine === `Day 1: ${hidden.seer.name} did not survive the night.`,
+    hiddenLine === `${hidden.seer.name} did not survive the night.`,
     hiddenLine ?? 'nothing',
   );
   check(
@@ -4593,13 +4605,17 @@ console.log('\n39g. the vote writes itself down');
   );
   game.advance(); // the host closes the vote
 
-  // The day's own record: the election lines have no day on them.
+  // The day's own record: the vote reads itself back line by line, and the
+  // entry's phase is what tells it from the election.
   const dayBallots = game
-    .getPublicLog()
+    .getPublicLogEntries()
     .filter(
-      line =>
-        /^Day \d+: /.test(line) && (line.includes('voted for') || line.includes("didn't vote")),
-    );
+      entry =>
+        entry.kind === 'vote' &&
+        entry.phase === 'Vote' &&
+        ['log.vote', 'log.noVote'].includes(entry.key),
+    )
+    .map(entry => translate('en', entry.key, entry.params));
   check(
     'every living ballot is on the record',
     voters.every(voter =>
@@ -4626,19 +4642,33 @@ console.log('\n39g. the vote writes itself down');
 console.log('\n39h. the info window reads by kind');
 {
   const lines: PublicLogPayload[] = [
-    { message: '4 players were dealt their roles.', phase: 'Election', round: 1 },
-    { message: 'P1 voted for P2.', phase: 'Election', round: 1 },
-    { message: "P3 didn't vote.", phase: 'Election', round: 1 },
+    { key: 'log.rolesDealt', params: { count: 4 }, kind: 'table', phase: 'Election', round: 1 },
     {
-      message: 'Day 1: P4 did not survive the night. He was the Seer.',
+      key: 'log.vote',
+      params: { voter: 'P1', target: 'P2' },
+      kind: 'vote',
+      phase: 'Election',
+      round: 1,
+    },
+    { key: 'log.noVote', params: { voter: 'P3' }, kind: 'vote', phase: 'Election', round: 1 },
+    {
+      key: 'log.deathNightCard',
+      params: { name: 'P4', role: { role: 'seer', name: 'Seer' } },
+      kind: 'death',
       phase: 'Day',
       round: 2,
     },
-    { message: 'Day 1: The seer saw P2 is a Werewolf.', phase: 'Day', round: 2 },
-    { message: 'Day 1: P2 was voted out. He was the Werewolf.', phase: 'Day', round: 2 },
+    { key: 'log.seerSawWolf', kind: 'seer', phase: 'Day', round: 2 },
+    {
+      key: 'log.votedOutCard',
+      params: { name: 'P2', role: { role: 'werewolf', name: 'Werewolf' } },
+      kind: 'vote',
+      phase: 'Day',
+      round: 2,
+    },
   ];
 
-  const sections = digestSections(lines);
+  const sections = digestSections(lines, translator('en'));
   const kindsOf = (title: string) =>
     sections
       .find(section => section.title === title)!
@@ -4726,6 +4756,57 @@ console.log('\n39i. the pack waits for the mayor');
     'and opens once the mayor is in',
     packGame.state.currentPhase === 'Night' &&
       packGame.getChatGroups(plainWolf.id).includes('wolves'),
+  );
+}
+
+console.log('\n40. every line the engine writes has words');
+{
+  // The engine writes keys, so a key the catalogue does not hold would reach a
+  // phone as 'log.something'. Play a game through and look for one.
+  const table = makePlayers(5);
+  const transport = new RecordingTransport();
+  const game = new GameManager(table, transport);
+  game.start([WerewolfRole, SeerRole, VillagerRole, VillagerRole, VillagerRole]);
+  passElection(game);
+
+  const wolf = findRole(game, table, 'werewolf')!;
+  const seer = findRole(game, table, 'seer')!;
+  const victim = table.find(p => p.id !== wolf.id && p.id !== seer.id)!;
+
+  game.handleNightAction(wolf.id, 'kill', victim.id);
+  game.handleNightAction(seer.id, 'peek', wolf.id);
+  runClock(game);
+
+  // Whatever window opens next — the vote, a revenge, a succession — the
+  // engine keeps writing until the table has a winner.
+  for (let step = 0; step < 20 && !game.winner; step += 1) {
+    game.advance();
+    runClock(game);
+  }
+
+  const written = [...game.getPublicLog(), ...game.getActionLog()];
+  const leftovers = written.filter(line => /^(log|journal|secret)\./.test(line));
+  check('no line falls through to its key', leftovers.length === 0, leftovers.join(' / '));
+  check('and the game did write lines', written.length > 5, String(written.length));
+
+  const secretLeftovers = transport.directs
+    .filter(direct => direct.message.type === 'SECRET_INFO')
+    .map(direct => said(direct.message.payload))
+    .filter(line => line.startsWith('secret.'));
+  check(
+    'no private line falls through either',
+    secretLeftovers.length === 0,
+    secretLeftovers.join(' / '),
+  );
+
+  // A death reads one way with the card and another without it: both halves of
+  // every pair have to be there.
+  const deathKeys = ['log.deathNight', 'log.dayDeath', 'log.hunterShot', 'log.votedOut'];
+  check(
+    'every death line has its card version',
+    deathKeys.every(
+      key => translate('en', key) !== key && translate('en', `${key}Card`) !== `${key}Card`,
+    ),
   );
 }
 

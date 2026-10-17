@@ -1,5 +1,6 @@
 import { ChatGroup, Phase, Player, Team } from '../engine/types';
 import { SettingValue } from '../engine/setup';
+import { Params } from '../i18n';
 
 // Define the message types for network communication
 export type MessageType =
@@ -51,7 +52,10 @@ export interface PlayerRef {
   name: string;
   isAlive: boolean;
   // The card of a dead player, when the table plays with cards revealed on
-  // death. A living player never carries one.
+  // death. A living player never carries one. The id is what a phone reads its
+  // own word for the card from; the name is what a card the host invented
+  // keeps.
+  roleId?: string | null;
   role?: string | null;
 }
 
@@ -67,8 +71,16 @@ export interface RulesUpdatePayload {
 
 // One line of the table's journal: what everyone heard, and when. A phone that
 // joins late is sent the lines it missed, one by one.
+// Which kind of news a line is, so the journal can group it without reading
+// the words: the same line is filed the same way in every language.
+export type LogKind = 'table' | 'vote' | 'death' | 'seer';
+
+// A line in the table's journal: the engine writes the key, the phone writes
+// the sentence in its own language.
 export interface PublicLogPayload {
-  message: string;
+  key: string;
+  params?: Params;
+  kind: LogKind;
   phase: Phase;
   round: number;
 }
@@ -196,23 +208,28 @@ export interface MayorElectedPayload {
 }
 
 export interface SecretInfoPayload {
-  message: string;
+  key: string;
+  params?: Params;
+  // What the seer looked at: the panel colours the answer with it.
   isWolf?: boolean;
 }
 
 export interface GameOverPayload {
   winner: Team;
-  // The engine's own words when 'Solitary' is not the lovers. The reveal below
-  // names everyone anyway.
-  winnerLabel?: string;
+  // The engine's own line when 'Solitary' is not the lovers; the reveal below
+  // names everyone anyway. The phone reads the key in its own language.
+  winnerKey?: string;
+  winnerParams?: Params;
   reveal: RevealEntry[];
 }
 
 // One seat and its card: what the table is told at the end, and what a dead
-// player is handed the moment he dies.
+// player is handed the moment he dies. The card travels as an id plus the name
+// it was dealt with, so a role the host invented still shows.
 export interface RevealEntry {
   id: string;
   name: string;
+  roleId?: string;
   role: string;
   team: Team;
   isAlive: boolean;

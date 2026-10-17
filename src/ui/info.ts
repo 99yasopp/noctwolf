@@ -1,5 +1,6 @@
 import { theme } from './theme/colors';
-import { PublicLogPayload } from '../network/protocol';
+import { LogKind, PublicLogPayload } from '../network/protocol';
+import { Key, Translate } from '../i18n';
 
 export interface InfoGroup {
   label: string;
@@ -12,44 +13,28 @@ export interface InfoSection {
   groups: InfoGroup[];
 }
 
-// What a round's news can be, in the order a reader looks for it. The first
-// match wins, and whatever a table says that is none of the others lands in
-// its own words.
-const KINDS: { label: string; color: string; match: (line: string) => boolean }[] = [
-  {
-    label: 'The vote',
-    color: theme.colors.secondary,
-    match: line =>
-      / voted for | didn't vote\.|nobody voted|was voted out|was elected mayor|vote was tied|could not agree on a mayor|bars .+ from voting|judge bangs|^The candidates are /.test(
-        line,
-      ),
-  },
-  {
-    label: 'The dead',
-    color: theme.colors.danger,
-    match: line =>
-      / did not survive the night| has died| nobody died in the night| took .+ down| is dead|guessed wrong/.test(
-        line,
-      ),
-  },
-  {
-    label: 'The seer',
-    color: theme.colors.primary,
-    match: line => line.startsWith('The seer saw '),
-  },
-  { label: 'The table', color: theme.colors.dim, match: () => true },
+// What a round's news can be, in the order a reader looks for it. A line
+// carries its own kind, so the grouping is the same in every language.
+const KINDS: { id: LogKind; key: Key; color: string }[] = [
+  { id: 'vote', key: 'info.vote', color: theme.colors.secondary },
+  { id: 'death', key: 'info.dead', color: theme.colors.danger },
+  { id: 'seer', key: 'info.seer', color: theme.colors.primary },
+  { id: 'table', key: 'info.table', color: theme.colors.dim },
 ];
 
 // The story grouped the way the table lived it: one block per round and phase,
 // newest first, and inside a block one group per kind of news, so the ballots,
 // the dead and the seer's sighting never run together. The round and the phase
-// are in the heading, so the "Day 2:" the line carries goes.
-export const digestSections = (lines: PublicLogPayload[]): InfoSection[] => {
+// are in the heading, so a line does not carry them.
+export const digestSections = (lines: PublicLogPayload[], t: Translate): InfoSection[] => {
   const sections: InfoSection[] = [];
 
   lines.forEach(line => {
-    const title = `Round ${line.round} · ${line.phase}`;
-    const text = line.message.replace(/^Day \d+: /, '');
+    const title = t('info.round', {
+      round: line.round,
+      phase: t(`phase.${line.phase}` as Key),
+    });
+    const text = t(line.key as Key, line.params);
     let section = sections[sections.length - 1];
 
     if (!section || section.title !== title) {
@@ -57,10 +42,11 @@ export const digestSections = (lines: PublicLogPayload[]): InfoSection[] => {
       sections.push(section);
     }
 
-    const kind = KINDS.find(entry => entry.match(text))!;
+    const kind = KINDS.find(entry => entry.id === line.kind) ?? KINDS[KINDS.length - 1];
+    const label = t(kind.key);
     const group = section.groups[section.groups.length - 1];
-    if (group && group.label === kind.label) group.lines.push(text);
-    else section.groups.push({ label: kind.label, color: kind.color, lines: [text] });
+    if (group && group.label === label) group.lines.push(text);
+    else section.groups.push({ label, color: kind.color, lines: [text] });
   });
 
   return sections.reverse();

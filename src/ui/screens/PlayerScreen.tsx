@@ -21,6 +21,7 @@ import {
   RevealPayload,
   RoleAssignPayload,
   RulesUpdatePayload,
+  SecretInfoPayload,
   VoteResultPayload,
 } from '../../network/protocol';
 import { SETTING_DEFS, Settings, settingLabel } from '../../engine/setup';
@@ -31,9 +32,12 @@ import { RevealedRoles } from '../components/RevealedRoles';
 import { InfoTab } from '../components/InfoTab';
 import { digestSections, flatSection } from '../info';
 import { formatRemaining, winnerText } from '../format';
+import { useI18n } from '../i18n';
+import { SaidLine, roleName } from '../../i18n';
 
 export const PlayerScreen = () => {
   const { localPlayer, returnToLobby, gameId } = useGame();
+  const { t } = useI18n();
 
   // Which of the phone's pages is open. Play is the game itself.
   const [tab, setTab] = useState<'play' | 'info' | 'notes' | 'chat' | 'roles'>('play');
@@ -53,7 +57,7 @@ export const PlayerScreen = () => {
   const [roster, setRoster] = useState<PlayerRef[]>([]);
   const [deaths, setDeaths] = useState<PlayerRef[]>([]);
   const [role, setRole] = useState<RoleAssignPayload | null>(null);
-  const [secrets, setSecrets] = useState<string[]>([]);
+  const [secrets, setSecrets] = useState<SaidLine[]>([]);
   const [voteResult, setVoteResult] = useState<VoteResultPayload | null>(null);
   const [outcome, setOutcome] = useState<GameOverPayload | null>(null);
   const [submitted, setSubmitted] = useState<string[]>([]);
@@ -199,9 +203,12 @@ export const PlayerScreen = () => {
           break;
         }
 
-        case 'SECRET_INFO':
-          setSecrets(prev => [...prev, message.payload?.message].filter(Boolean));
+        case 'SECRET_INFO': {
+          const line = message.payload as SecretInfoPayload;
+          if (!line?.key) break;
+          setSecrets(prev => [...prev, { key: line.key as SaidLine['key'], params: line.params }]);
           break;
+        }
 
         case 'RULES_UPDATE':
           setRules((message.payload as RulesUpdatePayload).settings ?? null);
@@ -209,7 +216,7 @@ export const PlayerScreen = () => {
 
         case 'PUBLIC_LOG': {
           const line = message.payload as PublicLogPayload;
-          if (!line?.message) break;
+          if (!line?.key) break;
           // A phone that reconnected is handed the journal again, so a line it
           // already read must not double.
           setPublicLines(previous =>
@@ -217,7 +224,8 @@ export const PlayerScreen = () => {
               seen =>
                 seen.round === line.round &&
                 seen.phase === line.phase &&
-                seen.message === line.message,
+                seen.key === line.key &&
+                JSON.stringify(seen.params) === JSON.stringify(line.params),
             )
               ? previous
               : [...previous, line],
@@ -508,7 +516,7 @@ export const PlayerScreen = () => {
 
   // The Info tab reads by round and phase; the table's own rules close it.
   const infoSections = [
-    ...digestSections(publicLines),
+    ...digestSections(publicLines, t),
     ...(rules
       ? [
           flatSection(
@@ -590,10 +598,15 @@ export const PlayerScreen = () => {
 
       {outcome && (
         <View style={styles.winnerCard}>
-          <Text style={styles.winnerText}>{winnerText(outcome.winner, outcome.winnerLabel)}</Text>
+          <Text style={styles.winnerText}>
+            {winnerText(outcome.winner, t, {
+              key: outcome.winnerKey,
+              params: outcome.winnerParams,
+            })}
+          </Text>
           {outcome.reveal.map(entry => (
             <Text key={entry.id} style={styles.revealText}>
-              {entry.name}: {entry.role}
+              {entry.name}: {roleName(entry.roleId ?? '', entry.role)}
               {entry.isAlive ? '' : ' (dead)'}
             </Text>
           ))}
@@ -702,7 +715,7 @@ export const PlayerScreen = () => {
           <Text style={styles.secretHeading}>Your private information</Text>
           {secrets.map((secret, index) => (
             <Text key={index} style={styles.secretText}>
-              {secret}
+              {t(secret.key, secret.params)}
             </Text>
           ))}
         </View>
@@ -715,7 +728,9 @@ export const PlayerScreen = () => {
           {entry.id === localPlayer?.id ? ' (you)' : ''}
           {entry.isAlive ? '' : ' — dead'}
           {/* A table that reveals its dead hands every device the card. */}
-          {entry.isAlive || !entry.role ? '' : ` (${entry.role})`}
+          {entry.isAlive || !entry.role
+            ? ''
+            : ` (${roleName(entry.roleId ?? '', entry.role)})`}
           {/* A wolf reads his pack as wolves, and nobody else does. */}
           {entry.isAlive && packIds.has(entry.id) ? ' (Wolf)' : ''}
         </Text>

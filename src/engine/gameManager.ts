@@ -21,10 +21,12 @@ import {
 } from './actions';
 import {
   GameOverPayload,
+  LogKind,
   NightActionPayload,
   NightStagePayload,
   PhaseUpdatePayload,
   PlayerRef,
+  PublicLogPayload,
   RevealEntry,
   RevealPayload,
   RoleAssignPayload,
@@ -33,6 +35,7 @@ import {
   VoteBallot,
   VoteResultPayload,
 } from '../network/protocol';
+import { Key, Params, roleRef, translate } from '../i18n';
 
 // The night runs in two stages. The wolves and the other night actors work
 // first; the witch wakes second, with the victim in front of her, because
@@ -73,8 +76,15 @@ const ACTION_REGISTRY = {
 
 export type GameEvent =
   | { type: 'changed' }
-  | { type: 'secret'; playerId: string; message: string }
+  | { type: 'secret'; playerId: string; key: Key; params?: Params }
   | { type: 'gameOver'; winner: Team };
+
+// One line in the narrator's own journal. The engine writes the key, the
+// screen reads it in the language of the device in hand.
+export interface JournalLine {
+  key: Key;
+  params?: Params;
+}
 
 const shuffle = <T>(items: T[]): T[] => {
   const copy = [...items];
@@ -92,10 +102,10 @@ export class GameManager {
   public lastVote: VoteResultPayload | null = null;
   // What happened, in the order it happened. The narrator reads this, secrets
   // and all.
-  public actionLog: string[] = [];
+  public actionLog: JournalLine[] = [];
   // The part of it the whole table was told: deaths in the morning, votes,
   // elections. A host who is playing the game sees only this.
-  private publicLog: { message: string; phase: Phase; round: number }[] = [];
+  private publicLog: PublicLogPayload[] = [];
 
   private transport: GameTransport;
   private roles: Role[] = [];
@@ -142,7 +152,8 @@ export class GameManager {
   private chatLog: ChatLine[] = [];
   private chatTimes = new Map<string, number[]>();
   // What the seer found, held until the morning so the village can be told.
-  private seerSighting: string | null = null;
+  // A key rather than a sentence: every phone reads it in its own language.
+  private seerSighting: { key: Key; params?: Params } | null = null;
   // The Thief's two spare cards, live only while the first night is.
   private thiefCards = new Map<string, PlayableRole[]>();
   // Who each Wild Child is watching.
@@ -162,9 +173,10 @@ export class GameManager {
   private judgeDeaths: Player[] = [];
   // Everyone the Pied Piper has charmed so far.
   private charmed = new Set<string>();
-  // Who won when 'Solitary' is not the lovers: the announcement text, also
-  // carried to the screens.
-  private winnerLabel: string | null = null;
+  // Who won when 'Solitary' is not the lovers: the line to say, also carried
+  // to the screens in the reader's own language.
+  private winnerKey: Key | null = null;
+  private winnerParams: Params | undefined;
   // Whoever owes a revenge kill, and the deaths that triggered it.
   private pendingRevenge: string | null = null;
   private revengeChoice: { hunterId: string; targetId: string } | null = null;
@@ -216,11 +228,17 @@ export class GameManager {
 
   // A line the whole table hears, so it belongs in the public log too. The
   // phase can be given for lines written just before a phase change, which
-  // would otherwise be filed under the phase that is already over.
-  private announce(message: string, phase: Phase = this.state.currentPhase) {
-    const line = { message, phase, round: this.round };
+  // would otherwise be filed under the phase that is already over. The kind is
+  // how the journal groups the line, whatever language it is read in.
+  private announce(
+    key: Key,
+    params?: Params,
+    kind: LogKind = 'table',
+    phase: Phase = this.state.currentPhase,
+  ) {
+    const line: PublicLogPayload = { key, params, kind, phase, round: this.round };
     this.publicLog.push(line);
-    this.actionLog.push(message);
+    this.actionLog.push({ key, params });
 
     // Every phone keeps the same journal the host sees, line for line.
     this.transport.broadcast({
@@ -228,6 +246,40 @@ export class GameManager {
       payload: line,
       timestamp: Date.now(),
     });
+  }
+
+  // One of those lines with a card on it: the table only hears the card when
+  // it plays with its dead revealed.
+  private announceDeath(dead: Player, baseKey: Key, kind: LogKind = 'death', extra: Params = {}) {
+    const role = this.assignments.get(dead.id);
+    const revealed = this.setting('revealOnDeath') === true && role;
+
+    this.announce(
+      (revealed ? `${baseKey}Card` : baseKey) as Key,
+      { name: dead.name, ...extra, ...(revealed ? { role: roleRef(role) } : {}) },
+      kind,
+    );
+  }
+
+  // A line only the narrator's own journal keeps.
+  private journal(key: Key, params?: Params) {
+    this.actionLog.push({ key, params });
+  }
+
+  // A private line for one phone: the key travels, and the phone writes the
+  // sentence in its own language.
+  private tell(
+    playerId: string,
+    key: Key,
+    params?: Params,
+    extra: Partial<SecretInfoPayload> = {},
+  ) {
+    this.transport.sendToPlayer(playerId, {
+      type: 'SECRET_INFO',
+      payload: { key, params, ...extra },
+      timestamp: Date.now(),
+    });
+    this.emit({ type: 'secret', playerId, key, params });
   }
 
   private emit(event: GameEvent) {
@@ -258,7 +310,8 @@ export class GameManager {
     this.silencedUntil.clear();
     this.blockedTargets.clear();
     this.alienGuess = null;
-    this.winnerLabel = null;
+    this.winnerKey = null;
+    this.winnerParams = undefined;
     this.foxLost.clear();
     this.ravenTarget = null;
     this.seerSighting = null;
@@ -344,9 +397,9 @@ export class GameManager {
     // These two are filed under the election the table is about to enter:
     // tagged with the phase that is still on the clock they would disappear
     // from the blind host's log for the whole first night.
-    this.announce(`${players.length} players were dealt their roles.`, 'Election');
+    this.announce('log.rolesDealt', { count: players.length }, 'table', 'Election');
     // The mayor is chosen before the first night, and a wolf may win the seat.
-    this.announce('The table elects a mayor before the first night.', 'Election');
+    this.announce('log.electionOpens', undefined, 'table', 'Election');
     // Every phone learns which private windows it holds: the pack, or none.
     this.sendChatGroups();
     this.setPhase('Election');
@@ -435,7 +488,7 @@ export class GameManager {
                   this.wantsRevenge(dead) && this.state.players.some(other => other.isAlive),
               )?.id ?? null;
           }
-          this.announce(`Day ${this.round}: ${goat.name}, the scapegoat, is dead.`);
+          this.announce('log.scapegoatDead', { name: goat.name }, 'death');
         }
 
         // The day can end on this death: the votes that came before it still
@@ -514,28 +567,28 @@ export class GameManager {
 
     // The table is told who died, not how: the cause is the narrator's detail.
     if (deaths.length === 0) {
-      this.announce(`Day ${this.round}: nobody died in the night.`);
+      this.announce('log.quietNight', undefined, 'death');
     } else if (this.setting('revealOnDeath') === true) {
       // One line per body, since each one carries its own card.
-      deaths.forEach(dead =>
-        this.announce(`Day ${this.round}: ${this.deathLine(dead, 'did not survive the night')}`),
-      );
+      deaths.forEach(dead => this.announceDeath(dead, 'log.deathNight'));
     } else {
       this.announce(
-        `Day ${this.round}: ${deaths.map(p => p.name).join(', ')} did not survive the night.`,
+        'log.deathNightMany',
+        { names: deaths.map(p => p.name).join(', ') },
+        'death',
       );
     }
 
     // A table that lets the seer speak hears what he found, never who he saw.
     if (this.seerSighting) {
-      this.announce(`Day ${this.round}: ${this.seerSighting}`);
+      this.announce(this.seerSighting.key, this.seerSighting.params, 'seer');
       this.seerSighting = null;
     }
 
     // The Angel wanted the first night's attack to be theirs, and takes the
     // game with it instead of a villager's life.
     if (this.round === 1 && deaths.some(dead => this.assignments.get(dead.id)?.angel)) {
-      this.winnerLabel = 'The Angel wins.';
+      this.winnerKey = 'log.angelWins';
       this.finish('Solitary');
       return;
     }
@@ -547,7 +600,7 @@ export class GameManager {
       .forEach(tamer => {
         const neighbours = this.neighbourhood(tamer.id).filter(p => p.id !== tamer.id);
         if (neighbours.some(p => this.assignments.get(p.id)?.team === 'Wolf')) {
-          this.announce(`Day ${this.round}: the bear tamer's bear growls.`);
+          this.announce('log.bearGrowls');
         }
       });
 
@@ -1043,7 +1096,7 @@ export class GameManager {
         const mayor = this.state.players.find(p => p.id === dyingMayorId);
         if (mayor) mayor.voteWeight = 1;
 
-        this.announce('The mayor is dead, and nobody is left to take the seat.');
+        this.announce('log.noSuccessor', undefined, 'death');
         this.state.presidentManager.clearPresident(this.state.players);
       }
     }
@@ -1060,7 +1113,7 @@ export class GameManager {
       successor.id,
       this.state.players,
     );
-    this.announce(`${successor.name} takes the mayor's seat.`);
+    this.announce('log.successor', { name: successor.name });
 
     this.transport.broadcast({
       type: 'MAYOR_ELECTED',
@@ -1136,32 +1189,28 @@ export class GameManager {
     const correct = truth?.id === roleId;
     // Whatever happens next, the open question is answered.
     this.alienGuess = null;
-    this.actionLog.push(
-      `Day ${this.round}: the Alien named ${target.name} as ${roleId} and was ${
-        correct ? 'right' : 'wrong'
-      }.`,
-    );
+    this.journal(correct ? 'journal.alienRight' : 'journal.alienWrong', {
+      round: this.round,
+      name: target.name,
+      role: roleRef(truth),
+    });
 
     const deaths: Player[] = [];
     if (correct) {
       this.killInDay(target, deaths);
       // The table hears the guess and the card it named: a right guess is
       // public, and so is the role it struck down.
-      this.announce(
-        `Day ${this.round}: the Alien named ${target.name} as the ${truth?.name} — and was right. ${target.name}, the ${truth?.name}, is dead.`,
-      );
-      this.sendAlienResult(
-        alienId,
-        `${target.name} was ${truth?.name} and is dead. Point again, or let the day go on.`,
-      );
+      this.announce('log.alienRight', { target: target.name, role: roleRef(truth) });
+      this.tell(alienId, 'secret.alienRight', {
+        name: target.name,
+        role: roleRef(truth),
+      });
     } else {
       this.killInDay(alien, deaths);
       // A wrong guess kills the Alien and nothing else: the table is told that
       // much, and never what he pointed at.
-      this.announce(
-        `Day ${this.round}: the Alien guessed wrong, and his guess has killed him. ${alien.name} was the Alien.`,
-      );
-      this.sendAlienResult(alienId, `${target.name} was not that role. The guess has killed you.`);
+      this.announce('log.alienWrong', { alien: alien.name });
+      this.tell(alienId, 'secret.alienWrong', { name: target.name });
     }
 
     // A lover never outlives the other, day or night.
@@ -1187,7 +1236,7 @@ export class GameManager {
     // himself are named by the two outcome lines above instead.
     const blamed = correct ? target.id : alienId;
     deaths.forEach(dead => {
-      if (dead.id !== blamed) this.announce(`Day ${this.round}: ${this.deathLine(dead)}`);
+      if (dead.id !== blamed) this.announceDeath(dead, 'log.dayDeath');
     });
 
     this.enterAfterDeaths(dayEnds ? 'Vote' : 'Day', deaths);
@@ -1234,19 +1283,20 @@ export class GameManager {
         this.state.presidentManager.getPresidentId() === playerId
           ? 2
           : taken.voteWeight ?? 1;
-      this.actionLog.push(`Night 1: ${player.name} took the ${taken.name}.`);
+      this.journal('journal.thiefTook', {
+        name: player.name,
+        role: roleRef(taken),
+      });
     } else {
-      this.actionLog.push(`Night 1: ${player.name} kept his own card.`);
+      this.journal('journal.thiefKept', { name: player.name });
     }
 
     this.sendRoleAssign(playerId, this.assignments.get(playerId)!);
-    const message = taken ? `You are the ${taken.name} now.` : 'You keep your own card.';
-    this.transport.sendToPlayer(playerId, {
-      type: 'SECRET_INFO',
-      payload: { message },
-      timestamp: Date.now(),
-    });
-    this.emit({ type: 'secret', playerId, message });
+    this.tell(
+      playerId,
+      taken ? 'secret.thiefTookCard' : 'secret.thiefKept',
+      taken ? { role: roleRef(taken) } : undefined,
+    );
 
     // A wolf card makes him one of the pack, and the pack learns a name.
     if (taken?.team === 'Wolf') {
@@ -1280,10 +1330,8 @@ export class GameManager {
     if (this.judgeDeaths.length === 0) return false;
 
     this.judgeUsed.add(playerId);
-    this.actionLog.push(`Day ${this.round}: the judge demanded one more vote.`);
-    this.announce(
-      `Day ${this.round}: the judge bangs the table. One more vote, then night falls.`,
-    );
+    this.journal('journal.judgeRepeat', { round: this.round });
+    this.announce('log.judgeRepeat', undefined, 'vote');
 
     this.setPhase('Vote');
     return true;
@@ -1303,7 +1351,7 @@ export class GameManager {
     if (this.scapegoatBans.has(targetId)) return false;
 
     this.scapegoatBans.add(targetId);
-    this.announce(`Day ${this.round}: the scapegoat bars ${target.name} from voting tomorrow.`);
+    this.announce('log.scapegoatBan', { name: target.name }, 'vote');
     this.emit({ type: 'changed' });
     return true;
   }
@@ -1361,7 +1409,7 @@ export class GameManager {
     if (!card?.nightActions?.some(option => option.kind === 'curse')) return false;
 
     this.ravenTarget = targetId;
-    this.actionLog.push(`Day ${this.round}: the raven marked ${target.name}.`);
+    this.journal('journal.ravenMark', { round: this.round, name: target.name });
     this.emit({ type: 'changed' });
     return true;
   }
@@ -1510,14 +1558,6 @@ export class GameManager {
     deaths.push(victim);
   }
 
-  private sendAlienResult(alienId: string, message: string) {
-    this.transport.sendToPlayer(alienId, {
-      type: 'SECRET_INFO',
-      payload: { message },
-      timestamp: Date.now(),
-    });
-    this.emit({ type: 'secret', playerId: alienId, message });
-  }
 
   // ------------------------------------------------------------------ queries
 
@@ -1525,10 +1565,16 @@ export class GameManager {
     return this.assignments.get(playerId);
   }
 
-  // The engine's own words when a solo role took the game: null for the three
-  // sides, whose announcements the screens already know.
+  // The engine's own line when a solo role took the game: null for the three
+  // sides, whose lines the screens already know.
+  getWinnerKey(): { key: Key; params?: Params } | null {
+    return this.winnerKey ? { key: this.winnerKey, params: this.winnerParams } : null;
+  }
+
+  // The same line in English, for the suite and for any reader without a
+  // language of its own.
   getWinnerLabel(): string | null {
-    return this.winnerLabel;
+    return this.winnerKey ? translate('en', this.winnerKey, this.winnerParams) : null;
   }
 
   getAlivePlayers(): Player[] {
@@ -1626,7 +1672,7 @@ export class GameManager {
   // What the table already knows, line by line, with the round and phase each
   // line was written in. A death written during the night is only announced in
   // the morning, so it is left out until then.
-  getPublicLogEntries(): { message: string; phase: Phase; round: number }[] {
+  getPublicLogEntries(): PublicLogPayload[] {
     const hiddenNight = this.state.currentPhase === 'Night' ? this.round : null;
 
     return this.publicLog.filter(
@@ -1634,8 +1680,17 @@ export class GameManager {
     );
   }
 
+  // The same lines in English, for the suite and for any reader that has no
+  // language of its own. Every screen reads the entries above instead.
   getPublicLog(): string[] {
-    return this.getPublicLogEntries().map(entry => entry.message);
+    return this.getPublicLogEntries().map(entry =>
+      translate('en', entry.key, entry.params),
+    );
+  }
+
+  // The narrator's whole journal in English, for the same readers.
+  getActionLog(): string[] {
+    return this.actionLog.map(line => translate('en', line.key, line.params));
   }
 
   // The rules this table was started with, and one rule read back by id. A
@@ -1925,6 +1980,7 @@ export class GameManager {
     return this.state.players.map(p => ({
       id: p.id,
       name: p.name,
+      roleId: this.assignments.get(p.id)?.id,
       role: p.role,
       team: p.team,
       isAlive: p.isAlive,
@@ -1934,7 +1990,8 @@ export class GameManager {
   private buildGameOverPayload(): GameOverPayload {
     return {
       winner: this.winner ?? 'Village',
-      winnerLabel: this.winnerLabel ?? undefined,
+      winnerKey: this.winnerKey ?? undefined,
+      winnerParams: this.winnerParams,
       reveal: this.buildReveal(),
     };
   }
@@ -1965,23 +2022,15 @@ export class GameManager {
       name: p.name,
       isAlive: p.isAlive,
       // The dead take their card with them when the table plays that way, so
-      // every roster can say what a body was.
+      // every roster can say what a body was. The id is what a phone reads its
+      // own word for the card from.
       ...(revealDead && !p.isAlive
-        ? { role: this.assignments.get(p.id)?.name ?? null }
+        ? {
+            roleId: this.assignments.get(p.id)?.id ?? null,
+            role: this.assignments.get(p.id)?.name ?? null,
+          }
         : {}),
     }));
-  }
-
-  // What a death adds to the story: the card, when the table reveals it.
-  private cardOf(dead: Player): string {
-    const role = this.assignments.get(dead.id);
-    if (this.setting('revealOnDeath') !== true || !role) return '';
-    return ` He was the ${role.name}.`;
-  }
-
-  // A death as the table hears it, card and all.
-  private deathLine(dead: Player, verb = 'has died'): string {
-    return `${dead.name} ${verb}.${this.cardOf(dead)}`;
   }
 
   // ------------------------------------------------------------ the night half
@@ -2102,7 +2151,7 @@ export class GameManager {
     }
 
     this.packTiePick = null;
-    this.actionLog.push(`Night ${this.round}: the pack named nobody, and no one was taken.`);
+    this.journal('journal.packNobody', { round: this.round });
     this.emit({ type: 'changed' });
   }
 
@@ -2160,9 +2209,7 @@ export class GameManager {
 
     const target = this.state.players.find(player => player.id === targetId);
     if (target) {
-      this.actionLog.push(
-        `Night ${this.round}: the pack's vote was split, and the victim chosen was ${target.name}.`,
-      );
+      this.journal('journal.packTiePick', { round: this.round, name: target.name });
     }
 
     this.emit({ type: 'changed' });
@@ -2378,17 +2425,10 @@ export class GameManager {
 
       const target = this.state.players.find(p => p.id === targetId);
       if (target) {
-        this.actionLog.push(`Night ${this.round}: the Red Wolf silenced ${target.name}.`);
+        this.journal('journal.silenced', { round: this.round, name: target.name });
         // The player is told, not the table: a silenced role that says
         // nothing looks like a broken app.
-        const message =
-          'You have been silenced: your powers fail until the end of the coming day.';
-        this.transport.sendToPlayer(targetId, {
-          type: 'SECRET_INFO',
-          payload: { message },
-          timestamp: Date.now(),
-        });
-        this.emit({ type: 'secret', playerId: targetId, message });
+        this.tell(targetId, 'secret.silenced');
       }
     });
 
@@ -2491,15 +2531,22 @@ export class GameManager {
     // guard's shield stops it, the witch may already have saved the victim,
     // and only then does anyone die. The potion is spent only by the bite the
     // witch was actually shown.
-    const wolfKill = (target: Player, source: string, spendHeal: boolean) => {
+    const wolfKill = (target: Player, attacker: string, spendHeal: boolean) => {
+      const source = roleRef(getRoleById(attacker));
       if (this.assignments.get(target.id)?.wolfImmune) {
-        this.actionLog.push(
-          `Night ${this.round}: ${source} attacked ${target.name}, and it did nothing.`,
-        );
+        this.journal('journal.attackedNoEffect', {
+          round: this.round,
+          source,
+          name: target.name,
+        });
         return;
       }
       if (shielded.has(target.id)) {
-        this.actionLog.push(`Night ${this.round}: the guard saved ${target.name} from ${source}.`);
+        this.journal('journal.shielded', {
+          round: this.round,
+          name: target.name,
+          source,
+        });
         return;
       }
       const mender = healed.get(target.id);
@@ -2508,19 +2555,27 @@ export class GameManager {
           this.spendCharge(mender.playerId, mender.actionId);
           this.resendRoleTo(mender.playerId);
         }
-        this.actionLog.push(`Night ${this.round}: the witch saved ${target.name} from ${source}.`);
+        this.journal('journal.healed', {
+          round: this.round,
+          name: target.name,
+          source,
+        });
         return;
       }
 
       target.isAlive = false;
       deaths.push(target);
-      this.actionLog.push(`Night ${this.round}: ${target.name} was devoured by ${source}.`);
+      this.journal('journal.devoured', {
+        round: this.round,
+        name: target.name,
+        source,
+      });
     };
 
     if (this.isQuietNight()) {
       // The players' panels say so from the phase payload; the log line is
       // narrator-only trivia, and the morning already reports the outcome.
-      this.actionLog.push('Night 1 was peaceful: the wolves only looked around.');
+      this.journal('journal.quietNight');
     } else if (biteTarget) {
       const target = this.state.players.find(p => p.id === biteTarget);
       if (target?.isAlive) {
@@ -2530,7 +2585,7 @@ export class GameManager {
           this.resendRoleTo(infection.playerId);
           this.infectPlayer(target);
         } else {
-          wolfKill(target, 'the pack', true);
+          wolfKill(target, 'werewolf', true);
         }
       }
     }
@@ -2539,11 +2594,11 @@ export class GameManager {
     if (!this.isQuietNight()) {
       extraAttacks.forEach(targetId => {
         const target = this.state.players.find(p => p.id === targetId);
-        if (target?.isAlive) wolfKill(target, 'the Big Bad Wolf', false);
+        if (target?.isAlive) wolfKill(target, 'big-bad-wolf', false);
       });
       wolfAttacks.forEach(targetId => {
         const target = this.state.players.find(p => p.id === targetId);
-        if (target?.isAlive) wolfKill(target, 'the White Werewolf', false);
+        if (target?.isAlive) wolfKill(target, 'white-werewolf', false);
       });
     }
 
@@ -2555,16 +2610,11 @@ export class GameManager {
       const pack = this.state.players
         .filter(p => p.isAlive && this.assignments.get(p.id)?.team === 'Wolf')
         .map(p => p.name);
-      const message =
-        pack.length > 0
-          ? `You saw the wolves awake: ${pack.join(', ')}.`
-          : 'You saw nobody awake tonight.';
-      this.transport.sendToPlayer(spy, {
-        type: 'SECRET_INFO',
-        payload: { message },
-        timestamp: Date.now(),
-      });
-      this.emit({ type: 'secret', playerId: spy, message });
+      this.tell(
+        spy,
+        pack.length > 0 ? 'secret.spied' : 'secret.spiedNobody',
+        pack.length > 0 ? { names: pack.join(', ') } : undefined,
+      );
     }
 
     // Poison is not the wolves' bite: shielding does not stop it.
@@ -2576,7 +2626,7 @@ export class GameManager {
       if (target?.isAlive) {
         target.isAlive = false;
         deaths.push(target);
-        this.actionLog.push(`Night ${this.round}: ${target.name} was poisoned.`);
+        this.journal('journal.poisoned', { round: this.round, name: target.name });
       }
     });
 
@@ -2587,11 +2637,15 @@ export class GameManager {
       this.sendChatGroupsTo(bond.targetId);
       const cupid = this.state.players.find(p => p.id === bond.sourceId);
       const beloved = this.state.players.find(p => p.id === bond.targetId);
-      this.actionLog.push(`Cupid tied ${cupid?.name} and ${beloved?.name} together.`);
+      this.journal('journal.cupidTied', {
+        first: cupid?.name ?? '',
+        second: beloved?.name ?? '',
+      });
       this.emit({
         type: 'secret',
         playerId: bond.sourceId,
-        message: `You are tied to ${beloved?.name}. If either of you dies, the other dies too.`,
+        key: 'secret.loversTied',
+        params: { name: beloved?.name ?? '' },
       });
     }
 
@@ -2604,27 +2658,23 @@ export class GameManager {
         // The table's rule decides how much the seer is told, and whatever he
         // is told is what he could say out loud.
         const exact = this.setting('seer.depth') === 'exact';
-        const seen = exact
-          ? `the ${role?.name ?? 'Villager'} card`
-          : isWolf
-          ? 'a Werewolf'
-          : 'no Werewolf';
-        const message = exact
-          ? `${target.name} is the ${role?.name ?? 'Villager'}.`
-          : `${target.name} is ${isWolf ? 'a Werewolf' : 'not a Werewolf'}.`;
-        const payload: SecretInfoPayload = { message, isWolf };
+        const card = roleRef(role);
 
-        this.transport.sendToPlayer(sourceId, {
-          type: 'SECRET_INFO',
-          payload,
-          timestamp: Date.now(),
-        });
-        this.emit({ type: 'secret', playerId: sourceId, message });
+        this.tell(
+          sourceId,
+          exact ? 'secret.seerExact' : isWolf ? 'secret.seerWolf' : 'secret.seerNotWolf',
+          exact ? { name: target.name, role: card } : { name: target.name },
+          { isWolf },
+        );
 
         // Some tables let the seer speak at dawn. The village hears what was
         // found, never who was looked at.
         if (this.setting('seer.publicReport') === true) {
-          this.seerSighting = `The seer saw ${seen}.`;
+          this.seerSighting = exact
+            ? { key: 'log.seerSawCard', params: { role: card } }
+            : isWolf
+            ? { key: 'log.seerSawWolf' }
+            : { key: 'log.seerSawNone' };
         }
       }
     }
@@ -2638,20 +2688,11 @@ export class GameManager {
       if (!found) this.foxLost.add(sourceId);
 
       const names = around.map(p => p.name).join(', ');
-      const message = found
-        ? `Yes: a wolf is among ${names}. Your nose stays sharp.`
-        : `No: no wolf is among ${names}. Your nose is gone for good.`;
-      this.actionLog.push(
-        `Night ${this.round}: the fox sniffed around ${seat?.name ?? targetId} and found ${
-          found ? 'a wolf' : 'nothing'
-        }.`,
-      );
-      this.transport.sendToPlayer(sourceId, {
-        type: 'SECRET_INFO',
-        payload: { message },
-        timestamp: Date.now(),
+      this.journal(found ? 'journal.foxFound' : 'journal.foxNothing', {
+        round: this.round,
+        name: seat?.name ?? targetId,
       });
-      this.emit({ type: 'secret', playerId: sourceId, message });
+      this.tell(sourceId, found ? 'secret.foxFound' : 'secret.foxNothing', { names });
     }
 
     if (mark) {
@@ -2659,9 +2700,10 @@ export class GameManager {
       // is truly over.
       this.ravenTarget = mark.targetId;
       const marked = this.state.players.find(p => p.id === mark.targetId);
-      this.actionLog.push(
-        `Night ${this.round}: the raven marked ${marked?.name ?? mark.targetId}.`,
-      );
+      this.journal('journal.ravenMark', {
+        round: this.round,
+        name: marked?.name ?? mark.targetId,
+      });
     }
 
     if (charmPlan.size > 0) {
@@ -2680,46 +2722,28 @@ export class GameManager {
         if (fresh.length === 0) return;
 
         const names = fresh.map(id => this.state.players.find(p => p.id === id)?.name ?? id);
-        this.actionLog.push(`Night ${this.round}: the piper charmed ${names.join(', ')}.`);
+        this.journal('journal.piperCharmed', { round: this.round, names: names.join(', ') });
 
         fresh.forEach(id => {
-          const message = 'The Pied Piper played for you: you are charmed.';
-          this.transport.sendToPlayer(id, {
-            type: 'SECRET_INFO',
-            payload: { message },
-            timestamp: Date.now(),
-          });
-          this.emit({ type: 'secret', playerId: id, message });
+          this.tell(id, 'secret.charmed');
         });
 
         const flock = this.state.players
           .filter(p => this.charmed.has(p.id))
           .map(p => p.name)
           .join(', ');
-        const message = `Your flock so far: ${flock}. Charm every player still alive and the game is yours.`;
-        this.transport.sendToPlayer(piperId, {
-          type: 'SECRET_INFO',
-          payload: { message },
-          timestamp: Date.now(),
-        });
-        this.emit({ type: 'secret', playerId: piperId, message });
+        this.tell(piperId, 'secret.flock', { names: flock });
       });
     }
 
     if (pickedSide) {
       const chooser = this.state.players.find(p => p.id === pickedSide.playerId);
       if (pickedSide.actionId === 'join') {
-        this.actionLog.push(`Night 1: ${chooser?.name} chose the wolves.`);
-        this.admitToPack(pickedSide.playerId, 'You run with the wolves now.');
+        this.journal('journal.sideWolves', { name: chooser?.name ?? '' });
+        this.admitToPack(pickedSide.playerId, 'secret.packRuns');
       } else {
-        this.actionLog.push(`Night 1: ${chooser?.name} chose the village.`);
-        const message = 'You stay with the village for good.';
-        this.transport.sendToPlayer(pickedSide.playerId, {
-          type: 'SECRET_INFO',
-          payload: { message },
-          timestamp: Date.now(),
-        });
-        this.emit({ type: 'secret', playerId: pickedSide.playerId, message });
+        this.journal('journal.sideVillage', { name: chooser?.name ?? '' });
+        this.tell(pickedSide.playerId, 'secret.stayVillage');
       }
     }
 
@@ -2727,14 +2751,11 @@ export class GameManager {
       this.roleModels.set(watched.sourceId, watched.targetId);
       const child = this.state.players.find(p => p.id === watched.sourceId);
       const modelPlayer = this.state.players.find(p => p.id === watched.targetId);
-      this.actionLog.push(`Night 1: ${child?.name} watches over ${modelPlayer?.name}.`);
-      const message = `You watch over ${modelPlayer?.name}. The day they die, you become a werewolf.`;
-      this.transport.sendToPlayer(watched.sourceId, {
-        type: 'SECRET_INFO',
-        payload: { message },
-        timestamp: Date.now(),
+      this.journal('journal.modelWatch', {
+        name: child?.name ?? '',
+        model: modelPlayer?.name ?? '',
       });
-      this.emit({ type: 'secret', playerId: watched.sourceId, message });
+      this.tell(watched.sourceId, 'secret.modelWatch', { model: modelPlayer?.name ?? '' });
     }
 
     this.applyLoverDeaths(deaths);
@@ -2746,7 +2767,7 @@ export class GameManager {
       )?.id ?? null;
 
     if (deaths.length === 0) {
-      this.actionLog.push(`Night ${this.round}: nobody died.`);
+      this.journal('journal.nobodyDied', { round: this.round });
     }
 
     return deaths;
@@ -2754,18 +2775,13 @@ export class GameManager {
 
   // The card stays, the team changes: whoever turns keeps every power he had,
   // and the rest of the pack learns his name.
-  private admitToPack(playerId: string, message: string) {
+  private admitToPack(playerId: string, key: Key, params?: Params) {
     const role = this.assignments.get(playerId);
     if (!role) return;
 
     this.assignments.set(playerId, { ...role, team: 'Wolf' });
     this.sendRoleAssign(playerId, this.assignments.get(playerId)!, true);
-    this.transport.sendToPlayer(playerId, {
-      type: 'SECRET_INFO',
-      payload: { message },
-      timestamp: Date.now(),
-    });
-    this.emit({ type: 'secret', playerId, message });
+    this.tell(playerId, key, params);
 
     this.state.players
       .filter(
@@ -2795,10 +2811,12 @@ export class GameManager {
       if (!role || role.team === 'Wolf') return;
 
       this.roleModels.delete(child.id);
-      this.actionLog.push(
-        `Round ${this.round}: ${child.name} lost ${modelPlayer?.name} and turned.`,
-      );
-      this.admitToPack(child.id, `${modelPlayer?.name} is dead. You are a werewolf now.`);
+      this.journal('journal.turned', {
+        round: this.round,
+        name: child.name,
+        model: modelPlayer?.name ?? '',
+      });
+      this.admitToPack(child.id, 'secret.turned', { model: modelPlayer?.name ?? '' });
     });
   }
 
@@ -2810,23 +2828,20 @@ export class GameManager {
     if (!role) return;
 
     if (role.wolfImmune) {
-      this.actionLog.push(`Night ${this.round}: the infection slid off ${target.name}.`);
+      this.journal('journal.infectionSlid', { round: this.round, name: target.name });
       return;
     }
     if (this.isShieldedBySomeone(target.id)) {
-      this.actionLog.push(
-        `Night ${this.round}: the guard's shield kept the infection off ${target.name}.`,
-      );
+      this.journal('journal.infectionShielded', { round: this.round, name: target.name });
       return;
     }
 
-    this.actionLog.push(
-      `Night ${this.round}: ${target.name} was infected and is a werewolf now (${role.name}).`,
-    );
-    this.admitToPack(
-      target.id,
-      'You have been infected: you are a werewolf now, and you keep your powers.',
-    );
+    this.journal('journal.infected', {
+      round: this.round,
+      name: target.name,
+      role: roleRef(role),
+    });
+    this.admitToPack(target.id, 'secret.infected');
   }
 
   // Lovers are tied together: one going takes the other along.
@@ -2848,8 +2863,12 @@ export class GameManager {
       deaths.push(partner);
       queue.push(partner);
       // The Alien can break a heart in broad daylight too.
-      const when = this.state.currentPhase === 'Night' ? 'Night' : 'Day';
-      this.actionLog.push(`${when} ${this.round}: ${partner.name} died of a broken heart.`);
+      this.journal(
+        this.state.currentPhase === 'Night'
+          ? 'journal.brokenHeartNight'
+          : 'journal.brokenHeartDay',
+        { round: this.round, name: partner.name },
+      );
     }
   }
 
@@ -2863,15 +2882,15 @@ export class GameManager {
       if (target?.isAlive) {
         target.isAlive = false;
         deaths.push(target);
-        this.announce(
-          `${hunter?.name ?? 'The Hunter'} took ${target.name} down.${this.cardOf(target)}`,
-        );
+        this.announceDeath(target, 'log.hunterShot', 'death', {
+          hunter: hunter ? hunter.name : roleRef(getRoleById('hunter')),
+        });
         this.applyLoverDeaths(deaths);
       }
     } else if (hunter) {
       // A hunter who keeps his powder dry is the narrator's trivia: announcing
       // it would reveal him for nothing.
-      this.actionLog.push(`${hunter.name} took nobody down.`);
+      this.journal('journal.tookNobody', { name: hunter.name });
     }
 
     this.pendingRevenge = null;
@@ -2987,9 +3006,11 @@ export class GameManager {
       standing,
     );
 
-    this.announce(
-      `The candidates are ${this.getMayorCandidates().map(candidate => candidate.name).join(', ')}.`,
-    );
+    this.announce('log.candidates', {
+      names: this.getMayorCandidates()
+        .map(candidate => candidate.name)
+        .join(', '),
+    });
 
     this.electionStage = 'vote';
     this.electionRevote = false;
@@ -3037,10 +3058,7 @@ export class GameManager {
 
     // The election reads itself back the same way: every ballot, and every
     // living player who cast none.
-    this.announceBallots(
-      this.state.players.filter(player => player.isAlive),
-      '',
-    );
+    this.announceBallots(this.state.players.filter(player => player.isAlive));
 
     // A tied seat is voted again once; a second tie leaves the table without a
     // mayor rather than stalling the evening.
@@ -3061,7 +3079,9 @@ export class GameManager {
 
       this.lastVote = redo;
       this.announce(
-        `The mayor vote is tied between ${leaders.map(nameOf).join(' and ')}. They vote again.`,
+        'log.mayorTie',
+        { names: leaders.map(nameOf).join(' and ') },
+        'vote',
       );
 
       this.transport.broadcast({ type: 'VOTE_RESULT', payload: redo, timestamp: Date.now() });
@@ -3090,7 +3110,7 @@ export class GameManager {
       this.state.presidentManager.setPresident(winnerId, this.state.players);
 
       const mayor = this.state.players.find(p => p.id === winnerId);
-      this.announce(`${mayor?.name} was elected mayor.`);
+      this.announce('log.mayorElected', { name: mayor?.name ?? winnerId }, 'vote');
 
       this.transport.broadcast({
         type: 'MAYOR_ELECTED',
@@ -3098,7 +3118,7 @@ export class GameManager {
         timestamp: Date.now(),
       });
     } else {
-      this.announce('The table could not agree on a mayor. The night begins without one.');
+      this.announce('log.noMayor', undefined, 'vote');
     }
 
     this.emit({ type: 'changed' });
@@ -3115,15 +3135,17 @@ export class GameManager {
   // The vote read back ballot by ballot: who pointed at whom, and who let the
   // day pass without pointing at all. The dead are not on it, and neither are
   // the players the rules kept off the ballot.
-  private announceBallots(voters: Player[], prefix: string) {
+  private announceBallots(voters: Player[]) {
     voters.forEach(voter => {
       const targetId = this.votes.get(voter.id);
       const target = targetId ? this.state.players.find(p => p.id === targetId) : undefined;
 
       this.announce(
+        target ? 'log.vote' : 'log.noVote',
         target
-          ? `${prefix}${voter.name} voted for ${target.name}.`
-          : `${prefix}${voter.name} didn't vote.`,
+          ? { voter: voter.name, target: target.name }
+          : { voter: voter.name },
+        'vote',
       );
     });
   }
@@ -3191,7 +3213,7 @@ export class GameManager {
       alive.map(p => ({ id: p.id, name: p.name, count: tally.get(p.id) ?? 0 }));
 
     // The day reads itself back ballot by ballot before the outcome lands.
-    this.announceBallots(this.eligibleVoters(), `Day ${this.round}: `);
+    this.announceBallots(this.eligibleVoters());
 
     // A first tie is re-run between the tied players. A second one lets the
     // day pass, or two stubborn camps could stall the table forever.
@@ -3211,9 +3233,9 @@ export class GameManager {
 
       this.lastVote = redo;
       this.announce(
-        `Day ${this.round}: the vote was tied between ${candidates
-          .map(candidate => candidate.name)
-          .join(' and ')}. They vote again.`,
+        'log.voteTie',
+        { names: candidates.map(candidate => candidate.name).join(' and ') },
+        'vote',
       );
 
       this.transport.broadcast({
@@ -3241,15 +3263,13 @@ export class GameManager {
         if (role?.survivesVote) {
           // The village unmasked the idiot. He lives, and never votes again.
           this.noVote.add(target.id);
-          this.announce(
-            `Day ${this.round}: ${target.name} was voted out and turned out to be the village idiot. He survives, and may never vote again.`,
-          );
+          this.announce('log.idiotSurvives', { name: target.name }, 'vote');
         } else {
           target.isAlive = false;
           eliminatedId = target.id;
           eliminatedName = target.name;
           deaths.push(target);
-          this.announce(`Day ${this.round}: ${target.name} was voted out.${this.cardOf(target)}`);
+          this.announceDeath(target, 'log.votedOut', 'vote');
           this.applyLoverDeaths(deaths);
         }
       }
@@ -3261,16 +3281,12 @@ export class GameManager {
         // The tie is nobody's fault, and the scapegoat pays for it: he dies
         // when the host moves the phase on, after naming tomorrow's voters.
         this.scapegoatPending = goat.id;
-        this.announce(
-          `Day ${this.round}: the vote was tied again. ${goat.name} was the scapegoat, and pays for it.`,
-        );
+        this.announce('log.voteTieScapegoat', { name: goat.name }, 'vote');
       } else {
-        this.announce(
-          `Day ${this.round}: the vote was tied again, nobody was eliminated.`,
-        );
+        this.announce('log.voteTieAgain', undefined, 'vote');
       }
     } else {
-      this.announce(`Day ${this.round}: nobody voted.`);
+      this.announce('log.nobodyVoted', undefined, 'vote');
     }
 
     const result: VoteResultPayload = {
@@ -3306,7 +3322,7 @@ export class GameManager {
 
     // The Angel wanted the first vote to be theirs, and takes the game with it.
     if (this.round === 1 && deaths.some(dead => this.assignments.get(dead.id)?.angel)) {
-      this.winnerLabel = 'The Angel wins.';
+      this.winnerKey = 'log.angelWins';
       this.finish('Solitary');
       return;
     }
@@ -3574,12 +3590,8 @@ export class GameManager {
       const player = this.state.players.find(candidate => candidate.id === playerId);
       if (!player) return;
 
-      this.transport.sendToPlayer(playerId, {
-        type: 'SECRET_INFO',
-        payload: { message: 'You did not answer in time. The game moved on without you.' },
-        timestamp: Date.now(),
-      });
-      this.actionLog.push(`${player.name} did not answer in time.`);
+      this.tell(playerId, 'secret.noAnswer');
+      this.journal('journal.noAnswer', { name: player.name });
     });
   }
 
@@ -3607,27 +3619,29 @@ export class GameManager {
       alive.length === 2 &&
       this.lovers.every(id => alive.some(p => p.id === id))
     ) {
-      this.winnerLabel = 'The Lovers win.';
+      this.winnerKey = 'log.loversWin';
       return 'Solitary';
     }
 
     // The Piper wins the moment everyone still standing dances to his tune.
     const piper = alive.find(p => this.assignments.get(p.id)?.charms);
     if (piper && alive.every(p => p.id === piper.id || this.charmed.has(p.id))) {
-      this.winnerLabel = 'The Pied Piper wins.';
+      this.winnerKey = 'log.piperWins';
       return 'Solitary';
     }
 
     // A role that only wins alone has won the moment the table is his.
     if (alive.length === 1 && this.assignments.get(alive[0].id)?.winsAlone) {
-      this.winnerLabel = `The ${alive[0].role} wins.`;
+      this.winnerKey = 'log.soloWins';
+      this.winnerParams = { role: roleRef(this.assignments.get(alive[0].id)) };
       return 'Solitary';
     }
 
     const wolves = alive.filter(p => this.assignments.get(p.id)?.team === 'Wolf');
     const others = alive.filter(p => this.assignments.get(p.id)?.team !== 'Wolf');
 
-    this.winnerLabel = null;
+    this.winnerKey = null;
+    this.winnerParams = undefined;
     if (wolves.length === 0) return 'Village';
     // Parity settles nothing while the Alien is alive: he can still kill a
     // wolf by daylight, so the game runs until one side is actually gone.
@@ -3641,12 +3655,13 @@ export class GameManager {
   private finish(winner: Team) {
     this.winner = winner;
     this.announce(
-      this.winnerLabel ??
+      this.winnerKey ??
         (winner === 'Wolf'
-          ? 'The Werewolves win.'
+          ? 'log.wolvesWin'
           : winner === 'Solitary'
-          ? 'The Lovers win.'
-          : 'The Village wins.'),
+          ? 'log.loversWin'
+          : 'log.villageWins'),
+      this.winnerParams,
     );
 
     this.transport.broadcast({

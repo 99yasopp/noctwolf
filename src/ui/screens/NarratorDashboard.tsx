@@ -12,6 +12,8 @@ import { RevealedRoles } from '../components/RevealedRoles';
 import { InfoTab } from '../components/InfoTab';
 import { digestSections, flatSection } from '../info';
 import { formatRemaining, winnerText } from '../format';
+import { useI18n } from '../i18n';
+import { SaidLine, roleName } from '../../i18n';
 import { packIsKnown } from '../../engine/gameManager';
 import { useGame } from '../GameContext';
 import { Phase } from '../../engine/types';
@@ -19,8 +21,9 @@ import { lobby } from '../../network/lobby';
 
 export const NarratorDashboard = () => {
   const { manager, localPlayer, returnToLobby, rematch, changeTable, gameId } = useGame();
+  const { t } = useI18n();
   const [, forceRender] = useState(0);
-  const [secrets, setSecrets] = useState<string[]>([]);
+  const [secrets, setSecrets] = useState<SaidLine[]>([]);
   const [submitted, setSubmitted] = useState<string[]>([]);
   // Which page of the dashboard is open: the running game, the host's own
   // notes about it, the private windows he holds as a player, or — once he is
@@ -34,7 +37,7 @@ export const NarratorDashboard = () => {
       // Secrets belong to one player only: the host must not learn what the
       // seer was told unless the host is the seer.
       if (event.type === 'secret' && event.playerId === localPlayer.id) {
-        setSecrets(prev => [...prev, event.message]);
+        setSecrets(prev => [...prev, { key: event.key, params: event.params }]);
       }
       // The manager owns all game state; re-render and read it back.
       forceRender(n => n + 1);
@@ -93,8 +96,15 @@ export const NarratorDashboard = () => {
   // the narrator's own log on top. His private readings stay on the Play tab,
   // where he acts on them.
   const infoSections = [
-    ...digestSections(manager.getPublicLogEntries()),
-    ...(seeEverything ? [flatSection('Narrator log', manager.actionLog)] : []),
+    ...digestSections(manager.getPublicLogEntries(), t),
+    ...(seeEverything
+      ? [
+          flatSection(
+            'Narrator log',
+            manager.actionLog.map(line => t(line.key, line.params)),
+          ),
+        ]
+      : []),
   ];
 
   // The card a dead player carries in a blind host's list, when the table
@@ -103,7 +113,7 @@ export const NarratorDashboard = () => {
     manager
       .getPlayerRefs()
       .filter(ref => ref.role)
-      .map(ref => [ref.id, ref.role as string]),
+      .map(ref => [ref.id, roleName(ref.roleId ?? '', ref.role as string)]),
   );
 
   // The pack: the host is a player too, so his screen reads the pack the same
@@ -300,7 +310,9 @@ export const NarratorDashboard = () => {
           guest's role card is to a guest. */}
       <View style={styles.roleCard}>
         <Text style={styles.roleLabel}>Your Role</Text>
-        <Text style={styles.roleName}>{role?.name ?? 'unassigned'}</Text>
+        <Text style={styles.roleName}>
+          {role ? roleName(role.id, role.name) : 'unassigned'}
+        </Text>
         <Text style={styles.roleTeam}>{role ? `${role.team} team` : ''}</Text>
         {role && <Text style={styles.roleDescription}>{role.description}</Text>}
         {ownRole &&
@@ -402,7 +414,7 @@ export const NarratorDashboard = () => {
       {manager.winner && (
         <View style={styles.winnerCard}>
           <Text style={styles.winnerText}>
-            {winnerText(manager.winner, manager.getWinnerLabel())}
+            {winnerText(manager.winner, t, manager.getWinnerKey())}
           </Text>
           <Text style={styles.winnerSub}>
             Everyone keeps their seat. Playing again deals new roles to the
@@ -516,7 +528,7 @@ export const NarratorDashboard = () => {
           <Text style={styles.secretHeading}>Your private information</Text>
           {secrets.map((secret, index) => (
             <Text key={index} style={styles.secretText}>
-              {secret}
+              {t(secret.key, secret.params)}
             </Text>
           ))}
         </View>
