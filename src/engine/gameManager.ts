@@ -294,6 +294,8 @@ export class GameManager {
     const deck = [...ALL_ROLES, ...getCustomRoles()];
     players.forEach(player => {
       if (this.assignments.get(player.id)?.id !== 'thief') return;
+      // A table that keeps the thief on his own card deals no spares.
+      if (this.setting('thief.swap') === false) return;
       const own = this.assignments.get(player.id)!.id;
       const pool = deck.filter(role => role.id !== own);
       const drawn: PlayableRole[] = [];
@@ -403,8 +405,7 @@ export class GameManager {
             this.pendingRevenge =
               deaths.find(
                 dead =>
-                  this.assignments.get(dead.id)?.revengeOnDeath &&
-                  this.state.players.some(other => other.isAlive),
+                  this.wantsRevenge(dead) && this.state.players.some(other => other.isAlive),
               )?.id ?? null;
           }
           this.announce(`Day ${this.round}: ${goat.name}, the scapegoat, is dead.`);
@@ -565,6 +566,20 @@ export class GameManager {
     return this.chargesUsed.get(this.chargeKey(playerId, actionId)) ?? 0;
   }
 
+  // What one ballot is worth. The mayor's title doubles it, and a table that
+  // turned the double vote off keeps him at one like everyone else.
+  private voteWeightOf(voter: Player): number {
+    const weight = voter.voteWeight || 1;
+    if (weight > 1 && this.setting('mayor.doubleVote') === false) return 1;
+    return weight;
+  }
+
+  // Whether this death owes the table a parting shot.
+  private wantsRevenge(dead: Player): boolean {
+    if (this.setting('hunter.shoots') === false) return false;
+    return !!this.assignments.get(dead.id)?.revengeOnDeath;
+  }
+
   private spendCharge(playerId: string, actionId: string) {
     this.chargesUsed.set(
       this.chargeKey(playerId, actionId),
@@ -588,6 +603,8 @@ export class GameManager {
     if (this.chargesUsedBy(playerId, option.id) >= actionChargeLimit(option)) return false;
     if (option.kind === 'link' && this.round !== 1) return false;
     if (option.kind === 'attack' && this.isQuietNight()) return false;
+    // A table that keeps the little girl in bed never shows her the wolves.
+    if (option.kind === 'spy' && this.setting('girl.spy') === false) return false;
     // A peaceful night gives the Big Bad Wolf nothing to add to either.
     if (option.kind === 'extraAttack' && (this.isQuietNight() || this.anyWolfDead())) {
       return false;
@@ -1098,9 +1115,7 @@ export class GameManager {
     // A hunter still gets his parting shot, Alien or not.
     this.pendingRevenge =
       deaths.find(
-        dead =>
-          this.assignments.get(dead.id)?.revengeOnDeath &&
-          this.state.players.some(other => other.isAlive),
+        dead => this.wantsRevenge(dead) && this.state.players.some(other => other.isAlive),
       )?.id ?? null;
 
     // A wolf's death mid-day ends the day: nobody votes after that. The death
@@ -1721,7 +1736,11 @@ export class GameManager {
       team: role.team,
       description: role.description,
       allies,
-      nightActions: role.nightActions?.map(option => ({
+      nightActions: role.nightActions
+        // A rule the host turned off takes its button with it, so the panel
+        // never offers what the engine would refuse.
+        ?.filter(option => option.kind !== 'spy' || this.setting('girl.spy') !== false)
+        .map(option => ({
         id: option.id,
         label: option.label,
         kind: option.kind,
@@ -2507,9 +2526,7 @@ export class GameManager {
     // Whoever dies leaves a parting shot for the hunter.
     this.pendingRevenge =
       deaths.find(
-        dead =>
-          this.assignments.get(dead.id)?.revengeOnDeath &&
-          this.state.players.some(other => other.isAlive),
+        dead => this.wantsRevenge(dead) && this.state.players.some(other => other.isAlive),
       )?.id ?? null;
 
     if (deaths.length === 0) {
@@ -2873,7 +2890,7 @@ export class GameManager {
       if (!voter || !voter.isAlive) return;
       if (!tally.has(targetId)) return;
 
-      const weight = voter.voteWeight || 1;
+      const weight = this.voteWeightOf(voter);
       tally.set(targetId, (tally.get(targetId) ?? 0) + weight);
 
       const target = this.state.players.find(p => p.id === targetId);
@@ -3022,9 +3039,7 @@ export class GameManager {
     if (!this.pendingRevenge) {
       this.pendingRevenge =
         deaths.find(
-          dead =>
-            this.assignments.get(dead.id)?.revengeOnDeath &&
-            this.state.players.some(other => other.isAlive),
+          dead => this.wantsRevenge(dead) && this.state.players.some(other => other.isAlive),
         )?.id ?? null;
     }
 

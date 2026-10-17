@@ -140,6 +140,53 @@ export const SETTING_DEFS: SettingDef[] = [
     whenRole: 'cupid',
     default: 'always',
   },
+  {
+    id: 'mayor.doubleVote',
+    label: 'Mayor votes twice',
+    group: 'Table',
+    help: 'The elected mayor holds two votes in every tally. Turning this off leaves the title itself and nothing else.',
+    choices: [
+      { value: true, label: 'Two votes' },
+      { value: false, label: 'One vote' },
+    ],
+    default: true,
+  },
+  {
+    id: 'hunter.shoots',
+    label: 'Hunter shoots',
+    group: 'Village powers',
+    help: 'When the hunter dies he takes one player with him. Turning this off deals the card without its parting shot.',
+    choices: [
+      { value: true, label: 'Takes a player' },
+      { value: false, label: 'No shot' },
+    ],
+    whenRole: 'hunter',
+    default: true,
+  },
+  {
+    id: 'thief.swap',
+    label: 'Thief swaps',
+    group: 'Village powers',
+    help: 'The thief may trade his card for one of two spare cards on the first night.',
+    choices: [
+      { value: true, label: 'Two spare cards' },
+      { value: false, label: 'Keeps his card' },
+    ],
+    whenRole: 'thief',
+    default: true,
+  },
+  {
+    id: 'girl.spy',
+    label: 'Little girl spies',
+    group: 'Village powers',
+    help: 'The little girl may peek at the wolves while they choose, and the host may catch her at it.',
+    choices: [
+      { value: true, label: 'May spy' },
+      { value: false, label: 'Stays in bed' },
+    ],
+    whenRole: 'little-girl',
+    default: true,
+  },
 ];
 
 export const defaultSettings = (): Settings =>
