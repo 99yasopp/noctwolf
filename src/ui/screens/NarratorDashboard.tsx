@@ -7,6 +7,7 @@ import { TabBar } from '../components/TabBar';
 import { NotesTab } from '../components/NotesTab';
 import { ChatTab } from '../components/ChatTab';
 import { RevealedRoles } from '../components/RevealedRoles';
+import { InfoTab, digestSections } from '../components/InfoTab';
 import { formatRemaining, winnerText } from '../format';
 import { useGame } from '../GameContext';
 import { Phase } from '../../engine/types';
@@ -20,7 +21,7 @@ export const NarratorDashboard = () => {
   // Which page of the dashboard is open: the running game, the host's own
   // notes about it, the private windows he holds as a player, or — once he is
   // out of the game — every card on the table.
-  const [tab, setTab] = useState<'play' | 'notes' | 'chat' | 'roles'>('play');
+  const [tab, setTab] = useState<'play' | 'info' | 'notes' | 'chat' | 'roles'>('play');
 
   useEffect(() => {
     if (!manager || !localPlayer) return;
@@ -83,6 +84,23 @@ export const NarratorDashboard = () => {
   // The pack's aim is the host's business when he is in the pack, and nobody
   // else's.
   const hostIsWolf = role?.team === 'Wolf';
+
+  // What the host's own info window holds: the whole story, and in a test game
+  // the narrator's own log on top. His private readings stay on the Play tab,
+  // where he acts on them.
+  const infoSections = [
+    ...digestSections(manager.getPublicLogEntries()),
+    ...(seeEverything ? [{ title: 'Narrator log', lines: manager.actionLog }] : []),
+  ];
+
+  // The card a dead player carries in a blind host's list, when the table
+  // reveals its dead. Nothing for the living: the roster is public.
+  const revealedCards = new Map(
+    manager
+      .getPlayerRefs()
+      .filter(ref => ref.role)
+      .map(ref => [ref.id, ref.role as string]),
+  );
 
   const ownRole: OwnRole | null = role
     ? {
@@ -241,12 +259,13 @@ export const NarratorDashboard = () => {
       <TabBar
         tabs={[
           { id: 'play', label: 'Play' },
+          { id: 'info', label: 'Info' },
           { id: 'notes', label: 'Notes' },
           ...(hostGroups.length > 0 ? [{ id: 'chat', label: 'Chat' }] : []),
           ...(selfAlive ? [] : [{ id: 'roles', label: 'Roles' }]),
         ]}
         active={tab}
-        onSelect={id => setTab(id as 'play' | 'notes' | 'chat' | 'roles')}
+        onSelect={id => setTab(id as 'play' | 'info' | 'notes' | 'chat' | 'roles')}
       />
 
       {tab === 'play' && (
@@ -504,6 +523,8 @@ export const NarratorDashboard = () => {
                     }`
                   : player.isAlive
                   ? 'alive'
+                  : revealedCards.has(player.id)
+                  ? `dead — ${revealedCards.get(player.id)}`
                   : 'dead'}
                 {dropped ? ' — no connection' : ''}
                 {manager.state.currentPhase === 'Vote' && player.isAlive && manager.hasVoted(player.id)
@@ -525,18 +546,6 @@ export const NarratorDashboard = () => {
         );
       })}
 
-      <Text style={styles.subHeader}>Log</Text>
-      <Text style={styles.hint}>
-        {isTestGame
-          ? 'Everything the narrator saw, test game or not.'
-          : 'What the table has been told so far.'}
-      </Text>
-      {(seeEverything ? manager.actionLog : manager.getPublicLog()).map((entry, index) => (
-        <Text key={index} style={styles.logText}>
-          {entry}
-        </Text>
-      ))}
-
       <Text style={styles.hint}>
         Guests connected: {guests.length - droppedGuests} / {guests.length}
         {droppedGuests > 0 ? ' — a dropped guest keeps their seat and can rejoin' : ''}
@@ -545,6 +554,8 @@ export const NarratorDashboard = () => {
       <BaseButton title="Back to Lobby" onPress={returnToLobby} variant="danger" />
         </>
       )}
+
+      {tab === 'info' && <InfoTab sections={infoSections} />}
 
       {tab === 'notes' && (
         <NotesTab
@@ -734,10 +745,6 @@ const styles = StyleSheet.create({
   dead: {
     textDecorationLine: 'line-through',
     color: '#666',
-  },
-  logText: {
-    color: '#888',
-    fontSize: 14,
   },
   testBanner: {
     backgroundColor: '#1F3A2A',

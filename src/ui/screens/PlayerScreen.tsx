@@ -25,13 +25,14 @@ import { TabBar } from '../components/TabBar';
 import { NotesTab } from '../components/NotesTab';
 import { ChatTab } from '../components/ChatTab';
 import { RevealedRoles } from '../components/RevealedRoles';
+import { InfoTab, digestSections } from '../components/InfoTab';
 import { formatRemaining, winnerText } from '../format';
 
 export const PlayerScreen = () => {
   const { localPlayer, returnToLobby, gameId } = useGame();
 
   // Which of the phone's pages is open. Play is the game itself.
-  const [tab, setTab] = useState<'play' | 'journal' | 'notes' | 'chat' | 'roles'>('play');
+  const [tab, setTab] = useState<'play' | 'info' | 'notes' | 'chat' | 'roles'>('play');
   // The notes page belongs to one game: a fresh deal opens a new one. On a
   // guest phone the game id never moves, so the deal counts instead.
   const [deal, setDeal] = useState(0);
@@ -75,7 +76,6 @@ export const PlayerScreen = () => {
   // Whether the role card is covered, for when phones are handed around.
   const [roleHidden, setRoleHidden] = useState(false);
   // The public story of the game, built from what the host already tells us.
-  const [log, setLog] = useState<string[]>([]);
   // The countdown is anchored when TIME_SYNC arrives, never on the raw clock,
   // because two phones rarely agree on the time.
   const [clock, setClock] = useState<{
@@ -136,29 +136,10 @@ export const PlayerScreen = () => {
             setClock(null);
             setRavenMark(null);
           }
-          if (payload.phase === 'Debate') {
-            setLog(prev => [
-              `The candidates for mayor: ${(payload.mayorCandidates ?? [])
-                .map(candidate => candidate.name)
-                .join(', ')}.`,
-              ...prev,
-            ]);
-          }
           setNightStage(1);
           setVictim(null);
           setTieTargets([]);
 
-          // Deaths are announced when the morning comes, not at nightfall, and
-          // only on a real transition: the Alien's frozen day re-broadcasts
-          // the same phase without any word about the dead.
-          if (payload.phase === 'Day' && payload.deaths !== undefined) {
-            setLog(prev => [
-              payload.deaths?.length
-                ? `Night ${payload.round}: ${payload.deaths.map(d => d.name).join(', ')} died.`
-                : `Night ${payload.round}: nobody died.`,
-              ...prev,
-            ]);
-          }
           break;
         }
 
@@ -181,7 +162,6 @@ export const PlayerScreen = () => {
           setVoteResult(null);
           setOutcome(null);
           setDeaths([]);
-          setLog([]);
           setPublicLines([]);
           setChatGroups([]);
           setChatLines([]);
@@ -267,24 +247,10 @@ export const PlayerScreen = () => {
           const payload = message.payload as VoteResultPayload;
           setVoteResult(payload);
 
+          // Votes were wiped for a second round between the tied players.
           if (payload.revote) {
-            // Votes were wiped for a second round between the tied players.
             setSubmitted([]);
             setClock(null);
-            setLog(prev => [
-              `Day ${roundRef.current}: the vote was tied. Voting again.`,
-              ...prev,
-            ]);
-          } else if (payload.eliminatedName) {
-            setLog(prev => [
-              `Day ${roundRef.current}: ${payload.eliminatedName} was voted out.`,
-              ...prev,
-            ]);
-          } else if (payload.tie) {
-            setLog(prev => [
-              `Day ${roundRef.current}: the vote was tied again. Nobody left.`,
-              ...prev,
-            ]);
           }
           break;
         }
@@ -292,7 +258,6 @@ export const PlayerScreen = () => {
         case 'MAYOR_ELECTED': {
           const payload = message.payload as MayorElectedPayload;
           setMayorId(payload.playerId);
-          setLog(prev => [`${payload.playerName} is the mayor.`, ...prev]);
           break;
         }
 
@@ -306,7 +271,6 @@ export const PlayerScreen = () => {
         case 'GAME_OVER': {
           const payload = message.payload as GameOverPayload;
           setOutcome(payload);
-          setLog(prev => [winnerText(payload.winner, payload.winnerLabel), ...prev]);
           break;
         }
 
@@ -526,23 +490,26 @@ export const PlayerScreen = () => {
 
   const tabs = [
     { id: 'play', label: 'Play' },
-    { id: 'journal', label: 'Journal' },
+    { id: 'info', label: 'Info' },
     { id: 'notes', label: 'Notes' },
     ...(chatGroups.length > 0 ? [{ id: 'chat', label: 'Chat' }] : []),
     ...(reveal ? [{ id: 'roles', label: 'Roles' }] : []),
   ];
 
-  // The journal reads by round: a heading whenever the round or the phase turns.
-  const publicGroups = publicLines.reduce<{ key: string; lines: string[] }[]>(
-    (groups, line) => {
-      const key = `Round ${line.round} · ${line.phase}`;
-      const last = groups[groups.length - 1];
-      if (last && last.key === key) last.lines.push(line.message);
-      else groups.push({ key, lines: [line.message] });
-      return groups;
-    },
-    [],
-  );
+  // The Info tab reads by round and phase; the table's own rules close it.
+  const infoSections = [
+    ...digestSections(publicLines),
+    ...(rules
+      ? [
+          {
+            title: 'Table rules',
+            lines: SETTING_DEFS.map(
+              def => `${def.label}: ${settingLabel(def, rules[def.id])}`,
+            ),
+          },
+        ]
+      : []),
+  ];
 
   // The countdown as this phone sees it: TIME_SYNC is anchored on arrival, so
   // a wrong device clock changes nothing. A decision window turns red for its
@@ -559,7 +526,7 @@ export const PlayerScreen = () => {
       <TabBar
         tabs={tabs}
         active={tab}
-        onSelect={id => setTab(id as 'play' | 'journal' | 'notes' | 'chat' | 'roles')}
+        onSelect={id => setTab(id as 'play' | 'info' | 'notes' | 'chat' | 'roles')}
       />
 
       {tab === 'play' && (
@@ -722,34 +689,14 @@ export const PlayerScreen = () => {
         </View>
       )}
 
-      {rules && (
-        <View style={styles.secretCard}>
-          <Text style={styles.secretHeading}>Table rules</Text>
-          {SETTING_DEFS.map(def => (
-            <Text key={def.id} style={styles.secretText}>
-              {def.label}: {settingLabel(def, rules[def.id])}
-            </Text>
-          ))}
-        </View>
-      )}
-
-      {log.length > 0 && (
-        <View style={styles.secretCard}>
-          <Text style={styles.secretHeading}>What has happened</Text>
-          {log.slice(0, 12).map((entry, index) => (
-            <Text key={index} style={styles.secretText}>
-              {entry}
-            </Text>
-          ))}
-        </View>
-      )}
-
       <Text style={styles.subHeader}>Players</Text>
       {roster.map(entry => (
         <Text key={entry.id} style={[styles.playerText, !entry.isAlive && styles.dead]}>
           {entry.name}
           {entry.id === localPlayer?.id ? ' (you)' : ''}
           {entry.isAlive ? '' : ' — dead'}
+          {/* A table that reveals its dead hands every device the card. */}
+          {entry.isAlive || !entry.role ? '' : ` (${entry.role})`}
         </Text>
       ))}
 
@@ -757,42 +704,7 @@ export const PlayerScreen = () => {
         </>
       )}
 
-      {tab === 'journal' && (
-        <>
-          <View style={styles.secretCard}>
-            <Text style={styles.secretHeading}>What the table heard</Text>
-            {publicGroups.length === 0 ? (
-              <Text style={styles.secretText}>Nothing has been announced yet.</Text>
-            ) : (
-              publicGroups.map(group => (
-                <View key={group.key}>
-                  <Text style={styles.journalGroup}>{group.key}</Text>
-                  {group.lines.map((line, index) => (
-                    <Text key={index} style={styles.secretText}>
-                      {line}
-                    </Text>
-                  ))}
-                </View>
-              ))
-            )}
-          </View>
-
-          <View style={styles.secretCard}>
-            <Text style={styles.secretHeading}>What only you heard</Text>
-            {secrets.length === 0 ? (
-              <Text style={styles.secretText}>
-                Nothing yet. Whatever the game whispers to you lands here.
-              </Text>
-            ) : (
-              secrets.map((secret, index) => (
-                <Text key={index} style={styles.secretText}>
-                  {secret}
-                </Text>
-              ))
-            )}
-          </View>
-        </>
-      )}
+      {tab === 'info' && <InfoTab sections={infoSections} />}
 
       {tab === 'notes' && (
         <NotesTab
@@ -825,12 +737,6 @@ const styles = StyleSheet.create({
   content: {
     padding: theme.spacing.medium,
     paddingBottom: theme.spacing.large,
-  },
-  journalGroup: {
-    color: theme.colors.dim,
-    fontWeight: 'bold',
-    marginTop: theme.spacing.small,
-    marginBottom: 2,
   },
   header: {
     fontSize: 24,

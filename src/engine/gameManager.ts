@@ -507,11 +507,18 @@ export class GameManager {
     this.setPhase('Day', { deaths: this.toRefs(deaths) });
 
     // The table is told who died, not how: the cause is the narrator's detail.
-    this.announce(
-      deaths.length > 0
-        ? `Day ${this.round}: ${deaths.map(p => p.name).join(', ')} did not survive the night.`
-        : `Day ${this.round}: nobody died in the night.`,
-    );
+    if (deaths.length === 0) {
+      this.announce(`Day ${this.round}: nobody died in the night.`);
+    } else if (this.setting('revealOnDeath') === true) {
+      // One line per body, since each one carries its own card.
+      deaths.forEach(dead =>
+        this.announce(`Day ${this.round}: ${this.deathLine(dead, 'did not survive the night')}`),
+      );
+    } else {
+      this.announce(
+        `Day ${this.round}: ${deaths.map(p => p.name).join(', ')} did not survive the night.`,
+      );
+    }
 
     // A table that lets the seer speak hears what he found, never who he saw.
     if (this.seerSighting) {
@@ -1170,10 +1177,11 @@ export class GameManager {
     }
 
     // Whoever else the guess took — a partner who followed, the chain behind
-    // it — keeps the plain line: only the Alien's own two outcomes name a role.
+    // it — gets his own death line here. The Alien's target and the Alien
+    // himself are named by the two outcome lines above instead.
     const blamed = correct ? target.id : alienId;
     deaths.forEach(dead => {
-      if (dead.id !== blamed) this.announce(`Day ${this.round}: ${dead.name} has died.`);
+      if (dead.id !== blamed) this.announce(`Day ${this.round}: ${this.deathLine(dead)}`);
     });
 
     this.enterAfterDeaths(dayEnds ? 'Vote' : 'Day', deaths);
@@ -1602,14 +1610,19 @@ export class GameManager {
     return left === null || left > 0;
   }
 
-  // What the table already knows. A death written during the night is only
-  // announced in the morning, so it is left out until then.
-  getPublicLog(): string[] {
+  // What the table already knows, line by line, with the round and phase each
+  // line was written in. A death written during the night is only announced in
+  // the morning, so it is left out until then.
+  getPublicLogEntries(): { message: string; phase: Phase; round: number }[] {
     const hiddenNight = this.state.currentPhase === 'Night' ? this.round : null;
 
-    return this.publicLog
-      .filter(entry => !(entry.phase === 'Night' && entry.round === hiddenNight))
-      .map(entry => entry.message);
+    return this.publicLog.filter(
+      entry => !(entry.phase === 'Night' && entry.round === hiddenNight),
+    );
+  }
+
+  getPublicLog(): string[] {
+    return this.getPublicLogEntries().map(entry => entry.message);
   }
 
   // The rules this table was started with, and one rule read back by id. A
@@ -1681,9 +1694,14 @@ export class GameManager {
 
   getPendingVoters(): Player[] {
     if (this.state.currentPhase !== 'Vote') return [];
+    return this.eligibleVoters().filter(p => !this.votes.has(p.id));
+  }
+
+  // Everyone the rules let cast a ballot today: the living, minus the idiot who
+  // lost his vote and the players a scapegoat barred.
+  private eligibleVoters(): Player[] {
     return this.state.players.filter(
-      p =>
-        p.isAlive && !this.votes.has(p.id) && !this.noVote.has(p.id) && !this.voteBanned.has(p.id),
+      p => p.isAlive && !this.noVote.has(p.id) && !this.voteBanned.has(p.id),
     );
   }
 
@@ -1864,7 +1882,7 @@ export class GameManager {
     return {
       phase,
       round: this.round,
-      players: this.toRefs(this.state.players),
+      players: this.getPlayerRefs(),
       // The election is public: who stands, who may be voted for, and who won.
       ...(phase === 'Election' || phase === 'Debate'
         ? {
@@ -1920,8 +1938,37 @@ export class GameManager {
     });
   }
 
+  // The roster the whole table reads: a dead player carries his card only on a
+  // table that reveals its dead.
+  getPlayerRefs(): PlayerRef[] {
+    return this.toRefs(this.state.players);
+  }
+
   private toRefs(players: Player[]): PlayerRef[] {
-    return players.map(p => ({ id: p.id, name: p.name, isAlive: p.isAlive }));
+    const revealDead = this.setting('revealOnDeath') === true;
+
+    return players.map(p => ({
+      id: p.id,
+      name: p.name,
+      isAlive: p.isAlive,
+      // The dead take their card with them when the table plays that way, so
+      // every roster can say what a body was.
+      ...(revealDead && !p.isAlive
+        ? { role: this.assignments.get(p.id)?.name ?? null }
+        : {}),
+    }));
+  }
+
+  // What a death adds to the story: the card, when the table reveals it.
+  private cardOf(dead: Player): string {
+    const role = this.assignments.get(dead.id);
+    if (this.setting('revealOnDeath') !== true || !role) return '';
+    return ` He was the ${role.name}.`;
+  }
+
+  // A death as the table hears it, card and all.
+  private deathLine(dead: Player, verb = 'has died'): string {
+    return `${dead.name} ${verb}.${this.cardOf(dead)}`;
   }
 
   // ------------------------------------------------------------ the night half
@@ -2803,7 +2850,9 @@ export class GameManager {
       if (target?.isAlive) {
         target.isAlive = false;
         deaths.push(target);
-        this.announce(`${hunter?.name ?? 'The Hunter'} took ${target.name} down.`);
+        this.announce(
+          `${hunter?.name ?? 'The Hunter'} took ${target.name} down.${this.cardOf(target)}`,
+        );
         this.applyLoverDeaths(deaths);
       }
     } else if (hunter) {
@@ -2973,6 +3022,13 @@ export class GameManager {
     const nameOf = (id: string) => this.state.players.find(p => p.id === id)?.name ?? id;
     const rows = candidates.map(id => ({ id, name: nameOf(id), count: tally.get(id) ?? 0 }));
 
+    // The election reads itself back the same way: every ballot, and every
+    // living player who cast none.
+    this.announceBallots(
+      this.state.players.filter(player => player.isAlive),
+      '',
+    );
+
     // A tied seat is voted again once; a second tie leaves the table without a
     // mayor rather than stalling the evening.
     if (tie && !this.electionRevote) {
@@ -3039,6 +3095,22 @@ export class GameManager {
     this.setPhase('Night');
   }
 
+  // The vote read back ballot by ballot: who pointed at whom, and who let the
+  // day pass without pointing at all. The dead are not on it, and neither are
+  // the players the rules kept off the ballot.
+  private announceBallots(voters: Player[], prefix: string) {
+    voters.forEach(voter => {
+      const targetId = this.votes.get(voter.id);
+      const target = targetId ? this.state.players.find(p => p.id === targetId) : undefined;
+
+      this.announce(
+        target
+          ? `${prefix}${voter.name} voted for ${target.name}.`
+          : `${prefix}${voter.name} didn't vote.`,
+      );
+    });
+  }
+
   private resolveVote() {
     // The vote is being counted, so whatever clock was running for it is over.
     // Without this a re-vote would inherit a clock that is already past due
@@ -3101,6 +3173,9 @@ export class GameManager {
     const tallyRows = () =>
       alive.map(p => ({ id: p.id, name: p.name, count: tally.get(p.id) ?? 0 }));
 
+    // The day reads itself back ballot by ballot before the outcome lands.
+    this.announceBallots(this.eligibleVoters(), `Day ${this.round}: `);
+
     // A first tie is re-run between the tied players. A second one lets the
     // day pass, or two stubborn camps could stall the table forever.
     if (tie && this.revoteCandidates.length === 0) {
@@ -3157,7 +3232,7 @@ export class GameManager {
           eliminatedId = target.id;
           eliminatedName = target.name;
           deaths.push(target);
-          this.announce(`Day ${this.round}: ${target.name} was voted out.`);
+          this.announce(`Day ${this.round}: ${target.name} was voted out.${this.cardOf(target)}`);
           this.applyLoverDeaths(deaths);
         }
       }

@@ -1708,6 +1708,9 @@ console.log('\n27. the table only hears what it should');
   const bitten = plain[0];
   const poisoned = plain[1];
 
+  // The election's public ballots are on the log already: only what the night
+  // itself writes is at stake here.
+  const beforeNight = game.getPublicLog().length;
   check(
     'the guard shields the player the wolves bite',
     game.handleNightAction(guard.id, 'protect', bitten.id),
@@ -1715,7 +1718,7 @@ console.log('\n27. the table only hears what it should');
   check('the wolf bites', game.handleNightAction(wolf.id, 'kill', bitten.id));
   game.advance(); // the witch wakes
 
-  const midNight = game.getPublicLog().join('\n');
+  const midNight = game.getPublicLog().slice(beforeNight).join('\n');
   check(
     'the public log says nothing about the save or the victim',
     !midNight.includes(bitten.name) && !midNight.includes('saved'),
@@ -1807,7 +1810,10 @@ console.log('\n27b. cupid ties his knot in the dark');
   const players = makePlayers(5);
   const transport = new RecordingTransport();
   const game = new GameManager(players, transport, true);
-  game.start([WerewolfRole, CupidRole, SeerRole, VillagerRole, VillagerRole]);
+  // This block is about the night's secrets, so the table buries its cards.
+  game.start([WerewolfRole, CupidRole, SeerRole, VillagerRole, VillagerRole], {
+    revealOnDeath: false,
+  });
 
   const wolf = findRole(game, players, 'werewolf')!;
   const cupid = findRole(game, players, 'cupid')!;
@@ -4342,8 +4348,13 @@ console.log('\n39b. a silent table loses its vote');
     game.actionLog.some(line => line.includes('did not answer in time')),
   );
   check(
-    'and the journal never tells the table who it was',
+    'the skip keeps the night\u2019s wording to itself',
     !game.getPublicLog().some(line => line.includes('did not answer')),
+  );
+  check(
+    'while the missing ballot is the table\u2019s business',
+    game.getPublicLog().some(line => line.includes(`${silent.name} didn't vote`)),
+    game.getPublicLog().join('\n'),
   );
 }
 
@@ -4459,6 +4470,150 @@ console.log('\n39e. the nomination ends on its own clock');
   passTime(60_000);
   check('the empty ballot leaves no mayor', game.pump() && game.getMayor() === null);
   check('and the night begins', game.state.currentPhase === 'Night');
+}
+
+console.log('\n39f. the dead carry their cards');
+{
+  // The same night on two tables: one that reveals its dead, one that does not.
+  const table = (reveal: boolean) => {
+    const players = makePlayers(4);
+    const transport = new RecordingTransport();
+    const game = new GameManager(players, transport);
+    game.start([WerewolfRole, SeerRole, VillagerRole, VillagerRole], {
+      revealOnDeath: reveal,
+    });
+    // The chair is a title: a dead mayor would park the game in the succession
+    // before this block reads the morning. The plain villager takes it.
+    passElection(game, players.find(p => game.getRoleOf(p.id)?.id === 'villager')!.id);
+
+    const wolf = findRole(game, players, 'werewolf')!;
+    const seer = findRole(game, players, 'seer')!;
+    check('the wolf bites the seer', game.handleNightAction(wolf.id, 'kill', seer.id));
+    check('and the seer looks', game.handleNightAction(seer.id, 'peek', wolf.id));
+    runClock(game);
+
+    return { players, game, seer, wolf };
+  };
+
+  check('cards are revealed by default', defaultSettings()['revealOnDeath'] === true);
+
+  const shown = table(true);
+  const shownLine = shown.game
+    .getPublicLog()
+    .find(line => line.includes(`${shown.seer.name} did not survive`));
+  check(
+    'the morning names the dead and the card',
+    shownLine === `Day 1: ${shown.seer.name} did not survive the night. He was the Seer.`,
+    shownLine ?? 'nothing',
+  );
+  const refs = shown.game.getPlayerRefs();
+  check(
+    'every roster hands the dead card out',
+    refs.find(ref => ref.id === shown.seer.id)?.role === 'Seer',
+  );
+  check(
+    'and never a living one',
+    refs.filter(ref => ref.isAlive).every(ref => ref.role === undefined),
+  );
+
+  const hidden = table(false);
+  const hiddenLine = hidden.game
+    .getPublicLog()
+    .find(line => line.includes(`${hidden.seer.name} did not survive`));
+  check(
+    'a closed table buries the card',
+    hiddenLine === `Day 1: ${hidden.seer.name} did not survive the night.`,
+    hiddenLine ?? 'nothing',
+  );
+  check(
+    'and the roster keeps it too',
+    hidden.game.getPlayerRefs().find(ref => ref.id === hidden.seer.id)?.role === undefined,
+  );
+}
+
+console.log('\n39g. the vote writes itself down');
+{
+  const players = makePlayers(4);
+  const transport = new RecordingTransport();
+  const game = new GameManager(players, transport);
+  game.start([WerewolfRole, SeerRole, VillagerRole, VillagerRole]);
+
+  const wolf = findRole(game, players, 'werewolf')!;
+  const seer = findRole(game, players, 'seer')!;
+  // A chair the vote will not touch: the wolf is the one going out, and a dying
+  // mayor would park the game in the succession.
+  const mayor = findRole(game, players, 'villager')!;
+
+  // The election by hand, so a real ballot is on the record.
+  check('the nomination opens', game.volunteerForMayor(mayor.id));
+  game.advance(); // the nominations close and the debate opens
+  game.advance(); // the debate gives way to the ballot
+  check(
+    'the election ballot is open',
+    game.state.currentPhase === 'Election' && game.getElectionStage() === 'vote',
+  );
+  check('an election ballot lands', game.handleMayorVote(seer.id, mayor.id));
+  game.advance(); // the host counts the ballots
+  check('the mayor takes the seat', game.getMayor()?.id === mayor.id);
+
+  const electionLog = game.getPublicLog();
+  check(
+    'the election writes the ballot down',
+    electionLog.some(line => line === `${seer.name} voted for ${mayor.name}.`),
+    electionLog.join('\n'),
+  );
+  check(
+    'and everyone who stood quiet',
+    electionLog.filter(line => line.includes("didn't vote")).length ===
+      game.getAlivePlayers().length - 1,
+  );
+
+  // The night takes the seer, and the day's vote follows.
+  check('the wolf bites the seer', game.handleNightAction(wolf.id, 'kill', seer.id));
+  check('and the seer looks', game.handleNightAction(seer.id, 'peek', wolf.id));
+  runClock(game);
+  check('the morning follows', game.state.currentPhase === 'Day' && !seer.isAlive);
+
+  game.advance(); // Day -> Vote
+  const voters = game.getAlivePlayers().filter(player => player.id !== wolf.id);
+  check(
+    'the living point at the wolf',
+    voters.length === 2 && voters.every(voter => game.handleVote(voter.id, wolf.id)),
+  );
+  check(
+    'the dead are not on the ballot',
+    !game.getPendingVoters().some(voter => voter.id === seer.id),
+  );
+  game.advance(); // the host closes the vote
+
+  // The day's own record: the election lines have no day on them.
+  const dayBallots = game
+    .getPublicLog()
+    .filter(
+      line =>
+        /^Day \d+: /.test(line) && (line.includes('voted for') || line.includes("didn't vote")),
+    );
+  check(
+    'every living ballot is on the record',
+    voters.every(voter =>
+      dayBallots.some(line => line.includes(`${voter.name} voted for ${wolf.name}`)),
+    ),
+    dayBallots.join('\n'),
+  );
+  check(
+    'the silent wolf is named without a ballot',
+    dayBallots.some(line => line.includes(`${wolf.name} didn't vote`)),
+  );
+  check(
+    'and the dead seer is not on it',
+    !dayBallots.some(line => line.includes(seer.name)),
+    dayBallots.join('\n'),
+  );
+  check('the vote lands on the wolf', !wolf.isAlive);
+  check(
+    'every entry carries the round and the phase the info window groups by',
+    game.getPublicLogEntries().every(entry => entry.round >= 1 && !!entry.phase),
+  );
 }
 
 console.log(failures === 0 ? `\nAll checks passed.` : `\n${failures} check(s) failed.`);

@@ -50,6 +50,9 @@ export interface PlayerRef {
   id: string;
   name: string;
   isAlive: boolean;
+  // The card of a dead player, when the table plays with cards revealed on
+  // death. A living player never carries one.
+  role?: string | null;
 }
 
 export interface PlayerListPayload {

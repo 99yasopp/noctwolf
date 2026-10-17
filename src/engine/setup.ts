@@ -88,6 +88,17 @@ export const SETTING_DEFS: SettingDef[] = [
     default: 40,
   },
   {
+    id: 'revealOnDeath',
+    label: 'Cards on death',
+    group: 'Table',
+    help: 'Whether a death names the card. On, the table hears what the dead player was; off, the dead keep the card they held.',
+    choices: [
+      { value: true, label: 'Revealed' },
+      { value: false, label: 'Kept hidden' },
+    ],
+    default: true,
+  },
+  {
     id: 'guardNoRepeat',
     label: 'Guard repeat',
     group: 'Village powers',
