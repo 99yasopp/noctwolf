@@ -75,16 +75,19 @@ export const saveGameNotes = async (game: GameNotes): Promise<void> => {
   await write(gameKey(fitted.id), JSON.stringify(fitted));
 
   const index = await loadNotesIndex();
-  await write(
-    INDEX_KEY,
-    JSON.stringify(
-      upsertEntry(index, {
-        id: fitted.id,
-        date: fitted.date,
-        myRole: fitted.myRole,
-      }),
-    ),
-  );
+  const next = upsertEntry(index, {
+    id: fitted.id,
+    date: fitted.date,
+    myRole: fitted.myRole,
+  });
+  await write(INDEX_KEY, JSON.stringify(next));
+
+  // A page the history list just dropped goes with it: nothing points at it
+  // any more, so "Clear all" would never find it again.
+  const kept = new Set(next.map(entry => entry.id));
+  for (const entry of index) {
+    if (!kept.has(entry.id)) await remove(gameKey(entry.id));
+  }
 };
 
 // No undo: every game's page and the list itself go at once.

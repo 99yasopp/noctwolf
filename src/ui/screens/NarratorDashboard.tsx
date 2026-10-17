@@ -93,7 +93,10 @@ export const NarratorDashboard = () => {
         name: role.name,
         team: role.team,
         description: role.description,
-        nightActions: role.nightActions?.map(option => ({
+        nightActions: role.nightActions
+          // A rule the host turned off takes its button with it.
+          ?.filter(option => option.kind !== 'spy' || manager.getSettings()['girl.spy'] !== false)
+          .map(option => ({
           id: option.id,
           label: option.label,
           kind: option.kind,
@@ -297,7 +300,7 @@ export const NarratorDashboard = () => {
         {manager.getMayor() && (
           <Text style={styles.statusText}>
             Mayor: {manager.getMayor()?.name}
-            {manager.getMayor()?.id === localPlayer.id ? ' (you, two votes)' : ''}
+            {manager.getMayor()?.id === localPlayer.id ? ' (you)' : ''}
           </Text>
         )}
         <Text style={styles.statusText}>You are: {localPlayer.name}</Text>

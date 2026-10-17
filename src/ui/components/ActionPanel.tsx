@@ -162,7 +162,7 @@ export const ActionPanel: React.FC<Props> = ({
           ) : (
             <>
               <Text style={styles.body}>
-                Name the player who takes your double vote.
+                Name the player who takes your place.
               </Text>
               {alive
                 .filter(target => target.id !== selfId)
@@ -178,7 +178,7 @@ export const ActionPanel: React.FC<Props> = ({
           )
         ) : (
           <Text style={styles.body}>
-            The mayor is naming the player who takes his double vote.
+            The mayor is naming the player who takes his place.
           </Text>
         )}
       </View>

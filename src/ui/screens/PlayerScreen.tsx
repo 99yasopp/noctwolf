@@ -29,6 +29,9 @@ export const PlayerScreen = () => {
 
   // Which of the phone's pages is open. Play is the game itself.
   const [tab, setTab] = useState<'play' | 'journal' | 'notes' | 'chat'>('play');
+  // The notes page belongs to one game: a fresh deal opens a new one. On a
+  // guest phone the game id never moves, so the deal counts instead.
+  const [deal, setDeal] = useState(0);
   // The journal: every line the table heard, in order, with the round it
   // belonged to.
   const [publicLines, setPublicLines] = useState<PublicLogPayload[]>([]);
@@ -164,6 +167,7 @@ export const PlayerScreen = () => {
           if (assign.refresh) break;
           // A rematch re-deals into the seat we already hold, so everything
           // from the previous game has to go with the new role.
+          setDeal(count => count + 1);
           setSecrets([]);
           setVoteResult(null);
           setOutcome(null);
@@ -207,7 +211,19 @@ export const PlayerScreen = () => {
 
         case 'PUBLIC_LOG': {
           const line = message.payload as PublicLogPayload;
-          if (line?.message) setPublicLines(prev => [...prev, line]);
+          if (!line?.message) break;
+          // A phone that reconnected is handed the journal again, so a line it
+          // already read must not double.
+          setPublicLines(previous =>
+            previous.some(
+              seen =>
+                seen.round === line.round &&
+                seen.phase === line.phase &&
+                seen.message === line.message,
+            )
+              ? previous
+              : [...previous, line],
+          );
           break;
         }
 
@@ -574,7 +590,8 @@ export const PlayerScreen = () => {
           {mayorId && (
             <Text style={styles.statusText}>
               Mayor:{' '}
-              {roster.find(entry => entry.id === mayorId)?.name ?? 'a player'} (double vote)
+              {roster.find(entry => entry.id === mayorId)?.name ?? 'a player'}{' '}
+              {rules?.['mayor.doubleVote'] === false ? '(mayor)' : '(double vote)'}
             </Text>
           )}
           {clock && (
@@ -740,7 +757,7 @@ export const PlayerScreen = () => {
 
       {tab === 'notes' && (
         <NotesTab
-          gameKey={String(gameId)}
+          gameKey={`${gameId}-${deal}`}
           myRole={role?.roleName ?? 'Unknown'}
           players={roster.map(entry => entry.name)}
         />

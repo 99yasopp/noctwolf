@@ -6,6 +6,7 @@
 //   node /tmp/opencode/build/scripts/game-loop-test.js
 import { GameManager } from '../src/engine/gameManager';
 import {
+  ALL_ROLES,
   AlienRole,
   AngelRole,
   BearTamerRole,
@@ -3865,6 +3866,43 @@ console.log('\n42. the private windows');
   settleSuccession(quietGame);
   check('the bond ends when one of the two dies', quietGame.getChatGroups(quietCupid.id).length === 0);
   check('and the widow cannot write', !quietGame.handleChat(quietCupid.id, 'lovers', 'are you there?'));
+
+  // A thief who takes a wolf card steps into the pack's window. The two spares
+  // are drawn at random, so the draw is steered onto the werewolf.
+  const wolfTable = makePlayers(5);
+  const wolfTransport = new RecordingTransport();
+  const wolfGame = new GameManager(wolfTable, wolfTransport);
+  const sparePool = [...ALL_ROLES, ...getCustomRoles()]
+    .map(role => role.id)
+    .filter(id => id !== 'thief');
+  const realRandom = Math.random;
+  Math.random = () => (sparePool.indexOf('werewolf') + 0.5) / sparePool.length;
+  try {
+    wolfGame.start([ThiefRole, WerewolfRole, VillagerRole, VillagerRole, VillagerRole]);
+  } finally {
+    Math.random = realRandom;
+  }
+  passElection(wolfGame);
+
+  const packWolf = findRole(wolfGame, wolfTable, 'werewolf')!;
+  const luckyThief = findRole(wolfGame, wolfTable, 'thief')!;
+  const groupsSentTo = (playerId: string) =>
+    wolfTransport.directs.filter(
+      direct => direct.playerId === playerId && direct.message.type === 'CHAT_GROUPS',
+    ).length;
+  const wolfHeard = groupsSentTo(packWolf.id);
+  const thiefHeard = groupsSentTo(luckyThief.id);
+
+  check(
+    'the spares include the wolf card',
+    wolfGame.getThiefCards(luckyThief.id).some(card => card.id === 'werewolf'),
+  );
+  check('the thief takes it', wolfGame.handleThiefSwap(luckyThief.id, 'werewolf'));
+  check(
+    'the pack learns him',
+    groupsSentTo(packWolf.id) > wolfHeard && groupsSentTo(luckyThief.id) > thiefHeard,
+  );
+  check('and he holds the pack window', wolfGame.getChatGroups(luckyThief.id).includes('wolves'));
 }
 
 console.log('\n43. the last of the per-role rules');

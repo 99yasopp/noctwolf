@@ -1197,6 +1197,8 @@ export class GameManager {
             this.assignments.get(other.id)?.team === 'Wolf',
         )
         .forEach(wolf => this.sendRoleAssign(wolf.id, this.assignments.get(wolf.id)!, true));
+      // The window itself travels too, or the new wolf's phone never opens it.
+      this.sendChatGroups();
     }
 
     this.emit({ type: 'changed' });
