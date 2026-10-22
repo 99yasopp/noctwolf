@@ -1,4 +1,5 @@
 import { Catalog, Key, en } from './en';
+import { fr } from './fr';
 
 export type { Catalog, Key } from './en';
 
@@ -41,7 +42,7 @@ export const roleRef = (role: { id: string; name: string } | undefined): RoleRef
 // that has not been written yet falls back to English rather than breaking.
 const catalogs: Record<Language, Partial<Catalog>> = {
   en,
-  fr: {},
+  fr,
   ar: {},
 };
 

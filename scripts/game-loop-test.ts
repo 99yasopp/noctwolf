@@ -60,7 +60,7 @@ import { Player } from '../src/engine/types';
 import { splitHostAddress } from '../src/network/address';
 import { packIsKnown } from '../src/engine/gameManager';
 import { digestSections, flatSection } from '../src/ui/info';
-import { Language, Params, catalogKeys, translate, translator } from '../src/i18n';
+import { Key, Language, Params, catalogKeys, translate, translator } from '../src/i18n';
 import { getRoleTips } from '../src/engine/rolepedia';
 
 // What a phone reads for a private line: the key, filled in English.
@@ -4861,6 +4861,28 @@ console.log('\n41. the catalogue covers what the game can say');
       .map(key => `${language}:${key}`),
   );
   check('no other language invents a key', stray.length === 0, stray.join(', '));
+
+  // French ships whole: every English key, and every placeholder where the
+  // English puts one. A missing {name} would read out the wrong sentence, and
+  // a missing key would read out 'log.something'.
+  const placeholders = (text: string) =>
+    (text.match(/\{\w+\}/g) ?? []).sort().join(',');
+  const french = catalogKeys('fr');
+  check(
+    'French fills every English key',
+    french.length === english.size,
+    `${french.length} of ${english.size}`,
+  );
+  const misplaced = french.filter(
+    key =>
+      placeholders(translate('fr', key as Key)) !==
+      placeholders(translate('en', key as Key)),
+  );
+  check(
+    'and keeps every placeholder of its line',
+    misplaced.length === 0,
+    misplaced.join(', '),
+  );
 }
 
 console.log(failures === 0 ? `\nAll checks passed.` : `\n${failures} check(s) failed.`);
