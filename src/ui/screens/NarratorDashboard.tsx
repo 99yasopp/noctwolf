@@ -150,10 +150,17 @@ const NarratorDashboardLive: React.FC<NarratorDashboardLiveProps> = ({
   // else's.
   const hostIsWolf = role?.team === 'Wolf';
 
-  // What the host's own info window holds: the whole story, and in a test game
-  // the narrator's own log on top. His private readings stay on the Play tab,
-  // where he acts on them.
+  // What the host's own info window holds: his private readings, the whole
+  // story, and in a test game the narrator's own log on top.
   const infoSections = [
+    ...(secrets.length
+      ? [
+          flatSection(
+            t('ui.play.privateInfo'),
+            secrets.map(line => t(line.key, line.params)),
+          ),
+        ]
+      : []),
     ...digestSections(manager.getPublicLogEntries(), t),
     ...(seeEverything
       ? [

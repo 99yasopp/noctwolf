@@ -312,6 +312,14 @@ console.log('\n2. first night is peaceful');
     secret?.message.payload.isWolf === true,
     JSON.stringify(secret?.message.payload),
   );
+
+  transport.directs = [];
+  game.sendStateTo(seer.id);
+  const replayed = transport.directs.find(d => d.message.type === 'SECRET_INFO');
+  check(
+    'a seer who reconnects gets the sighting again',
+    replayed?.playerId === seer.id && replayed.message.payload.isWolf === true,
+  );
 }
 
 console.log('\n3. village wins by voting out the wolf');

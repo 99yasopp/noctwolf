@@ -151,6 +151,8 @@ export class GameManager {
   // own table. Kept for one game in memory, never in the table's journal.
   private chatLog: ChatLine[] = [];
   private chatTimes = new Map<string, number[]>();
+  // What each phone was told in private, so a reconnect can read it back.
+  private privateLines = new Map<string, SecretInfoPayload[]>();
   // What the seer found, held until the morning so the village can be told.
   // A key rather than a sentence: every phone reads it in its own language.
   private seerSighting: { key: Key; params?: Params } | null = null;
@@ -274,9 +276,14 @@ export class GameManager {
     params?: Params,
     extra: Partial<SecretInfoPayload> = {},
   ) {
+    const payload: SecretInfoPayload = { key, params, ...extra };
+    this.privateLines.set(playerId, [
+      ...(this.privateLines.get(playerId) ?? []),
+      payload,
+    ]);
     this.transport.sendToPlayer(playerId, {
       type: 'SECRET_INFO',
-      payload: { key, params, ...extra },
+      payload,
       timestamp: Date.now(),
     });
     this.emit({ type: 'secret', playerId, key, params });
@@ -339,6 +346,7 @@ export class GameManager {
     this.packTieSettled = false;
     this.chatLog = [];
     this.chatTimes.clear();
+    this.privateLines.clear();
     this.mayorVolunteers = [];
     this.electionStage = 'nominate';
     this.electionRevote = false;
@@ -1814,6 +1822,16 @@ export class GameManager {
     // A dead player who reconnects is handed the table's cards again.
     const player = this.state.players.find(p => p.id === playerId);
     if (player && !player.isAlive) this.sendRevealTo(playerId);
+
+    // The private readings this phone already earned, so a tab that closed
+    // does not erase the seer's dossier.
+    this.privateLines.get(playerId)?.forEach(payload => {
+      this.transport.sendToPlayer(playerId, {
+        type: 'SECRET_INFO',
+        payload,
+        timestamp: Date.now(),
+      });
+    });
 
     // A phone that comes back owes whatever its stage is still waiting on.
     if (this.deadline && this.deadlineRecipients().includes(playerId)) {

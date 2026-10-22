@@ -337,7 +337,9 @@ export const PlayerScreen = () => {
     client.onClose(() => setDisconnected(true));
 
     // The game may have started before this screen mounted, so ask the host
-    // to repeat what is private to us.
+    // to repeat what is private to us. The response is the whole dossier, so
+    // a reconnect starts it clean rather than appending it twice.
+    setSecrets([]);
     client.sendMessage({ type: 'STATE_REQUEST', payload: {}, timestamp: Date.now() });
 
     return () => lobby.offGuestMessage();
@@ -582,6 +584,14 @@ export const PlayerScreen = () => {
       })
     : [];
   const infoSections = [
+    ...(secrets.length
+      ? [
+          flatSection(
+            t('ui.play.privateInfo'),
+            secrets.map(line => t(line.key, line.params)),
+          ),
+        ]
+      : []),
     ...digestSections(publicLines, t),
     ...(tableRoles.length
       ? [flatSection(t('ui.lobby.tableSetup'), tableRoles)]
