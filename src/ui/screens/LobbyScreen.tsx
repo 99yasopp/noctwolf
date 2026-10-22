@@ -342,7 +342,7 @@ export const LobbyScreen = () => {
             <TextInput
               style={styles.input}
               placeholder={t('ui.lobby.namePlaceholder')}
-              placeholderTextColor="#666"
+              placeholderTextColor={theme.colors.dim}
               value={playerName}
               onChangeText={setPlayerName}
             />
@@ -385,7 +385,7 @@ export const LobbyScreen = () => {
               <TextInput
                 style={styles.input}
                 placeholder={t('ui.lobby.roomCodePlaceholder')}
-                placeholderTextColor="#666"
+                placeholderTextColor={theme.colors.dim}
                 value={inputCode}
                 onChangeText={setInputCode}
                 autoCapitalize="characters"
@@ -394,7 +394,7 @@ export const LobbyScreen = () => {
             <TextInput
               style={styles.input}
               placeholder={t('ui.lobby.hostIpPlaceholder')}
-              placeholderTextColor="#666"
+              placeholderTextColor={theme.colors.dim}
               value={inputIp}
               onChangeText={setInputIp}
               keyboardType="numbers-and-punctuation"
@@ -453,7 +453,8 @@ export const LobbyScreen = () => {
                   <TouchableOpacity
                     style={styles.removeButton}
                     onPress={() => removeBot(p.id)}
-                    activeOpacity={0.7}
+                    activeOpacity={0.75}
+                    accessibilityRole="button"
                   >
                     <Text style={styles.removeText}>{t('ui.common.remove')}</Text>
                   </TouchableOpacity>
@@ -572,22 +573,27 @@ const styles = StyleSheet.create({
     padding: theme.spacing.medium,
   },
   title: {
-    fontSize: 32,
+    fontSize: theme.type.display,
     color: theme.colors.text,
     textAlign: 'center',
     marginBottom: theme.spacing.large,
-    fontWeight: 'bold',
+    fontWeight: '900',
   },
   input: {
     backgroundColor: theme.colors.surface,
     color: theme.colors.text,
     padding: theme.spacing.medium,
     borderRadius: theme.borderRadius,
+    borderWidth: 1,
+    borderColor: theme.colors.fieldBorder,
+    fontSize: theme.type.body,
+    minHeight: theme.touchTarget,
     marginBottom: theme.spacing.small,
   },
   playerText: {
     color: theme.colors.secondary,
     fontSize: 18,
+    fontWeight: '700',
     textAlign: 'center',
     marginVertical: 4,
   },
@@ -595,10 +601,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    marginVertical: 2,
   },
   removeButton: {
-    paddingHorizontal: theme.spacing.small,
-    paddingVertical: 4,
+    minHeight: theme.inlineTouchTarget,
+    minWidth: theme.inlineTouchTarget,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: theme.borderRadius,
     borderWidth: 1,
     borderColor: theme.colors.danger,
@@ -606,23 +617,25 @@ const styles = StyleSheet.create({
   },
   removeText: {
     color: theme.colors.danger,
-    fontSize: 13,
+    fontSize: theme.type.small,
+    fontWeight: '700',
   },
   text: {
     color: theme.colors.text,
-    fontSize: 16,
+    fontSize: theme.type.body,
     textAlign: 'center',
     marginBottom: theme.spacing.small,
   },
   hint: {
-    color: '#888',
-    fontSize: 13,
+    color: theme.colors.dim,
+    fontSize: theme.type.small,
     textAlign: 'center',
     marginBottom: theme.spacing.small,
   },
   error: {
     color: theme.colors.danger,
     fontSize: 15,
+    fontWeight: '600',
     textAlign: 'center',
     marginBottom: theme.spacing.small,
   },

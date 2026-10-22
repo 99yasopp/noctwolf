@@ -47,13 +47,15 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: theme.colors.surface,
     borderRadius: theme.borderRadius,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
     padding: theme.spacing.medium,
     marginBottom: theme.spacing.medium,
   },
   heading: {
     color: theme.colors.primary,
-    fontSize: 15,
-    fontWeight: 'bold',
+    fontSize: theme.type.body,
+    fontWeight: '800',
     marginBottom: 4,
   },
   // A rule between the kinds, so a block of ballots does not run into the
@@ -65,15 +67,15 @@ const styles = StyleSheet.create({
     paddingTop: theme.spacing.small,
   },
   groupLabel: {
-    fontSize: 12,
-    fontWeight: 'bold',
+    fontSize: theme.type.label,
+    fontWeight: '800',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
     marginBottom: 3,
   },
   line: {
     color: theme.colors.text,
-    fontSize: 14,
+    fontSize: 15,
+    lineHeight: 21,
     marginBottom: 3,
   },
 });

@@ -151,7 +151,13 @@ export const NotesTab: React.FC<Props> = ({ gameKey, myRole, players }) => {
         <Text style={styles.hint}>{t('ui.notes.noPages')}</Text>
       ) : (
         index.map(entry => (
-          <TouchableOpacity key={entry.id} onPress={() => openPast(entry.id)}>
+          <TouchableOpacity
+            key={entry.id}
+            style={styles.pastButton}
+            onPress={() => openPast(entry.id)}
+            activeOpacity={0.75}
+            accessibilityRole="button"
+          >
             <Text style={styles.entry}>
               {t('ui.notes.pastEntry', {
                 date: entry.date.slice(0, 10),
@@ -190,8 +196,8 @@ export const NotesTab: React.FC<Props> = ({ gameKey, myRole, players }) => {
 const styles = StyleSheet.create({
   heading: {
     color: theme.colors.text,
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 19,
+    fontWeight: '800',
     marginBottom: theme.spacing.small,
   },
   hint: {
@@ -205,12 +211,16 @@ const styles = StyleSheet.create({
   },
   body: {
     color: theme.colors.text,
+    fontSize: theme.type.body,
+    lineHeight: 22,
     marginBottom: theme.spacing.small,
   },
   pad: {
     backgroundColor: theme.colors.raised,
     color: theme.colors.text,
     borderRadius: theme.borderRadius,
+    borderWidth: 1,
+    borderColor: theme.colors.fieldBorder,
     padding: theme.spacing.small,
     minHeight: 96,
     textAlignVertical: 'top',
@@ -218,8 +228,8 @@ const styles = StyleSheet.create({
   },
   subHeader: {
     color: theme.colors.text,
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: 17,
+    fontWeight: '800',
     marginTop: theme.spacing.small,
     marginBottom: theme.spacing.small,
   },
@@ -237,15 +247,23 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.raised,
     color: theme.colors.text,
     borderRadius: theme.borderRadius,
+    borderWidth: 1,
+    borderColor: theme.colors.fieldBorder,
     paddingHorizontal: theme.spacing.small,
     paddingVertical: theme.spacing.small,
+    minHeight: theme.inlineTouchTarget,
   },
   pastLine: {
     color: theme.colors.text,
     marginBottom: 2,
   },
+  pastButton: {
+    minHeight: theme.inlineTouchTarget,
+    justifyContent: 'center',
+  },
   entry: {
     color: theme.colors.secondary,
-    paddingVertical: 6,
+    fontSize: 15,
+    fontWeight: '600',
   },
 });

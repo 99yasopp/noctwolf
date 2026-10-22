@@ -643,16 +643,19 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surface,
     padding: theme.spacing.medium,
     borderRadius: theme.borderRadius,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
     marginBottom: theme.spacing.medium,
   },
   heading: {
     color: theme.colors.text,
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 19,
+    fontWeight: '800',
     marginBottom: theme.spacing.small,
   },
   body: {
-    color: '#888',
+    color: theme.colors.dim,
     fontSize: 15,
+    lineHeight: 21,
   },
 });

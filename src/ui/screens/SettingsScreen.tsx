@@ -158,7 +158,7 @@ export const SettingsScreen = ({ onBack }: Props) => {
       <TextInput
         style={styles.input}
         placeholder="sk-..."
-        placeholderTextColor="#666"
+        placeholderTextColor={theme.colors.dim}
         value={apiKey}
         onChangeText={setApiKey}
         secureTextEntry
@@ -171,7 +171,7 @@ export const SettingsScreen = ({ onBack }: Props) => {
       <TextInput
         style={[styles.input, styles.prompt]}
         placeholder={t('ui.settings.prompt')}
-        placeholderTextColor="#666"
+        placeholderTextColor={theme.colors.dim}
         value={prompt}
         onChangeText={setPrompt}
         multiline
@@ -202,7 +202,8 @@ export const SettingsScreen = ({ onBack }: Props) => {
             <TouchableOpacity
               style={styles.removeButton}
               onPress={() => remove(role.id)}
-              activeOpacity={0.7}
+              activeOpacity={0.75}
+              accessibilityRole="button"
             >
               <Text style={styles.removeText}>{t('ui.settings.delete')}</Text>
             </TouchableOpacity>
@@ -225,24 +226,27 @@ const styles = StyleSheet.create({
     paddingBottom: theme.spacing.large,
   },
   header: {
-    fontSize: 24,
+    fontSize: theme.type.title,
     color: theme.colors.text,
+    fontWeight: '900',
     marginBottom: theme.spacing.medium,
   },
   subHeader: {
-    fontSize: 18,
+    fontSize: theme.type.section,
     color: theme.colors.text,
-    fontWeight: 'bold',
+    fontWeight: '800',
     marginTop: theme.spacing.large,
     marginBottom: theme.spacing.small,
   },
   text: {
     color: theme.colors.text,
+    fontSize: theme.type.body,
+    lineHeight: 22,
     marginBottom: theme.spacing.small,
   },
   hint: {
-    color: '#888',
-    fontSize: 13,
+    color: theme.colors.dim,
+    fontSize: theme.type.small,
     marginBottom: theme.spacing.small,
   },
   input: {
@@ -250,6 +254,10 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     padding: theme.spacing.medium,
     borderRadius: theme.borderRadius,
+    borderWidth: 1,
+    borderColor: theme.colors.fieldBorder,
+    fontSize: theme.type.body,
+    minHeight: theme.touchTarget,
     marginBottom: theme.spacing.medium,
   },
   prompt: {
@@ -259,6 +267,7 @@ const styles = StyleSheet.create({
   error: {
     color: theme.colors.danger,
     fontSize: 15,
+    fontWeight: '600',
     marginBottom: theme.spacing.small,
   },
   roleRow: {
@@ -272,11 +281,16 @@ const styles = StyleSheet.create({
   },
   roleName: {
     color: theme.colors.text,
-    fontSize: 16,
+    fontSize: theme.type.body,
+    fontWeight: '600',
   },
   removeButton: {
-    paddingHorizontal: theme.spacing.small,
-    paddingVertical: 4,
+    minHeight: theme.inlineTouchTarget,
+    minWidth: theme.inlineTouchTarget,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: theme.borderRadius,
     borderWidth: 1,
     borderColor: theme.colors.danger,
@@ -284,6 +298,7 @@ const styles = StyleSheet.create({
   },
   removeText: {
     color: theme.colors.danger,
-    fontSize: 13,
+    fontSize: theme.type.small,
+    fontWeight: '700',
   },
 });

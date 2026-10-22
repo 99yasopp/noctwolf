@@ -609,7 +609,8 @@ export const NarratorDashboard = () => {
               <TouchableOpacity
                 style={styles.removeButton}
                 onPress={() => lobby.removePlayer(player.id)}
-                activeOpacity={0.7}
+                activeOpacity={0.75}
+                accessibilityRole="button"
               >
                 <Text style={styles.removeText}>{t('ui.common.remove')}</Text>
               </TouchableOpacity>
@@ -667,15 +668,17 @@ const styles = StyleSheet.create({
     paddingBottom: theme.spacing.large,
   },
   header: {
-    fontSize: 24,
+    fontSize: theme.type.title,
     color: theme.colors.text,
-    fontWeight: 'bold',
+    fontWeight: '900',
     marginBottom: theme.spacing.medium,
   },
   statusCard: {
     backgroundColor: theme.colors.surface,
     padding: theme.spacing.medium,
     borderRadius: theme.borderRadius,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
     marginBottom: theme.spacing.medium,
   },
   roleCard: {
@@ -687,37 +690,43 @@ const styles = StyleSheet.create({
   },
   roleLabel: {
     color: theme.colors.background,
-    fontSize: 14,
+    fontSize: theme.type.small,
+    fontWeight: '700',
   },
   roleName: {
     color: theme.colors.background,
-    fontSize: 28,
-    fontWeight: 'bold',
+    fontSize: theme.type.hero,
+    fontWeight: '900',
+    textAlign: 'center',
   },
   roleTeam: {
     color: theme.colors.background,
-    fontSize: 14,
+    fontSize: 15,
+    fontWeight: '700',
     marginTop: 4,
   },
   roleDescription: {
     color: theme.colors.background,
-    fontSize: 14,
+    fontSize: 15,
+    lineHeight: 21,
     textAlign: 'center',
     marginTop: theme.spacing.small,
   },
   statusText: {
     color: theme.colors.text,
-    fontSize: 16,
+    fontSize: theme.type.body,
+    lineHeight: 22,
     marginVertical: 4,
   },
   pending: {
     color: theme.colors.secondary,
-    fontSize: 14,
+    fontSize: theme.type.small,
+    fontWeight: '600',
     marginTop: 4,
   },
   tallyText: {
-    color: '#888',
-    fontSize: 14,
+    color: theme.colors.dim,
+    fontSize: theme.type.small,
   },
   winnerCard: {
     backgroundColor: theme.colors.primary,
@@ -727,31 +736,32 @@ const styles = StyleSheet.create({
   },
   winnerText: {
     color: theme.colors.background,
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 22,
+    fontWeight: '900',
     textAlign: 'center',
   },
   secretCard: {
-    backgroundColor: '#2A1E3A',
+    backgroundColor: theme.colors.tintAlliance,
     padding: theme.spacing.medium,
     borderRadius: theme.borderRadius,
     marginBottom: theme.spacing.medium,
   },
   secretHeading: {
     color: theme.colors.primary,
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: 17,
+    fontWeight: '800',
     marginBottom: theme.spacing.small,
   },
   secretText: {
     color: theme.colors.text,
     fontSize: 15,
+    lineHeight: 21,
     marginVertical: 2,
   },
   subHeader: {
-    fontSize: 18,
+    fontSize: theme.type.section,
     color: theme.colors.text,
-    fontWeight: 'bold',
+    fontWeight: '800',
     marginTop: theme.spacing.medium,
     marginBottom: theme.spacing.small,
   },
@@ -765,8 +775,12 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   removeButton: {
-    paddingHorizontal: theme.spacing.small,
-    paddingVertical: 4,
+    minHeight: theme.inlineTouchTarget,
+    minWidth: theme.inlineTouchTarget,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: theme.borderRadius,
     borderWidth: 1,
     borderColor: theme.colors.danger,
@@ -774,7 +788,8 @@ const styles = StyleSheet.create({
   },
   removeText: {
     color: theme.colors.danger,
-    fontSize: 13,
+    fontSize: theme.type.small,
+    fontWeight: '700',
   },
   timerRow: {
     marginTop: theme.spacing.small,
@@ -785,8 +800,8 @@ const styles = StyleSheet.create({
   },
   timerText: {
     color: theme.colors.primary,
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 22,
+    fontWeight: '900',
     marginBottom: theme.spacing.small,
   },
   urgentText: {
@@ -795,44 +810,48 @@ const styles = StyleSheet.create({
   ready: {
     color: theme.colors.secondary,
     fontSize: 15,
+    fontWeight: '700',
     marginTop: theme.spacing.small,
   },
   ballotText: {
-    color: '#999',
+    color: theme.colors.dim,
     fontSize: 13,
     marginTop: 2,
   },
   winnerSub: {
     color: theme.colors.background,
     fontSize: 13,
+    fontWeight: '600',
     textAlign: 'center',
     marginBottom: theme.spacing.small,
   },
   playerName: {
     color: theme.colors.text,
-    fontSize: 16,
+    fontSize: theme.type.body,
+    fontWeight: '600',
   },
   playerRole: {
-    color: '#888',
-    fontSize: 14,
+    color: theme.colors.dim,
+    fontSize: theme.type.small,
   },
   dead: {
     textDecorationLine: 'line-through',
-    color: '#666',
+    color: theme.colors.dim,
   },
   testBanner: {
-    backgroundColor: '#1F3A2A',
+    backgroundColor: theme.colors.tintGood,
     padding: theme.spacing.medium,
     borderRadius: theme.borderRadius,
     marginBottom: theme.spacing.medium,
   },
   bannerText: {
     color: theme.colors.text,
-    fontSize: 14,
+    fontSize: theme.type.small,
+    fontWeight: '600',
     textAlign: 'center',
   },
   hint: {
-    color: '#888',
+    color: theme.colors.dim,
     fontSize: 13,
     textAlign: 'center',
     marginTop: theme.spacing.medium,

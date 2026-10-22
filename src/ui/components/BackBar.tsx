@@ -11,19 +11,22 @@ interface Props {
 
 // The way out of a screen, always on top so nothing has to be scrolled. It
 // calls leaveScreen, so the screen has to register its own action with useBack.
+// The whole bar row is a 48dp target, including the side padding.
 export const BackBar: React.FC<Props> = ({ label }) => {
   const { t, rtl } = useI18n();
+  const title = label ?? t('ui.common.back');
 
   return (
     <View style={styles.bar}>
       <TouchableOpacity
+        style={styles.button}
         onPress={leaveScreen}
-        activeOpacity={0.7}
+        activeOpacity={0.75}
         accessibilityRole="button"
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        accessibilityLabel={title}
       >
         <Text style={styles.text}>
-          {rtl ? '›' : '‹'} {label ?? t('ui.common.back')}
+          {rtl ? '›' : '‹'} {title}
         </Text>
       </TouchableOpacity>
     </View>
@@ -33,12 +36,17 @@ export const BackBar: React.FC<Props> = ({ label }) => {
 const styles = StyleSheet.create({
   bar: {
     backgroundColor: theme.colors.surface,
-    paddingVertical: theme.spacing.small,
+    minHeight: theme.touchTarget,
+  },
+  button: {
+    minHeight: theme.touchTarget,
+    justifyContent: 'center',
+    alignSelf: 'flex-start',
     paddingHorizontal: theme.spacing.medium,
   },
   text: {
     color: theme.colors.primary,
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 17,
+    fontWeight: '700',
   },
 });

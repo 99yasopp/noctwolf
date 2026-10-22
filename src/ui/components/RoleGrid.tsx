@@ -69,7 +69,12 @@ export const RoleGrid: React.FC<Props> = ({ roles, counts, onChange }) => {
               • {actionLabel(open.id, action.id, action.label)}
             </Text>
           ))}
-          <TouchableOpacity onPress={() => setOpenRole(null)} activeOpacity={0.7}>
+          <TouchableOpacity
+            style={styles.cardCloseButton}
+            onPress={() => setOpenRole(null)}
+            activeOpacity={0.75}
+            accessibilityRole="button"
+          >
             <Text style={styles.cardClose}>{t('ui.grid.close')}</Text>
           </TouchableOpacity>
         </View>
@@ -91,8 +96,10 @@ export const RoleGrid: React.FC<Props> = ({ roles, counts, onChange }) => {
                   style={[styles.tile, { borderColor: colour }, count > 0 && styles.tileTaken]}
                 >
                   <TouchableOpacity
+                    style={styles.tileNameButton}
                     onPress={() => setOpenRole(role.id === openRole ? null : role.id)}
-                    activeOpacity={0.7}
+                    activeOpacity={0.75}
+                    accessibilityRole="button"
                   >
                     <Text style={styles.tileName}>{roleName(role.id, role.name)}</Text>
                   </TouchableOpacity>
@@ -100,7 +107,8 @@ export const RoleGrid: React.FC<Props> = ({ roles, counts, onChange }) => {
                     <TouchableOpacity
                       style={styles.stepButton}
                       onPress={() => step(role.id, -1)}
-                      activeOpacity={0.7}
+                      activeOpacity={0.75}
+                      accessibilityRole="button"
                     >
                       <Text style={styles.stepText}>−</Text>
                     </TouchableOpacity>
@@ -110,7 +118,8 @@ export const RoleGrid: React.FC<Props> = ({ roles, counts, onChange }) => {
                     <TouchableOpacity
                       style={styles.stepButton}
                       onPress={() => step(role.id, 1)}
-                      activeOpacity={0.7}
+                      activeOpacity={0.75}
+                      accessibilityRole="button"
                     >
                       <Text style={styles.stepText}>+</Text>
                     </TouchableOpacity>
@@ -130,13 +139,16 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.raised,
     color: theme.colors.text,
     borderRadius: theme.borderRadius,
+    borderWidth: 1,
+    borderColor: theme.colors.fieldBorder,
     paddingHorizontal: theme.spacing.small,
     paddingVertical: theme.spacing.small,
+    minHeight: theme.inlineTouchTarget,
     marginBottom: theme.spacing.small,
   },
   groupHeader: {
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: 17,
+    fontWeight: '800',
     marginTop: theme.spacing.small,
     marginBottom: theme.spacing.small,
   },
@@ -156,10 +168,14 @@ const styles = StyleSheet.create({
   tileTaken: {
     backgroundColor: theme.colors.raised,
   },
+  tileNameButton: {
+    minHeight: theme.inlineTouchTarget,
+    justifyContent: 'center',
+  },
   tileName: {
     color: theme.colors.text,
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: theme.type.body,
+    fontWeight: '700',
   },
   tileButtons: {
     flexDirection: 'row',
@@ -168,23 +184,25 @@ const styles = StyleSheet.create({
     marginTop: theme.spacing.small,
   },
   stepButton: {
-    width: 34,
-    height: 34,
+    width: theme.inlineTouchTarget,
+    height: theme.inlineTouchTarget,
     borderRadius: theme.borderRadius,
     backgroundColor: theme.colors.background,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   stepText: {
     color: theme.colors.text,
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 22,
+    fontWeight: '900',
   },
   tileCount: {
     color: theme.colors.dim,
     fontSize: 18,
-    fontWeight: 'bold',
-    minWidth: 34,
+    fontWeight: '800',
+    minWidth: 32,
     textAlign: 'center',
   },
   card: {
@@ -195,20 +213,28 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.small,
   },
   cardName: {
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: theme.type.card,
+    fontWeight: '800',
     marginBottom: theme.spacing.small,
   },
   cardText: {
     color: theme.colors.text,
+    fontSize: 15,
+    lineHeight: 21,
   },
   cardAction: {
     color: theme.colors.dim,
+    fontSize: theme.type.small,
     marginTop: theme.spacing.small,
+  },
+  cardCloseButton: {
+    minHeight: theme.inlineTouchTarget,
+    justifyContent: 'center',
   },
   cardClose: {
     color: theme.colors.primary,
     marginTop: theme.spacing.small,
-    fontWeight: 'bold',
+    fontSize: theme.type.body,
+    fontWeight: '800',
   },
 });

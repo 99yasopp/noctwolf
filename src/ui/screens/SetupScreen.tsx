@@ -76,7 +76,8 @@ const Stepper: React.FC<{
         <TouchableOpacity
           style={[styles.stepButton, count <= 0 && styles.stepButtonOff]}
           onPress={() => step(-1)}
-          activeOpacity={0.7}
+          activeOpacity={0.75}
+          accessibilityRole="button"
         >
           <Text style={styles.stepText}>−</Text>
         </TouchableOpacity>
@@ -100,7 +101,8 @@ const Stepper: React.FC<{
         <TouchableOpacity
           style={styles.stepButton}
           onPress={() => step(1)}
-          activeOpacity={0.7}
+          activeOpacity={0.75}
+          accessibilityRole="button"
         >
           <Text style={styles.stepText}>+</Text>
         </TouchableOpacity>
@@ -218,22 +220,22 @@ const styles = StyleSheet.create({
     paddingBottom: theme.spacing.large * 2,
   },
   title: {
-    fontSize: 28,
+    fontSize: theme.type.title,
     color: theme.colors.text,
     textAlign: 'center',
-    fontWeight: 'bold',
+    fontWeight: '900',
     marginBottom: theme.spacing.small,
   },
   subHeader: {
     color: theme.colors.text,
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: theme.type.section,
+    fontWeight: '800',
     marginTop: theme.spacing.medium,
     marginBottom: theme.spacing.small,
   },
   hint: {
-    color: '#888',
-    fontSize: 13,
+    color: theme.colors.dim,
+    fontSize: theme.type.small,
     textAlign: 'center',
     marginBottom: theme.spacing.small,
   },
@@ -243,6 +245,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     backgroundColor: theme.colors.surface,
     borderRadius: theme.borderRadius,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
     paddingHorizontal: theme.spacing.medium,
     paddingVertical: theme.spacing.small,
     marginVertical: 4,
@@ -253,20 +257,21 @@ const styles = StyleSheet.create({
   },
   roleName: {
     color: theme.colors.text,
-    fontSize: 16,
+    fontSize: theme.type.body,
+    fontWeight: '600',
   },
   roleNote: {
-    color: '#888',
-    fontSize: 12,
+    color: theme.colors.dim,
+    fontSize: 13,
   },
   stepperButtons: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   stepButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: theme.inlineTouchTarget,
+    height: theme.inlineTouchTarget,
+    borderRadius: theme.inlineTouchTarget / 2,
     backgroundColor: theme.colors.secondary,
     alignItems: 'center',
     justifyContent: 'center',
@@ -276,15 +281,15 @@ const styles = StyleSheet.create({
   },
   stepText: {
     color: theme.colors.background,
-    fontSize: 22,
-    fontWeight: 'bold',
-    lineHeight: 24,
+    fontSize: 24,
+    fontWeight: '900',
+    lineHeight: 26,
   },
   count: {
     color: theme.colors.text,
     fontSize: 18,
-    fontWeight: 'bold',
-    minWidth: 32,
+    fontWeight: '800',
+    minWidth: 36,
     textAlign: 'center',
   },
   // A duration is a figure the host writes, so it reads as a field with the
@@ -297,17 +302,18 @@ const styles = StyleSheet.create({
   countInput: {
     color: theme.colors.text,
     fontSize: 18,
-    fontWeight: 'bold',
-    minWidth: 40,
+    fontWeight: '800',
+    minWidth: 44,
+    minHeight: theme.inlineTouchTarget,
     textAlign: 'center',
-    paddingVertical: 2,
-    borderBottomWidth: 1,
+    paddingVertical: 8,
+    borderBottomWidth: 2,
     borderBottomColor: theme.colors.secondary,
   },
   countUnit: {
     color: theme.colors.text,
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '800',
     marginLeft: 2,
   },
   problemCard: {
@@ -318,13 +324,15 @@ const styles = StyleSheet.create({
   },
   problemText: {
     color: theme.colors.danger,
-    fontSize: 14,
+    fontSize: theme.type.small,
+    fontWeight: '600',
     textAlign: 'center',
     marginBottom: theme.spacing.small,
   },
   okText: {
     color: theme.colors.secondary,
-    fontSize: 14,
+    fontSize: theme.type.small,
+    fontWeight: '700',
     textAlign: 'center',
     marginBottom: theme.spacing.small,
   },

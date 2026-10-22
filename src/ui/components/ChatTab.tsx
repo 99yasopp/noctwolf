@@ -103,8 +103,8 @@ const styles = StyleSheet.create({
   },
   heading: {
     color: theme.colors.text,
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 19,
+    fontWeight: '800',
     marginBottom: theme.spacing.small,
   },
   hint: {
@@ -133,8 +133,11 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.raised,
     color: theme.colors.text,
     borderRadius: theme.borderRadius,
-    paddingHorizontal: theme.spacing.small,
-    paddingVertical: theme.spacing.small,
+    borderWidth: 1,
+    borderColor: theme.colors.fieldBorder,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    minHeight: theme.inlineTouchTarget,
     marginRight: theme.spacing.small,
   },
 });

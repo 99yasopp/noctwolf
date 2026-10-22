@@ -29,21 +29,24 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surface,
     padding: theme.spacing.medium,
     borderRadius: theme.borderRadius,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
     marginBottom: theme.spacing.medium,
   },
   heading: {
     color: theme.colors.primary,
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: 19,
+    fontWeight: '800',
     marginBottom: theme.spacing.small,
   },
   row: {
     color: theme.colors.text,
     fontSize: 15,
+    lineHeight: 21,
     marginVertical: 2,
   },
   dead: {
-    color: '#666',
+    color: theme.colors.dim,
     textDecorationLine: 'line-through',
   },
 });

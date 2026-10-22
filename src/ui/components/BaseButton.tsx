@@ -9,12 +9,16 @@ interface ButtonProps {
   variant?: 'primary' | 'secondary' | 'danger';
 }
 
+// Every button clears the 48dp Android target on its own: no hitSlop needed,
+// and the ink label on gold sits at 10:1.
 export const BaseButton: React.FC<ButtonProps> = ({ title, onPress, variant = 'primary' }) => {
   return (
-    <TouchableOpacity 
-      style={[styles.button, { backgroundColor: theme.colors[variant] }]} 
+    <TouchableOpacity
+      style={[styles.button, { backgroundColor: theme.colors[variant] }]}
       onPress={onPress}
-      activeOpacity={0.7}
+      activeOpacity={0.75}
+      accessibilityRole="button"
+      accessibilityLabel={title}
     >
       <Text style={styles.text}>{title}</Text>
     </TouchableOpacity>
@@ -23,14 +27,18 @@ export const BaseButton: React.FC<ButtonProps> = ({ title, onPress, variant = 'p
 
 const styles = StyleSheet.create({
   button: {
-    padding: theme.spacing.medium,
+    minHeight: theme.touchTarget,
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: theme.spacing.medium,
     borderRadius: theme.borderRadius,
     alignItems: 'center',
     marginVertical: theme.spacing.small,
   },
   text: {
     color: theme.colors.background,
-    fontWeight: 'bold',
-    fontSize: 16,
+    fontWeight: '800',
+    fontSize: 17,
+    textAlign: 'center',
   },
 });

@@ -16,21 +16,25 @@ interface Props {
 }
 
 // One bar for the whole game: the host's dashboard and every player phone show
-// the same four doors, whatever happens to be behind them.
+// the same four doors, whatever happens to be behind them. Each door is a full
+// 48dp target, and the open one is marked in gold rather than by fill alone.
 export const TabBar: React.FC<Props> = ({ tabs, active, onSelect }) => (
   <View style={styles.bar}>
-    {tabs.map(tab => (
-      <TouchableOpacity
-        key={tab.id}
-        style={[styles.tab, tab.id === active && styles.tabActive]}
-        onPress={() => onSelect(tab.id)}
-        activeOpacity={0.7}
-      >
-        <Text style={[styles.label, tab.id === active && styles.labelActive]}>
-          {tab.label}
-        </Text>
-      </TouchableOpacity>
-    ))}
+    {tabs.map(tab => {
+      const selected = tab.id === active;
+      return (
+        <TouchableOpacity
+          key={tab.id}
+          style={[styles.tab, selected && styles.tabActive]}
+          onPress={() => onSelect(tab.id)}
+          activeOpacity={0.75}
+          accessibilityRole="tab"
+          accessibilityState={{ selected }}
+        >
+          <Text style={[styles.label, selected && styles.labelActive]}>{tab.label}</Text>
+        </TouchableOpacity>
+      );
+    })}
   </View>
 );
 
@@ -41,21 +45,25 @@ const styles = StyleSheet.create({
     borderRadius: theme.borderRadius,
     marginBottom: theme.spacing.medium,
     padding: 4,
+    gap: 4,
   },
   tab: {
     flex: 1,
+    minHeight: theme.touchTarget,
     alignItems: 'center',
-    paddingVertical: theme.spacing.small,
-    borderRadius: theme.borderRadius,
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: theme.borderRadius - 4,
   },
   tabActive: {
     backgroundColor: theme.colors.raised,
   },
   label: {
     color: theme.colors.dim,
-    fontWeight: '600',
+    fontWeight: '700',
+    fontSize: 13,
   },
   labelActive: {
-    color: theme.colors.text,
+    color: theme.colors.primary,
   },
 });
