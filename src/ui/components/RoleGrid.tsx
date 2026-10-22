@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TextInput, TouchableOpacity } from 'react-nativ
 import { theme, teamColor } from '../theme/colors';
 import { PlayableRole } from '../../engine/roleSet';
 import { actionLabel, roleDescription, roleName, teamName } from '../../i18n';
+import { useI18n } from '../i18n';
 
 // The sides in the order the host reads them. A custom role may bring a side
 // of its own, which lands in the last group.
@@ -18,6 +19,7 @@ interface Props {
 // The host's table as tiles: one per role, grouped by side, each showing how
 // many seats it takes. Tapping a tile opens what the role does.
 export const RoleGrid: React.FC<Props> = ({ roles, counts, onChange }) => {
+  const { t } = useI18n();
   const [openRole, setOpenRole] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
@@ -49,7 +51,7 @@ export const RoleGrid: React.FC<Props> = ({ roles, counts, onChange }) => {
         style={styles.search}
         value={search}
         onChangeText={setSearch}
-        placeholder="Search roles"
+        placeholder={t('ui.grid.search')}
         placeholderTextColor={theme.colors.dim}
       />
 
@@ -67,7 +69,7 @@ export const RoleGrid: React.FC<Props> = ({ roles, counts, onChange }) => {
             </Text>
           ))}
           <TouchableOpacity onPress={() => setOpenRole(null)} activeOpacity={0.7}>
-            <Text style={styles.cardClose}>Close</Text>
+            <Text style={styles.cardClose}>{t('ui.grid.close')}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -75,7 +77,7 @@ export const RoleGrid: React.FC<Props> = ({ roles, counts, onChange }) => {
       {groups.map(group => (
         <View key={group.team}>
           <Text style={[styles.groupHeader, { color: teamColor(group.team) }]}>
-            {group.team === OTHER ? 'Other sides' : teamName(group.team)}
+            {group.team === OTHER ? t('ui.grid.otherSides') : teamName(group.team)}
           </Text>
           <View style={styles.grid}>
             {group.roles.map(role => {

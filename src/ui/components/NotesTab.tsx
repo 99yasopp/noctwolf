@@ -15,6 +15,7 @@ import {
   openPageFor,
   rememberPage,
 } from '../../services/notesStore';
+import { useI18n } from '../i18n';
 
 interface Props {
   // One page per deal: a rematch opens a fresh one.
@@ -28,6 +29,7 @@ interface Props {
 // and every past game still in reach. Nothing here is ever sent anywhere, and
 // clearing it is final.
 export const NotesTab: React.FC<Props> = ({ gameKey, myRole, players }) => {
+  const { t } = useI18n();
   const [page, setPage] = useState<GameNotes>(() => openPageFor(gameKey, myRole));
   const [index, setIndex] = useState<GameNoteEntry[]>([]);
   const [reading, setReading] = useState<GameNotes | null>(null);
@@ -86,8 +88,11 @@ export const NotesTab: React.FC<Props> = ({ gameKey, myRole, players }) => {
     <View>
       <Text style={styles.heading}>
         {reading
-          ? `Your notes, ${reading.date.slice(0, 10)} — you were ${reading.myRole}`
-          : 'Your notes for this game'}
+          ? t('ui.notes.pageFor', {
+              date: reading.date.slice(0, 10),
+              role: reading.myRole,
+            })
+          : t('ui.notes.page')}
       </Text>
 
       {reading ? (
@@ -95,7 +100,7 @@ export const NotesTab: React.FC<Props> = ({ gameKey, myRole, players }) => {
           {reading.text ? (
             <Text style={styles.body}>{reading.text}</Text>
           ) : (
-            <Text style={styles.hint}>That page has no notes on it.</Text>
+            <Text style={styles.hint}>{t('ui.notes.empty')}</Text>
           )}
           {Object.entries(reading.players)
             .filter(([, note]) => note)
@@ -105,28 +110,25 @@ export const NotesTab: React.FC<Props> = ({ gameKey, myRole, players }) => {
               </Text>
             ))}
           <BaseButton
-            title="Back to this game's page"
+            title={t('ui.notes.back')}
             variant="secondary"
             onPress={() => setReading(null)}
           />
         </>
       ) : (
         <>
-          <Text style={styles.hint}>
-            Only this phone keeps these words. The table never hears them, and
-            they stay after the game is over.
-          </Text>
+          <Text style={styles.hint}>{t('ui.notes.private')}</Text>
           <TextInput
             style={styles.pad}
             multiline
             value={page.text}
             onChangeText={editText}
             maxLength={NOTES_TEXT_LIMIT}
-            placeholder="What happened this game?"
+            placeholder={t('ui.notes.placeholder')}
             placeholderTextColor={theme.colors.dim}
           />
 
-          <Text style={styles.subHeader}>About the players</Text>
+          <Text style={styles.subHeader}>{t('ui.notes.aboutPlayers')}</Text>
           {players.map(name => (
             <View key={name} style={styles.playerRow}>
               <Text style={styles.playerName}>{name}</Text>
@@ -135,7 +137,7 @@ export const NotesTab: React.FC<Props> = ({ gameKey, myRole, players }) => {
                 value={page.players[name] ?? ''}
                 onChangeText={note => editPlayer(name, note)}
                 maxLength={NOTES_PLAYER_LIMIT}
-                placeholder="Your guess"
+                placeholder={t('ui.notes.guess')}
                 placeholderTextColor={theme.colors.dim}
               />
             </View>
@@ -143,14 +145,17 @@ export const NotesTab: React.FC<Props> = ({ gameKey, myRole, players }) => {
         </>
       )}
 
-      <Text style={styles.subHeader}>Past games</Text>
+      <Text style={styles.subHeader}>{t('ui.notes.past')}</Text>
       {index.length === 0 ? (
-        <Text style={styles.hint}>No pages yet. This is the first one.</Text>
+        <Text style={styles.hint}>{t('ui.notes.noPages')}</Text>
       ) : (
         index.map(entry => (
           <TouchableOpacity key={entry.id} onPress={() => openPast(entry.id)}>
             <Text style={styles.entry}>
-              {entry.date.slice(0, 10)} · you were {entry.myRole}
+              {t('ui.notes.pastEntry', {
+                date: entry.date.slice(0, 10),
+                role: entry.myRole,
+              })}
             </Text>
           </TouchableOpacity>
         ))
@@ -158,20 +163,21 @@ export const NotesTab: React.FC<Props> = ({ gameKey, myRole, players }) => {
 
       {confirmClear ? (
         <>
-          <Text style={styles.warn}>
-            Every page, this game's and the past ones, goes for good. There is
-            no undo.
-          </Text>
-          <BaseButton title="Yes, erase every note" variant="danger" onPress={clearAll} />
+          <Text style={styles.warn}>{t('ui.notes.clearWarning')}</Text>
           <BaseButton
-            title="Keep them"
+            title={t('ui.notes.clearYes')}
+            variant="danger"
+            onPress={clearAll}
+          />
+          <BaseButton
+            title={t('ui.notes.clearNo')}
             variant="secondary"
             onPress={() => setConfirmClear(false)}
           />
         </>
       ) : (
         <BaseButton
-          title="Clear all notes"
+          title={t('ui.notes.clearAll')}
           variant="danger"
           onPress={() => setConfirmClear(true)}
         />

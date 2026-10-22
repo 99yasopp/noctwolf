@@ -6,6 +6,7 @@ import { useBack } from '../back';
 import { actionLabel, roleDescription, roleName, roleTips, teamName } from '../../i18n';
 import { ALL_ROLES, getCustomRoles } from '../../engine/roleSet';
 import { getRoleTips } from '../../engine/rolepedia';
+import { useI18n } from '../i18n';
 
 interface Props {
   onBack: () => void;
@@ -41,6 +42,14 @@ const MAYOR_RULES = [
 export const RulesScreen = ({ onBack }: Props) => {
   const customRoles = getCustomRoles();
   const roles = [...ALL_ROLES, ...customRoles];
+  const { t } = useI18n();
+
+  // The long pages travel as one key with one line per row: a language rewrites
+  // the whole page in its own words, and the screen only counts the lines.
+  const lines = (key: string, fallback: string[]) =>
+    t(key, undefined, fallback.join('\n'))
+      .split('\n')
+      .filter(line => line.trim().length > 0);
 
   // The phone's back gesture means what the screen's back control means.
   useBack(onBack);
@@ -49,36 +58,36 @@ export const RulesScreen = ({ onBack }: Props) => {
     <View style={styles.container}>
       <BackBar />
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.header}>How to Play</Text>
+      <Text style={styles.header}>{t('ui.rules.title')}</Text>
 
-      {HOW_TO_PLAY.map((line, index) => (
+      {lines('ui.rules.howTo', HOW_TO_PLAY).map((line, index) => (
         <Text key={index} style={styles.text}>
           • {line}
         </Text>
       ))}
 
-      <Text style={styles.subHeader}>Night order</Text>
-      {NIGHT_ORDER.map((line, index) => (
+      <Text style={styles.subHeader}>{t('ui.rules.nightOrder')}</Text>
+      {lines('ui.rules.nightSteps', NIGHT_ORDER).map((line, index) => (
         <Text key={index} style={styles.text}>
           {index + 1}. {line}
         </Text>
       ))}
 
-      <Text style={styles.subHeader}>The mayor</Text>
-      {MAYOR_RULES.map((line, index) => (
+      <Text style={styles.subHeader}>{t('ui.rules.mayor')}</Text>
+      {lines('ui.rules.mayorSteps', MAYOR_RULES).map((line, index) => (
         <Text key={index} style={styles.text}>
           • {line}
         </Text>
       ))}
 
-      <Text style={styles.subHeader}>Roles</Text>
+      <Text style={styles.subHeader}>{t('ui.rules.roles')}</Text>
       {roles.map(role => (
         <View key={role.id} style={styles.card}>
           <Text style={styles.roleName}>
             {roleName(role.id, role.name)}
             <Text style={styles.roleTeam}> — {teamName(role.team)}</Text>
             {role.id.startsWith('custom-') ? (
-              <Text style={styles.roleTeam}> (your own)</Text>
+              <Text style={styles.roleTeam}> {t('ui.rules.yourOwn')}</Text>
             ) : null}
           </Text>
           <Text style={styles.text}>{roleDescription(role.id, role.description)}</Text>
@@ -91,13 +100,17 @@ export const RulesScreen = ({ onBack }: Props) => {
 
           {role.nightActions?.map(action => (
             <Text key={action.id} style={styles.action}>
-              At night: {actionLabel(role.id, action.id, action.label)}
-              {action.oncePerGame ? ' (once per game)' : ''}
+              {t('ui.rules.atNight', {
+                action: actionLabel(role.id, action.id, action.label),
+              })}
+              {action.oncePerGame ? ` ${t('ui.common.oncePerGame')}` : ''}
             </Text>
           ))}
 
           {role.voteWeight && role.voteWeight > 1 ? (
-            <Text style={styles.action}>Vote counts {role.voteWeight} times.</Text>
+            <Text style={styles.action}>
+              {t('ui.rules.voteCounts', { count: role.voteWeight })}
+            </Text>
           ) : null}
         </View>
       ))}

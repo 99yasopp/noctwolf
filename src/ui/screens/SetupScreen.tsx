@@ -7,6 +7,7 @@ import { useBack } from '../back';
 import { RoleGrid } from '../components/RoleGrid';
 import { ALL_ROLES, getCustomRoles } from '../../engine/roleSet';
 import { say } from '../../i18n';
+import { useI18n } from '../i18n';
 import {
   SETTING_DEFS,
   SettingDef,
@@ -119,6 +120,7 @@ export const SetupScreen: React.FC<Props> = ({
   const problem = setupProblem(setup, playerCount);
   const seats = setupSeatsUsed(setup);
   const customRoles = getCustomRoles();
+  const { t } = useI18n();
 
   // Every built-in role, then whatever the host made with the AI. The grid
   // groups them by side on its own.
@@ -143,11 +145,11 @@ export const SetupScreen: React.FC<Props> = ({
 
   return (
     <View style={styles.container}>
-      <BackBar label="Back to the waiting room" />
+      <BackBar label={t('ui.setup.back')} />
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>The table</Text>
+      <Text style={styles.title}>{t('ui.setup.title')}</Text>
       <Text style={styles.hint}>
-        {seats} of {playerCount} seats filled.
+        {t('ui.setup.seats', { seats, total: playerCount })}
       </Text>
 
       {problem ? (
@@ -155,20 +157,20 @@ export const SetupScreen: React.FC<Props> = ({
           <Text style={styles.problemText}>{problem}</Text>
           {seats < playerCount && (
             <BaseButton
-              title="Fill the rest with villagers"
+              title={t('ui.setup.fillVillagers')}
               onPress={() => onChange(fillWithVillagers(setup, playerCount))}
               variant="secondary"
             />
           )}
         </View>
       ) : (
-        <Text style={styles.okText}>The table is ready.</Text>
+        <Text style={styles.okText}>{t('ui.setup.ready')}</Text>
       )}
 
-      <Text style={styles.subHeader}>Roles</Text>
+      <Text style={styles.subHeader}>{t('ui.setup.roles')}</Text>
       <RoleGrid roles={roles} counts={setup.counts} onChange={setCount} />
 
-      <Text style={styles.subHeader}>House rules</Text>
+      <Text style={styles.subHeader}>{t('ui.setup.houseRules')}</Text>
       {SETTING_DEFS.filter(
         def => !def.whenRole || (setup.counts?.[def.whenRole] ?? 0) > 0,
       ).map(def =>

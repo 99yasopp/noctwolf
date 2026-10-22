@@ -28,6 +28,8 @@ import {
 } from '../../engine/setup';
 import { Player } from '../../engine/types';
 import { useGame } from '../GameContext';
+import { useI18n } from '../i18n';
+import { roleName } from '../../i18n';
 import { randomPlayerName } from '../randomName';
 
 type LobbyView = 'menu' | 'host' | 'join' | 'waiting' | 'settings' | 'rules' | 'setup';
@@ -56,6 +58,7 @@ export const LobbyScreen = () => {
   // Stable guest identity: the host keys players by id, so it must not change
   // between the join attempt and the game starting.
   const guestRef = React.useRef<Player | null>(null);
+  const { t } = useI18n();
 
   const [view, setView] = useState<LobbyView>('menu');
   const [roomCode, setRoomCode] = useState('');
@@ -148,10 +151,10 @@ export const LobbyScreen = () => {
       if (message?.type === 'KICK') {
         setError(
           message.payload?.reason === 'game-running'
-            ? 'A game is already running on this host.'
+            ? t('ui.common.gameRunning')
             : message.payload?.reason === 'seat-taken'
-            ? 'That name is already taken by another device at this table.'
-            : 'The host removed you from the table.',
+            ? t('ui.common.nameTaken')
+            : t('ui.common.removedFromTable'),
         );
         return;
       }
@@ -168,7 +171,7 @@ export const LobbyScreen = () => {
     };
 
     client.onMessage(handler);
-    client.onClose(() => setError('Lost connection to the host.'));
+    client.onClose(() => setError(t('ui.common.lostConnection')));
     return () => {
       if (!handedOff) client.offMessage();
     };
@@ -190,7 +193,7 @@ export const LobbyScreen = () => {
 
     const code = lobby.generateRoomCode();
     if (!code) {
-      setError('Could not start hosting on this device.');
+      setError(t('ui.lobby.hostFailed'));
       return;
     }
 
@@ -220,11 +223,7 @@ export const LobbyScreen = () => {
 
     // Nothing to try: an empty code would just spend the search window.
     if (!code && !ip) {
-      setError(
-        WEB
-          ? 'Enter the host address to join.'
-          : 'Enter the room code, or the host address.',
-      );
+      setError(WEB ? t('ui.lobby.enterIp') : t('ui.lobby.enterCodeOrIp'));
       return;
     }
 
@@ -243,8 +242,11 @@ export const LobbyScreen = () => {
     if (!succeeded) {
       setError(
         code
-          ? 'Could not find that room code. Check it, or clear it and join by the IP.'
-          : `Could not reach ${address.host}:${address.port}. Check the address and that the host is hosting.`,
+          ? t('ui.lobby.codeNotFound')
+          : t('ui.lobby.hostUnreachable', {
+              host: address.host,
+              port: address.port,
+            }),
       );
       return;
     }
@@ -259,7 +261,7 @@ export const LobbyScreen = () => {
     const host = roster.find(p => p.id === HOST_PLAYER_ID);
 
     if (!host || roster.length < MIN_PLAYERS) {
-      setError(`You need at least ${MIN_PLAYERS} players to start.`);
+      setError(t('ui.lobby.needPlayers', { count: MIN_PLAYERS }));
       return;
     }
 
@@ -285,7 +287,7 @@ export const LobbyScreen = () => {
 
     lobby.addPlayer({
       id: `bot-${botNumber}`,
-      name: `Bot ${botNumber}`,
+      name: t('ui.lobby.botName', { number: botNumber }),
       role: 'Unknown',
       team: 'Village',
       isAlive: true,
@@ -332,23 +334,29 @@ export const LobbyScreen = () => {
           <View style={styles.menu}>
             <TextInput
               style={styles.input}
-              placeholder="Enter your name"
+              placeholder={t('ui.lobby.namePlaceholder')}
               placeholderTextColor="#666"
               value={playerName}
               onChangeText={setPlayerName}
             />
             {lobby.canHost() && (
-              <BaseButton title="Host a Game" onPress={() => setView('host')} />
+              <BaseButton title={t('ui.lobby.host')} onPress={() => setView('host')} />
             )}
-            <BaseButton title="Join a Game" onPress={() => setView('join')} variant="secondary" />
-            {!lobby.canHost() && (
-              <Text style={styles.hint}>
-                This browser joins as a guest. Host the table from the phone app.
-              </Text>
-            )}
-            <BaseButton title="How to Play" onPress={() => setView('rules')} variant="secondary" />
             <BaseButton
-              title="Settings"
+              title={t('ui.lobby.join')}
+              onPress={() => setView('join')}
+              variant="secondary"
+            />
+            {!lobby.canHost() && (
+              <Text style={styles.hint}>{t('ui.lobby.webGuest')}</Text>
+            )}
+            <BaseButton
+              title={t('ui.lobby.howToPlay')}
+              onPress={() => setView('rules')}
+              variant="secondary"
+            />
+            <BaseButton
+              title={t('ui.lobby.settings')}
               onPress={() => setView('settings')}
               variant="secondary"
             />
@@ -358,8 +366,8 @@ export const LobbyScreen = () => {
       case 'host':
         return (
           <View style={styles.menu}>
-            <Text style={styles.text}>Hosting...</Text>
-            <BaseButton title="Generate Code & Start" onPress={hostGame} />
+            <Text style={styles.text}>{t('ui.lobby.hosting')}</Text>
+            <BaseButton title={t('ui.lobby.generate')} onPress={hostGame} />
           </View>
         );
 
@@ -369,7 +377,7 @@ export const LobbyScreen = () => {
             {!WEB && (
               <TextInput
                 style={styles.input}
-                placeholder="Room code"
+                placeholder={t('ui.lobby.roomCodePlaceholder')}
                 placeholderTextColor="#666"
                 value={inputCode}
                 onChangeText={setInputCode}
@@ -378,7 +386,7 @@ export const LobbyScreen = () => {
             )}
             <TextInput
               style={styles.input}
-              placeholder="Host IP (e.g. 192.168.0.42)"
+              placeholder={t('ui.lobby.hostIpPlaceholder')}
               placeholderTextColor="#666"
               value={inputIp}
               onChangeText={setInputIp}
@@ -387,38 +395,42 @@ export const LobbyScreen = () => {
               autoCorrect={false}
             />
             <Text style={styles.hint}>
-              {WEB
-                ? 'Type the address shown in the waiting room on the host phone.'
-                : "The IP is the fallback: fill it only if the code search finds nothing."}
+              {WEB ? t('ui.lobby.codeHint') : t('ui.lobby.ipHint')}
             </Text>
-            <BaseButton title={busy ? 'Joining...' : 'Join'} onPress={joinGame} />
+            <BaseButton
+              title={busy ? t('ui.lobby.joining') : t('ui.lobby.joinAction')}
+              onPress={joinGame}
+            />
           </View>
         );
 
       case 'waiting':
         return (
           <ScrollView contentContainerStyle={styles.menu}>
-            {isHost && <Text style={styles.text}>Room Code: {roomCode}</Text>}
+            {isHost && <Text style={styles.text}>
+              {t('ui.lobby.roomCodeLine', { code: roomCode })}
+            </Text>}
             {isHost && (
               <Text style={styles.text}>
-                Address: {lobby.getHostAddress() ?? 'unknown - check Wi-Fi settings'}
+                {t('ui.lobby.addressLine', {
+                  address: lobby.getHostAddress() ?? t('ui.lobby.unknownAddress'),
+                })}
               </Text>
             )}
             {isHost && (
-              <Text style={styles.hint}>
-                Guests type one of the two: the code, or the address. Both work
-                from the app, the address also from a browser.
-              </Text>
+              <Text style={styles.hint}>{t('ui.lobby.twoWays')}</Text>
             )}
-            <Text style={styles.title}>Waiting Room</Text>
-            <Text style={styles.text}>Players connected ({players.length}):</Text>
+            <Text style={styles.title}>{t('ui.lobby.waitingRoom')}</Text>
+            <Text style={styles.text}>
+              {t('ui.lobby.connected', { count: players.length })}
+            </Text>
 
             {players.map(p => (
               <View key={p.id} style={styles.playerRow}>
                 <Text style={styles.playerText}>
                   {p.name}
-                  {p.id === HOST_PLAYER_ID ? ' (host)' : ''}
-                  {p.isBot ? ' [bot]' : ''}
+                  {p.id === HOST_PLAYER_ID ? t('ui.common.hostTag') : ''}
+                  {p.isBot ? t('ui.roster.botTag') : ''}
                 </Text>
                 {isHost && p.isBot && (
                   <TouchableOpacity
@@ -426,7 +438,7 @@ export const LobbyScreen = () => {
                     onPress={() => removeBot(p.id)}
                     activeOpacity={0.7}
                   >
-                    <Text style={styles.removeText}>Remove</Text>
+                    <Text style={styles.removeText}>{t('ui.common.remove')}</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -434,36 +446,44 @@ export const LobbyScreen = () => {
 
             {isHost && setup && (
               <BaseButton
-                title="Table setup"
+                title={t('ui.lobby.tableSetup')}
                 onPress={() => setView('setup')}
                 variant="secondary"
               />
             )}
             {isHost && setup && (
               <Text style={styles.hint}>
-                This table:{' '}
-                {buildSetupRoles(setup, Math.max(players.length, 1))
-                  .map(role => role.name)
-                  .join(', ')}
+                {t('ui.lobby.thisTable', {
+                  roles: buildSetupRoles(setup, Math.max(players.length, 1))
+                    .map(role => roleName(role.id, role.name))
+                    .join(', '),
+                })}
               </Text>
             )}
 
             {isHost && (
-              <BaseButton title="Add Test Player" onPress={addTestPlayer} variant="secondary" />
+              <BaseButton
+                title={t('ui.lobby.addBot')}
+                onPress={addTestPlayer}
+                variant="secondary"
+              />
             )}
 
             {isHost && (
               <BaseButton
                 title={
                   players.length >= MIN_PLAYERS
-                    ? 'Start Game'
-                    : `Start Game (${players.length}/${MIN_PLAYERS})`
+                    ? t('ui.lobby.startGame')
+                    : t('ui.lobby.startGameCount', {
+                        count: players.length,
+                        min: MIN_PLAYERS,
+                      })
                 }
                 onPress={startGame}
               />
             )}
 
-            {!isHost && <Text style={styles.hint}>Waiting for the host to start...</Text>}
+            {!isHost && <Text style={styles.hint}>{t('ui.lobby.waitingForHost')}</Text>}
           </ScrollView>
         );
     }

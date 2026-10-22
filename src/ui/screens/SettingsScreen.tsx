@@ -14,7 +14,7 @@ import { BaseButton } from '../components/BaseButton';
 import { BackBar } from '../components/BackBar';
 import { useBack } from '../back';
 import { useI18n } from '../i18n';
-import { LANGUAGES } from '../../i18n';
+import { LANGUAGES, teamName } from '../../i18n';
 import { RoleDraftScreen } from './RoleDraftScreen';
 import { PlayableRole } from '../../engine/roleSet';
 import { DraftRole, translateGeneratedRole } from '../../engine/generatedRole';
@@ -26,7 +26,7 @@ interface Props {
 }
 
 export const SettingsScreen = ({ onBack }: Props) => {
-  const { language, setLanguage } = useI18n();
+  const { t, language, setLanguage } = useI18n();
   const [apiKey, setApiKey] = useState('');
   const [prompt, setPrompt] = useState('');
   const [draft, setDraft] = useState<DraftRole | null>(null);
@@ -51,22 +51,22 @@ export const SettingsScreen = ({ onBack }: Props) => {
 
   const saveKey = async () => {
     if (Platform.OS === 'web') {
-      setStatus('The web build keeps no key. Roles generated there are not saved either.');
+      setStatus(t('ui.settings.webNoKey'));
       return;
     }
 
     await SecureStore.setItemAsync('openai_api_key', apiKey);
-    setStatus('Key saved.');
+    setStatus(t('ui.settings.keySaved'));
   };
 
   const generate = async () => {
     if (!prompt.trim()) {
-      setError('Describe the role you want first.');
+      setError(t('ui.settings.needPrompt'));
       return;
     }
 
     setError('');
-    setStatus('Asking the model...');
+    setStatus(t('ui.settings.asking'));
     setBusy(true);
 
     try {
@@ -74,7 +74,7 @@ export const SettingsScreen = ({ onBack }: Props) => {
       const translated = translateGeneratedRole(generated);
 
       if (!translated.draft) {
-        setError(translated.error ?? 'The answer could not be read as a role.');
+        setError(translated.error ?? t('ui.settings.unreadable'));
         setStatus('');
         return;
       }
@@ -82,7 +82,7 @@ export const SettingsScreen = ({ onBack }: Props) => {
       setDraft(translated.draft);
       setStatus('');
     } catch (failure: any) {
-      setError(failure?.message ?? 'The request failed.');
+      setError(failure?.message ?? t('ui.settings.failed'));
       setStatus('');
     } finally {
       setBusy(false);
@@ -98,7 +98,7 @@ export const SettingsScreen = ({ onBack }: Props) => {
     await persistCustomRoles(next);
     setDraft(null);
     setPrompt('');
-    setStatus(`${draft.role.name} is saved. Pick the Custom setup in the lobby to deal it.`);
+    setStatus(t('ui.settings.saved', { name: draft.role.name }));
   };
 
   const remove = async (roleId: string) => {
@@ -121,13 +121,10 @@ export const SettingsScreen = ({ onBack }: Props) => {
     <View style={styles.container}>
       <BackBar />
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.header}>Advanced Settings</Text>
+      <Text style={styles.header}>{t('ui.settings.title')}</Text>
 
-      <Text style={styles.subHeader}>Language</Text>
-      <Text style={styles.hint}>
-        Every device reads the game in its own language, so each player picks
-        his own here.
-      </Text>
+      <Text style={styles.subHeader}>{t('ui.settings.language')}</Text>
+      <Text style={styles.hint}>{t('ui.settings.languageHint')}</Text>
       {LANGUAGES.map(entry => (
         <BaseButton
           key={entry.id}
@@ -137,7 +134,7 @@ export const SettingsScreen = ({ onBack }: Props) => {
         />
       ))}
 
-      <Text style={styles.text}>AI API key (needed to invent roles):</Text>
+      <Text style={styles.text}>{t('ui.settings.apiKey')}</Text>
       <TextInput
         style={styles.input}
         placeholder="sk-..."
@@ -147,42 +144,39 @@ export const SettingsScreen = ({ onBack }: Props) => {
         secureTextEntry
         autoCapitalize="none"
       />
-      <BaseButton title="Save API Key" onPress={saveKey} variant="secondary" />
+      <BaseButton title={t('ui.settings.saveKey')} onPress={saveKey} variant="secondary" />
 
-      <Text style={styles.subHeader}>Invent a role</Text>
-      <Text style={styles.hint}>
-        The model writes a role, this app checks that it can actually be played,
-        and you decide whether to keep it.
-      </Text>
+      <Text style={styles.subHeader}>{t('ui.settings.invent')}</Text>
+      <Text style={styles.hint}>{t('ui.settings.inventHint')}</Text>
       <TextInput
         style={[styles.input, styles.prompt]}
-        placeholder="A wolf who can silence one player each night"
+        placeholder={t('ui.settings.prompt')}
         placeholderTextColor="#666"
         value={prompt}
         onChangeText={setPrompt}
         multiline
       />
       <BaseButton
-        title={busy ? 'Thinking...' : 'Generate a role'}
+        title={busy ? t('ui.settings.thinking') : t('ui.settings.generate')}
         onPress={generate}
       />
 
       {!!error && <Text style={styles.error}>{error}</Text>}
       {!!status && <Text style={styles.hint}>{status}</Text>}
 
-      <Text style={styles.subHeader}>Your roles</Text>
+      <Text style={styles.subHeader}>{t('ui.settings.yourRoles')}</Text>
       {saved.length === 0 ? (
-        <Text style={styles.hint}>None yet.</Text>
+        <Text style={styles.hint}>{t('ui.settings.noneYet')}</Text>
       ) : (
         saved.map(role => (
           <View key={role.id} style={styles.roleRow}>
             <View style={styles.roleInfo}>
               <Text style={styles.roleName}>
-                {role.name} ({role.team})
+                {role.name} ({teamName(role.team)})
               </Text>
               <Text style={styles.hint}>
                 {role.nightActions?.map(action => action.label).join(', ') ||
-                  'No night action'}
+                  t('ui.settings.noNightAction')}
               </Text>
             </View>
             <TouchableOpacity
@@ -190,7 +184,7 @@ export const SettingsScreen = ({ onBack }: Props) => {
               onPress={() => remove(role.id)}
               activeOpacity={0.7}
             >
-              <Text style={styles.removeText}>Delete</Text>
+              <Text style={styles.removeText}>{t('ui.settings.delete')}</Text>
             </TouchableOpacity>
           </View>
         ))

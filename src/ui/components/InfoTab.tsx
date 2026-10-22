@@ -2,16 +2,20 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { theme } from '../theme/colors';
 import { InfoSection } from '../info';
+import { useI18n } from '../i18n';
 
 // Everything the table was told, in one place: who pointed at whom, who died
 // and what they were, what the seer said out loud, and the rules this table
 // plays by — each kind of news in its own block, so nothing runs together. The
 // play screen keeps only what a player acts on.
-export const InfoTab: React.FC<{ sections: InfoSection[] }> = ({ sections }) => (
+export const InfoTab: React.FC<{ sections: InfoSection[] }> = ({ sections }) => {
+  const { t } = useI18n();
+
+  return (
   <>
     {sections.length === 0 ? (
       <View style={styles.card}>
-        <Text style={styles.line}>Nothing has been announced yet.</Text>
+        <Text style={styles.line}>{t('ui.info.nothing')}</Text>
       </View>
     ) : (
       sections.map(section => (
@@ -35,7 +39,8 @@ export const InfoTab: React.FC<{ sections: InfoSection[] }> = ({ sections }) => 
       ))
     )}
   </>
-);
+  );
+};
 
 const styles = StyleSheet.create({
   card: {

@@ -3,6 +3,8 @@ import { View, Text, StyleSheet, TextInput } from 'react-native';
 import { theme } from '../theme/colors';
 import { BaseButton } from './BaseButton';
 import { ChatGroup, ChatLine } from '../../engine/types';
+import { Key } from '../../i18n';
+import { useI18n } from '../i18n';
 
 interface Props {
   // The windows this phone holds, and the ones open right now.
@@ -13,21 +15,22 @@ interface Props {
   onSend: (group: ChatGroup, text: string) => void;
 }
 
-const GROUP_LABEL: Record<ChatGroup, string> = {
-  wolves: 'The pack',
-  lovers: 'The tied two',
+const GROUP_LABEL: Record<ChatGroup, Key> = {
+  wolves: 'ui.chat.pack',
+  lovers: 'ui.chat.lovers',
 };
 
 // What a closed window says. The wolves' rule has two closed hours, and both
 // answer with the same sentence.
-const CLOSED_HINT: Record<ChatGroup, string> = {
-  wolves: 'The pack whispers only while it is picking its victim.',
-  lovers: 'This table keeps the lovers quiet.',
+const CLOSED_HINT: Record<ChatGroup, Key> = {
+  wolves: 'ui.chat.packClosed',
+  lovers: 'ui.chat.loversClosed',
 };
 
 // The private half of a game: the wolves' whisper and the lovers' bond. What
 // is said here stays on the phones that are allowed to hear it.
 export const ChatTab: React.FC<Props> = ({ groups, open, lines, selfId, onSend }) => {
+  const { t } = useI18n();
   const [drafts, setDrafts] = useState<Record<string, string>>({});
 
   const send = (group: ChatGroup) => {
@@ -46,24 +49,24 @@ export const ChatTab: React.FC<Props> = ({ groups, open, lines, selfId, onSend }
 
         return (
           <View key={group} style={styles.card}>
-            <Text style={styles.heading}>{GROUP_LABEL[group]}</Text>
+            <Text style={styles.heading}>{t(GROUP_LABEL[group])}</Text>
 
             {heard.length === 0 ? (
               <Text style={styles.hint}>
-                {isOpen ? 'Nothing said yet.' : CLOSED_HINT[group]}
+                {isOpen ? t('ui.chat.nothing') : t(CLOSED_HINT[group])}
               </Text>
             ) : (
               <>
                 {heard.map((line, index) => (
                   <Text key={index} style={styles.line}>
                     <Text style={line.senderId === selfId ? styles.mine : styles.theirs}>
-                      {line.senderId === selfId ? 'You' : line.senderName}
+                      {line.senderId === selfId ? t('ui.chat.you') : line.senderName}
                     </Text>
                     {': '}
                     {line.message}
                   </Text>
                 ))}
-                {!isOpen && <Text style={styles.hint}>{CLOSED_HINT[group]}</Text>}
+                {!isOpen && <Text style={styles.hint}>{t(CLOSED_HINT[group])}</Text>}
               </>
             )}
 
@@ -77,10 +80,10 @@ export const ChatTab: React.FC<Props> = ({ groups, open, lines, selfId, onSend }
                   }
                   onSubmitEditing={() => send(group)}
                   maxLength={200}
-                  placeholder="Write to them"
+                  placeholder={t('ui.chat.write')}
                   placeholderTextColor={theme.colors.dim}
                 />
-                <BaseButton title="Send" onPress={() => send(group)} />
+                <BaseButton title={t('ui.chat.send')} onPress={() => send(group)} />
               </View>
             )}
           </View>

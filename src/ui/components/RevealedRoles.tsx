@@ -3,20 +3,25 @@ import { View, Text, StyleSheet } from 'react-native';
 import { theme } from '../theme/colors';
 import { RevealEntry } from '../../network/protocol';
 import { roleName, teamName } from '../../i18n';
+import { useI18n } from '../i18n';
 
 // Every seat and its card. The table gets this when the game ends, and a
 // player gets it the moment he dies: he can no longer act on it.
-export const RevealedRoles = ({ entries }: { entries: RevealEntry[] }) => (
-  <View style={styles.card}>
-    <Text style={styles.heading}>Every role</Text>
-    {entries.map(entry => (
-      <Text key={entry.id} style={[styles.row, !entry.isAlive && styles.dead]}>
-        {entry.name}: {roleName(entry.roleId ?? '', entry.role)} ({teamName(entry.team)})
-        {entry.isAlive ? '' : ' — dead'}
-      </Text>
-    ))}
-  </View>
-);
+export const RevealedRoles = ({ entries }: { entries: RevealEntry[] }) => {
+  const { t } = useI18n();
+
+  return (
+    <View style={styles.card}>
+      <Text style={styles.heading}>{t('ui.roles.every')}</Text>
+      {entries.map(entry => (
+        <Text key={entry.id} style={[styles.row, !entry.isAlive && styles.dead]}>
+          {entry.name}: {roleName(entry.roleId ?? '', entry.role)} ({teamName(entry.team)})
+          {entry.isAlive ? '' : t('ui.roster.dead')}
+        </Text>
+      ))}
+    </View>
+  );
+};
 
 const styles = StyleSheet.create({
   card: {
