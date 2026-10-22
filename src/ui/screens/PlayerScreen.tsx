@@ -100,7 +100,7 @@ export const PlayerScreen = () => {
   // The last phase the handler saw. The election rebroadcasts its updates
   // between phases, and those cosmetic updates must not wipe a countdown.
   const phaseRef = React.useRef<Phase | null>(null);
-  const [status, setStatus] = useState('Connecting to host...');
+  const [status, setStatus] = useState('');
   const [disconnected, setDisconnected] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
   // Bumped to re-attach the handlers to the new socket after a reconnect.
@@ -109,7 +109,7 @@ export const PlayerScreen = () => {
   useEffect(() => {
     const client = lobby.client;
     if (!client) {
-      setStatus('Not connected to a host.');
+      setStatus(t('ui.play.notConnected'));
       return;
     }
 
@@ -291,10 +291,10 @@ export const PlayerScreen = () => {
           // running when this device joined.
           setStatus(
             message.payload?.reason === 'game-running'
-              ? 'A game is already running on this host.'
+              ? t('ui.common.gameRunning')
               : message.payload?.reason === 'seat-taken'
-              ? 'That name is already taken by another device at this table.'
-              : 'The host removed you from the table.',
+              ? t('ui.common.nameTaken')
+              : t('ui.common.removedFromTable'),
           );
           break;
       }
@@ -325,7 +325,7 @@ export const PlayerScreen = () => {
     setReconnecting(false);
 
     if (!reconnected) {
-      setStatus('Could not reach the host again.');
+      setStatus(t('ui.play.lostAgain'));
       return;
     }
 
@@ -502,11 +502,11 @@ export const PlayerScreen = () => {
   });
 
   const tabs = [
-    { id: 'play', label: 'Play' },
-    { id: 'info', label: 'Info' },
-    { id: 'notes', label: 'Notes' },
-    ...(chatGroups.length > 0 ? [{ id: 'chat', label: 'Chat' }] : []),
-    ...(reveal ? [{ id: 'roles', label: 'Roles' }] : []),
+    { id: 'play', label: t('ui.tab.play') },
+    { id: 'info', label: t('ui.tab.info') },
+    { id: 'notes', label: t('ui.tab.notes') },
+    ...(chatGroups.length > 0 ? [{ id: 'chat', label: t('ui.tab.chat') }] : []),
+    ...(reveal ? [{ id: 'roles', label: t('ui.tab.roles') }] : []),
   ];
 
   // The pack: a wolf sees who else wears the fur, never which card, and only
@@ -521,7 +521,7 @@ export const PlayerScreen = () => {
     ...(rules
       ? [
           flatSection(
-            'Table rules',
+            t('ui.play.tableRules'),
             SETTING_DEFS.map(def => `${settingName(def)}: ${settingLabel(def, rules[def.id])}`),
           ),
         ]
@@ -541,9 +541,9 @@ export const PlayerScreen = () => {
 
   return (
     <View style={styles.container}>
-      <BackBar label="Back to lobby" />
+      <BackBar label={t('ui.back.lobby')} />
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.header}>Werewolf</Text>
+      <Text style={styles.header}>{t('ui.play.title')}</Text>
 
       <TabBar
         tabs={tabs}
@@ -555,11 +555,9 @@ export const PlayerScreen = () => {
         <>
       {disconnected && (
         <View style={styles.alertCard}>
-          <Text style={styles.alertText}>
-            Lost connection to the host. Your seat is held.
-          </Text>
+          <Text style={styles.alertText}>{t('ui.play.seatHeld')}</Text>
           <BaseButton
-            title={reconnecting ? 'Reconnecting...' : 'Reconnect'}
+            title={reconnecting ? t('ui.play.reconnecting') : t('ui.play.reconnect')}
             onPress={reconnect}
           />
         </View>
@@ -567,11 +565,11 @@ export const PlayerScreen = () => {
 
       {/* Phones get passed around and glanced at: the role can be covered. */}
       <View style={styles.roleCard}>
-        <Text style={styles.roleLabel}>Your Role</Text>
+        <Text style={styles.roleLabel}>{t('ui.play.yourRole')}</Text>
 
         {roleHidden ? (
           <BaseButton
-            title="Tap to show my role"
+            title={t('ui.play.showRole')}
             onPress={() => setRoleHidden(false)}
             variant="secondary"
           />
@@ -590,7 +588,7 @@ export const PlayerScreen = () => {
             )}
             {role && (
               <BaseButton
-                title="Hide my role"
+                title={t('ui.play.hideRole')}
                 onPress={() => setRoleHidden(true)}
                 variant="secondary"
               />
@@ -601,7 +599,7 @@ export const PlayerScreen = () => {
 
       {!role && (
         <Text style={styles.hint}>
-          {status || 'Waiting for the host to start the game...'}
+          {status || (phase ? t('ui.play.waitingStart') : t('ui.play.connecting'))}
         </Text>
       )}
 
@@ -616,7 +614,7 @@ export const PlayerScreen = () => {
           {outcome.reveal.map(entry => (
             <Text key={entry.id} style={styles.revealText}>
               {entry.name}: {roleName(entry.roleId ?? '', entry.role)}
-              {entry.isAlive ? '' : ' (dead)'}
+              {entry.isAlive ? '' : t('ui.roster.deadParen')}
             </Text>
           ))}
         </View>
@@ -625,37 +623,48 @@ export const PlayerScreen = () => {
       {!outcome && phase && (
         <View style={styles.statusCard}>
           <Text style={styles.statusText}>
-            Phase: {phase} (round {round})
+            {t('ui.play.phaseLine', {
+              phase: t(`phase.${phase}`, undefined, phase),
+              round,
+            })}
           </Text>
           {mayorId && (
             <Text style={styles.statusText}>
-              Mayor:{' '}
-              {roster.find(entry => entry.id === mayorId)?.name ?? 'a player'}{' '}
-              {rules?.['mayor.doubleVote'] === false ? '(mayor)' : '(double vote)'}
+              {t('ui.play.mayorLine', {
+                name: roster.find(entry => entry.id === mayorId)?.name ?? '',
+                how:
+                  rules?.['mayor.doubleVote'] === false
+                    ? t('ui.play.mayorSingle')
+                    : t('ui.play.mayorDouble'),
+              })}
             </Text>
           )}
           {clock && (
             <Text style={[styles.timerText, urgent && styles.urgentText]}>
-              {clock.decision ? 'Your answer' : 'Clock'}: {formatRemaining(ticksLeft)} left
-              {urgent ? ' — the game moves on without you.' : ''}
+              {t('ui.play.clockLine', {
+                label: clock.decision ? t('ui.play.yourAnswer') : t('ui.play.clock'),
+                time: formatRemaining(ticksLeft),
+              })}
+              {urgent ? t('ui.play.urgent') : ''}
             </Text>
           )}
           {deaths.length > 0 && (
             <Text style={styles.deathText}>
-              Died in the night: {deaths.map(d => d.name).join(', ')}
+              {t('ui.play.diedNight', { names: deaths.map(d => d.name).join(', ') })}
             </Text>
           )}
           {voteResult && (
             <>
               <Text style={styles.statusText}>
-                Last vote:{' '}
-                {voteResult.revote
-                  ? 'tied, vote again'
-                  : voteResult.eliminatedName
-                  ? `${voteResult.eliminatedName} was eliminated`
-                  : voteResult.tie
-                  ? 'tied, nobody eliminated'
-                  : 'no votes cast'}
+                {t('ui.play.lastVote', {
+                  what: voteResult.revote
+                    ? t('ui.vote.revote')
+                    : voteResult.eliminatedName
+                    ? t('ui.vote.eliminated', { name: voteResult.eliminatedName })
+                    : voteResult.tie
+                    ? t('ui.vote.tied')
+                    : t('ui.vote.none'),
+                })}
               </Text>
               {voteResult.ballots?.map(ballot => (
                 <Text key={ballot.voterId} style={styles.ballotText}>
@@ -673,14 +682,14 @@ export const PlayerScreen = () => {
         (!isWolf || packReady) && (
         <View style={styles.secretCard}>
           <Text style={styles.secretHeading}>
-            {ownRole.team === 'Wolf' ? 'Your pack' : 'Your alliance'}
+            {ownRole.team === 'Wolf' ? t('ui.pack.yours') : t('ui.pack.alliance')}
           </Text>
           {ownRole.allies.map(ally => (
             <Text key={ally.id} style={styles.secretText}>
               {ally.name}
               {/* The pack is wolves, and only wolves: the cards stay their
                   owners'. */}
-              {isWolf ? ' — Wolf' : ''}
+              {isWolf ? t('ui.pack.wolfTag') : ''}
             </Text>
           ))}
         </View>
@@ -689,7 +698,7 @@ export const PlayerScreen = () => {
       {roleHidden ? (
         // The panel names the night action, so it would give the role away just
         // as loudly as the card did.
-        <Text style={styles.hint}>Show your role to act.</Text>
+        <Text style={styles.hint}>{t('ui.play.showToAct')}</Text>
       ) : (
         <ActionPanel
           phase={phase}
@@ -721,7 +730,7 @@ export const PlayerScreen = () => {
 
       {secrets.length > 0 && (
         <View style={styles.secretCard}>
-          <Text style={styles.secretHeading}>Your private information</Text>
+          <Text style={styles.secretHeading}>{t('ui.play.privateInfo')}</Text>
           {secrets.map((secret, index) => (
             <Text key={index} style={styles.secretText}>
               {t(secret.key, secret.params)}
@@ -730,18 +739,20 @@ export const PlayerScreen = () => {
         </View>
       )}
 
-      <Text style={styles.subHeader}>Players</Text>
+      <Text style={styles.subHeader}>{t('ui.play.players')}</Text>
       {roster.map(entry => (
         <Text key={entry.id} style={[styles.playerText, !entry.isAlive && styles.dead]}>
           {entry.name}
-          {entry.id === localPlayer?.id ? ' (you)' : ''}
-          {entry.isAlive ? '' : ' — dead'}
+          {entry.id === localPlayer?.id ? t('ui.roster.you') : ''}
+          {entry.isAlive ? '' : t('ui.roster.dead')}
           {/* A table that reveals its dead hands every device the card. */}
           {entry.isAlive || !entry.role
             ? ''
-            : ` (${roleName(entry.roleId ?? '', entry.role)})`}
+            : t('ui.roster.roleTag', {
+                role: roleName(entry.roleId ?? '', entry.role),
+              })}
           {/* A wolf reads his pack as wolves, and nobody else does. */}
-          {entry.isAlive && packIds.has(entry.id) ? ' (Wolf)' : ''}
+          {entry.isAlive && packIds.has(entry.id) ? t('ui.roster.wolfTag') : ''}
         </Text>
       ))}
 
@@ -753,7 +764,7 @@ export const PlayerScreen = () => {
       {tab === 'notes' && (
         <NotesTab
           gameKey={`${gameId}-${deal}`}
-          myRole={role?.roleName ?? 'Unknown'}
+          myRole={role ? roleName(role.roleId, role.roleName) : t('ui.play.unknownRole')}
           players={roster.map(entry => entry.name)}
         />
       )}

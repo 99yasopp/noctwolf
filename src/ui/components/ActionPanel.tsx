@@ -5,6 +5,7 @@ import { BaseButton } from './BaseButton';
 import { Phase } from '../../engine/types';
 import { ALL_ROLES, getCustomRoles } from '../../engine/roleSet';
 import { actionLabel } from '../../i18n';
+import { useI18n } from '../i18n';
 
 // The role as the local device knows it, normalised so the dashboard and the
 // player screen can share the same action UI.
@@ -117,6 +118,8 @@ export const ActionPanel: React.FC<Props> = ({
   barredVoters = [],
   onChoose,
 }) => {
+  const { t } = useI18n();
+
   // The Alien points at a player first, then at a role.
   const [guessTarget, setGuessTarget] = useState<string | null>(null);
 
@@ -133,9 +136,9 @@ export const ActionPanel: React.FC<Props> = ({
 
     return (
       <View style={styles.panel}>
-        <Text style={styles.heading}>Take someone down with you</Text>
+        <Text style={styles.heading}>{t('ui.action.takeDown')}</Text>
         {submitted.includes('revenge') ? (
-          <Text style={styles.body}>Chosen. Waiting for the host...</Text>
+          <Text style={styles.body}>{t('ui.action.chosenWaiting')}</Text>
         ) : (
           <>
             {alive
@@ -149,7 +152,7 @@ export const ActionPanel: React.FC<Props> = ({
                 />
               ))}
             <BaseButton
-              title="Don't shoot"
+              title={t('ui.action.dontShoot')}
               onPress={() => onChoose('decline', 'Revenge')}
               variant="secondary"
             />
@@ -166,15 +169,13 @@ export const ActionPanel: React.FC<Props> = ({
 
     return (
       <View style={styles.panel}>
-        <Text style={styles.heading}>The mayor has died</Text>
+        <Text style={styles.heading}>{t('ui.action.mayorDied')}</Text>
         {isTheMayor ? (
           submitted.includes('succession') ? (
-            <Text style={styles.body}>Chosen. Waiting for the host...</Text>
+            <Text style={styles.body}>{t('ui.action.chosenWaiting')}</Text>
           ) : (
             <>
-              <Text style={styles.body}>
-                Name the player who takes your place.
-              </Text>
+              <Text style={styles.body}>{t('ui.action.nameSuccessor')}</Text>
               {alive
                 .filter(target => target.id !== selfId)
                 .map(target => (
@@ -186,16 +187,14 @@ export const ActionPanel: React.FC<Props> = ({
                   />
                 ))}
               <BaseButton
-                title="Leave it to the table"
+                title={t('ui.action.leaveToTable')}
                 onPress={() => onChoose('decline', 'Succession')}
                 variant="secondary"
               />
             </>
           )
         ) : (
-          <Text style={styles.body}>
-            The mayor is naming the player who takes his place.
-          </Text>
+          <Text style={styles.body}>{t('ui.action.mayorNaming')}</Text>
         )}
       </View>
     );
@@ -208,9 +207,11 @@ export const ActionPanel: React.FC<Props> = ({
     if (phase === 'Debate') {
       return (
         <View style={styles.panel}>
-          <Text style={styles.heading}>The candidates speak</Text>
+          <Text style={styles.heading}>{t('ui.action.candidatesSpeak')}</Text>
           <Text style={styles.body}>
-            {list || 'Nobody is standing.'} — then the table votes for one of them.
+            {t('ui.action.candidatesThen', {
+              list: list || t('ui.action.nobodyStanding'),
+            })}
           </Text>
         </View>
       );
@@ -219,28 +220,23 @@ export const ActionPanel: React.FC<Props> = ({
     if (electionStage === 'nominate') {
       return (
         <View style={styles.panel}>
-          <Text style={styles.heading}>Run for mayor</Text>
+          <Text style={styles.heading}>{t('ui.action.runForMayor')}</Text>
           {iAmStanding ? (
-            <Text style={styles.body}>
-              You are standing. The table will vote once the host closes the list.
-            </Text>
+            <Text style={styles.body}>{t('ui.action.youAreStanding')}</Text>
           ) : mayorCandidates.length >= 3 ? (
-            <Text style={styles.body}>Three candidates are in: {list}.</Text>
+            <Text style={styles.body}>{t('ui.action.threeIn', { list })}</Text>
           ) : (
             <>
-              <Text style={styles.body}>
-                The first three players to stand are voted on. The winner's vote
-                counts twice.
-              </Text>
+              <Text style={styles.body}>{t('ui.action.firstThree')}</Text>
               <BaseButton
-                title="I stand for mayor"
+                title={t('ui.action.standForMayor')}
                 onPress={() => onChoose('volunteer', selfId)}
                 variant="secondary"
               />
             </>
           )}
           {mayorCandidates.length > 0 && (
-            <Text style={styles.body}>Standing: {list}.</Text>
+            <Text style={styles.body}>{t('ui.action.standing', { list })}</Text>
           )}
         </View>
       );
@@ -248,14 +244,18 @@ export const ActionPanel: React.FC<Props> = ({
 
     return (
       <View style={styles.panel}>
-        <Text style={styles.heading}>Vote for the mayor</Text>
+        <Text style={styles.heading}>{t('ui.action.voteForMayor')}</Text>
         {submitted.includes('mayor-vote') ? (
-          <Text style={styles.body}>Submitted. Waiting for the host...</Text>
+          <Text style={styles.body}>{t('ui.action.submittedWaiting')}</Text>
         ) : (
           mayorCandidates.map(candidate => (
             <BaseButton
               key={candidate.id}
-              title={candidate.id === selfId ? `${candidate.name} (yourself)` : candidate.name}
+              title={
+                candidate.id === selfId
+                  ? t('ui.action.yourself', { name: candidate.name })
+                  : candidate.name
+              }
               onPress={() => onChoose('mayor-vote', candidate.id)}
               variant="secondary"
             />
@@ -269,10 +269,8 @@ export const ActionPanel: React.FC<Props> = ({
   if (!selfAlive) {
     return (
       <View style={styles.panel}>
-        <Text style={styles.heading}>You are out</Text>
-        <Text style={styles.body}>
-          You can still watch the table, but you cannot act or vote.
-        </Text>
+        <Text style={styles.heading}>{t('ui.action.youAreOut')}</Text>
+        <Text style={styles.body}>{t('ui.action.watchOnly')}</Text>
       </View>
     );
   }
@@ -287,13 +285,12 @@ export const ActionPanel: React.FC<Props> = ({
     return (
       <View style={styles.panel}>
         <Text style={styles.heading}>
-          {dayFrozen ? 'Point again, or let the day go on' : 'The alien takes a guess'}
+          {dayFrozen ? t('ui.action.pointAgainOrResume') : t('ui.action.alienGuess')}
         </Text>
         {accused ? (
           <>
             <Text style={styles.body}>
-              What is {accused.name}? A right name kills them, a wrong one kills
-              you.
+              {t('ui.action.whatIsName', { name: accused.name })}
             </Text>
             {guessable.map(candidate => (
               <BaseButton
@@ -304,16 +301,14 @@ export const ActionPanel: React.FC<Props> = ({
               />
             ))}
             <BaseButton
-              title="Pick someone else"
+              title={t('ui.action.pickSomeoneElse')}
               onPress={() => setGuessTarget(null)}
               variant="secondary"
             />
           </>
         ) : (
           <>
-            <Text style={styles.body}>
-              Point at a player, then name their role. Nobody knows you did.
-            </Text>
+            <Text style={styles.body}>{t('ui.action.pointThenName')}</Text>
             {alive
               .filter(target => target.id !== selfId)
               .map(target => (
@@ -328,7 +323,7 @@ export const ActionPanel: React.FC<Props> = ({
         )}
         {dayFrozen && (
           <BaseButton
-            title="Let the day go on"
+            title={t('ui.action.letDayGoOn')}
             onPress={() => onChoose('alienResume', selfId)}
             variant="secondary"
           />
@@ -348,11 +343,11 @@ export const ActionPanel: React.FC<Props> = ({
 
     return (
       <View style={styles.panel}>
-        <Text style={styles.heading}>The raven's mark</Text>
+        <Text style={styles.heading}>{t('ui.action.ravenMark')}</Text>
         <Text style={styles.body}>
           {ravenMark
-            ? `Your two votes are against ${ravenMark.name}. Tap another name to move them.`
-            : 'Add two votes against one player in the vote that follows. You may move the mark until the first ballot is cast.'}
+            ? t('ui.action.ravenAgainst', { name: ravenMark.name })
+            : t('ui.action.ravenHint')}
         </Text>
         {markable.map(target => (
           <BaseButton
@@ -370,11 +365,8 @@ export const ActionPanel: React.FC<Props> = ({
   if (phase === 'Day' && dayFrozen) {
     return (
       <View style={styles.panel}>
-        <Text style={styles.heading}>The day is paused</Text>
-        <Text style={styles.body}>
-          Wait for the host: the table is busy with something, and the vote
-          comes after.
-        </Text>
+        <Text style={styles.heading}>{t('ui.action.dayPaused')}</Text>
+        <Text style={styles.body}>{t('ui.action.waitHostBusy')}</Text>
       </View>
     );
   }
@@ -385,10 +377,8 @@ export const ActionPanel: React.FC<Props> = ({
     if (barredVoters.includes(selfId)) {
       return (
         <View style={styles.panel}>
-          <Text style={styles.heading}>You may not vote</Text>
-          <Text style={styles.body}>
-            The table took your ballot. Watch the vote, and say nothing.
-          </Text>
+          <Text style={styles.heading}>{t('ui.action.mayNotVote')}</Text>
+          <Text style={styles.body}>{t('ui.action.ballotTaken')}</Text>
         </View>
       );
     }
@@ -401,10 +391,12 @@ export const ActionPanel: React.FC<Props> = ({
     return (
       <View style={styles.panel}>
         <Text style={styles.heading}>
-          {candidates && candidates.length > 0 ? 'Tied: vote again' : 'Vote to eliminate'}
+          {candidates && candidates.length > 0
+            ? t('ui.action.tiedVoteAgain')
+            : t('ui.action.voteToEliminate')}
         </Text>
         {voted ? (
-          <Text style={styles.body}>Submitted. Waiting for the host...</Text>
+          <Text style={styles.body}>{t('ui.action.submittedWaiting')}</Text>
         ) : (
           onBallot.map(target => (
             <BaseButton
@@ -425,35 +417,29 @@ export const ActionPanel: React.FC<Props> = ({
     return (
       <View style={styles.panel}>
         <Text style={styles.heading}>
-          {role.scapegoat ? 'You are the scapegoat' : 'The scapegoat pays for the tie'}
+          {role.scapegoat ? t('ui.action.youAreScapegoat') : t('ui.action.scapegoatTie')}
         </Text>
         {role.scapegoat ? (
           <>
-            <Text style={styles.body}>
-              You die for the tied vote. Point at the players who may not vote
-              tomorrow, as many as you like, or at nobody, then press done.
-            </Text>
+            <Text style={styles.body}>{t('ui.action.scapegoatBody')}</Text>
             {alive
               .filter(target => target.id !== selfId)
               .map(target => (
                 <BaseButton
                   key={target.id}
-                  title={`${target.name} may not vote`}
+                  title={t('ui.action.nameMayNotVote', { name: target.name })}
                   onPress={() => onChoose('scapegoatBan', target.id)}
                   variant="secondary"
                 />
               ))}
             <BaseButton
-              title="Done pointing"
+              title={t('ui.action.donePointing')}
               onPress={() => onChoose('decline', 'Scapegoat')}
               variant="secondary"
             />
           </>
         ) : (
-          <Text style={styles.body}>
-            The vote was tied again and he dies for it. He is choosing who may
-            not vote tomorrow.
-          </Text>
+          <Text style={styles.body}>{t('ui.action.scapegoatOther')}</Text>
         )}
       </View>
     );
@@ -463,22 +449,19 @@ export const ActionPanel: React.FC<Props> = ({
   if (phase === 'Judge') {
     return (
       <View style={styles.panel}>
-        <Text style={styles.heading}>The judge may demand one more vote</Text>
+        <Text style={styles.heading}>{t('ui.action.judgeHeading')}</Text>
         {role.judge ? (
           <>
-            <Text style={styles.body}>
-              Once per game, right after an execution: one more vote before the
-              night falls.
-            </Text>
-            <BaseButton title="One more vote" onPress={() => onChoose('judgeRepeat', '')} />
+            <Text style={styles.body}>{t('ui.action.judgeBody')}</Text>
+            <BaseButton title={t('ui.action.oneMoreVote')} onPress={() => onChoose('judgeRepeat', '')} />
             <BaseButton
-              title="Let the vote stand"
+              title={t('ui.action.letVoteStand')}
               onPress={() => onChoose('decline', 'Judge')}
               variant="secondary"
             />
           </>
         ) : (
-          <Text style={styles.body}>Wait for the judge's word.</Text>
+          <Text style={styles.body}>{t('ui.action.waitJudge')}</Text>
         )}
       </View>
     );
@@ -490,17 +473,12 @@ export const ActionPanel: React.FC<Props> = ({
   if (nightStage === 1 && tieTargets.length > 0) {
     return (
       <View style={styles.panel}>
-        <Text style={styles.heading}>The pack is split</Text>
+        <Text style={styles.heading}>{t('ui.action.packSplit')}</Text>
         {submitted.includes('tieBreak') ? (
-          <Text style={styles.body}>
-            Your name is in. The pack waits for the night to move on.
-          </Text>
+          <Text style={styles.body}>{t('ui.action.packNameIn')}</Text>
         ) : (
           <>
-            <Text style={styles.body}>
-              The wolves cannot agree on a victim. Point at the one you want, and
-              the pack takes them instead.
-            </Text>
+            <Text style={styles.body}>{t('ui.action.packSplitBody')}</Text>
             {tieTargets.map(target => (
               <BaseButton
                 key={target.id}
@@ -545,14 +523,18 @@ export const ActionPanel: React.FC<Props> = ({
     return (
       <View style={styles.panel}>
         <Text style={styles.heading}>
-          {peaceful ? 'Night 1 is peaceful' : stillToCome ? 'Not yet' : 'Night'}
+          {peaceful
+            ? t('ui.action.peacefulNight')
+            : stillToCome
+            ? t('ui.action.notYet')
+            : t('ui.action.night')}
         </Text>
         <Text style={styles.body}>
           {peaceful
-            ? "The wolves only look around tonight. Nobody will be devoured, so tomorrow's vote decides everything."
+            ? t('ui.action.peacefulBody')
             : stillToCome
-            ? 'The wolves are out. You will be woken once they have chosen.'
-            : 'You have no night action. Sleep well.'}
+            ? t('ui.action.wolvesOut')
+            : t('ui.action.noNightAction')}
         </Text>
       </View>
     );
@@ -562,21 +544,18 @@ export const ActionPanel: React.FC<Props> = ({
     <View style={styles.panel}>
       {role.thiefCards && role.thiefCards.length > 0 && (
         <View>
-          <Text style={styles.heading}>Two cards lie face down</Text>
-          <Text style={styles.body}>
-            Take one and it is yours for the rest of the game, whatever it
-            turns out to be. Or keep your own card.
-          </Text>
+          <Text style={styles.heading}>{t('ui.action.twoCards')}</Text>
+          <Text style={styles.body}>{t('ui.action.twoCardsBody')}</Text>
           {role.thiefCards.map(card => (
             <BaseButton
               key={card.id}
-              title={`Take the ${card.name}`}
+              title={t('ui.action.takeCard', { card: card.name })}
               onPress={() => onChoose('thiefSwap', card.id)}
               variant="secondary"
             />
           ))}
           <BaseButton
-            title="Keep your own card"
+            title={t('ui.action.keepOwnCard')}
             onPress={() => onChoose('thiefKeep', '')}
             variant="secondary"
           />
@@ -604,16 +583,16 @@ export const ActionPanel: React.FC<Props> = ({
             <Text style={styles.heading}>
               {actionLabel(role.roleId ?? '', option.id, option.label)}
               {typeof option.chargesLeft === 'number' && !upNow(option.kind)
-                ? ` (${option.chargesLeft} left)`
+                ? t('ui.action.chargesLeft', { count: option.chargesLeft })
                 : ''}
             </Text>
             {submitted.includes(option.id) ? (
-              <Text style={styles.body}>Submitted.</Text>
+              <Text style={styles.body}>{t('ui.action.submitted')}</Text>
             ) : candidates.length === 0 ? (
               <Text style={styles.body}>
                 {option.kind === 'heal'
-                  ? 'Nothing to save tonight: the wolves took nobody, or whoever they took is already shielded. The potion stays where it is.'
-                  : 'No valid targets.'}
+                  ? t('ui.action.nothingToSave')
+                  : t('ui.action.noTargets')}
               </Text>
             ) : (
               <>
@@ -622,13 +601,13 @@ export const ActionPanel: React.FC<Props> = ({
                     key={target.id}
                     title={
                       option.kind === 'heal'
-                        ? `Save ${target.name}`
+                        ? t('ui.action.saveName', { name: target.name })
                         : option.kind === 'infect'
-                        ? "Infect the pack's victim"
+                        ? t('ui.action.infectVictim')
                         : option.kind === 'spy'
-                        ? 'Spy on the wolves tonight'
+                        ? t('ui.action.spyWolves')
                         : option.kind === 'side'
-                        ? 'Decide tonight'
+                        ? t('ui.action.decideTonight')
                         : target.name
                     }
                     onPress={() => onChoose(option.id, target.id)}
@@ -639,8 +618,8 @@ export const ActionPanel: React.FC<Props> = ({
                   <BaseButton
                     title={
                       option.kind === 'heal' || option.kind === 'poison'
-                        ? 'Keep the potion'
-                        : 'Keep it'
+                        ? t('ui.action.keepPotion')
+                        : t('ui.action.keepIt')
                     }
                     onPress={() => onChoose('pass', option.id)}
                     variant="secondary"
@@ -652,10 +631,7 @@ export const ActionPanel: React.FC<Props> = ({
         );
       })}
       {nightStage === 2 && (
-        <Text style={styles.body}>
-          Keeping a potion is a choice too. Press "Keep the potion" so the host
-          can move on.
-        </Text>
+        <Text style={styles.body}>{t('ui.action.keepPotionHint')}</Text>
       )}
     </View>
   );

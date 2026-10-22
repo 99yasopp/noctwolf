@@ -100,7 +100,7 @@ export const NarratorDashboard = () => {
     ...(seeEverything
       ? [
           flatSection(
-            'Narrator log',
+            t('ui.host.narratorLog'),
             manager.actionLog.map(line => t(line.key, line.params)),
           ),
         ]
@@ -229,13 +229,13 @@ export const NarratorDashboard = () => {
   const nextLabel = manager.winner
     ? null
     : phase === 'Debate'
-    ? 'Start the vote for mayor'
+    ? t('ui.host.startVoteMayor')
     : phase === 'Day'
     ? // The Alien's turn is his own, but a phone that went to sleep must not
       // hold the whole table: the host can force the vote.
       manager.isDayFrozen()
-      ? 'Force the vote'
-      : 'Start the vote'
+      ? t('ui.host.forceVote')
+      : t('ui.host.startVote')
     : null;
 
   const submitLocalAction = (actionId: string, targetId: string, roleId?: string) => {
@@ -280,17 +280,17 @@ export const NarratorDashboard = () => {
 
   return (
     <View style={styles.container}>
-      <BackBar label="Back to lobby" />
+      <BackBar label={t('ui.back.lobby')} />
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.header}>Narrator Dashboard</Text>
+      <Text style={styles.header}>{t('ui.host.title')}</Text>
 
       <TabBar
         tabs={[
-          { id: 'play', label: 'Play' },
-          { id: 'info', label: 'Info' },
-          { id: 'notes', label: 'Notes' },
-          ...(hostGroups.length > 0 ? [{ id: 'chat', label: 'Chat' }] : []),
-          ...(selfAlive ? [] : [{ id: 'roles', label: 'Roles' }]),
+          { id: 'play', label: t('ui.tab.play') },
+          { id: 'info', label: t('ui.tab.info') },
+          { id: 'notes', label: t('ui.tab.notes') },
+          ...(hostGroups.length > 0 ? [{ id: 'chat', label: t('ui.tab.chat') }] : []),
+          ...(selfAlive ? [] : [{ id: 'roles', label: t('ui.tab.roles') }]),
         ]}
         active={tab}
         onSelect={id => setTab(id as 'play' | 'info' | 'notes' | 'chat' | 'roles')}
@@ -300,19 +300,16 @@ export const NarratorDashboard = () => {
         <>
       {isTestGame && (
         <View style={styles.testBanner}>
-          <Text style={styles.bannerText}>
-            TEST GAME — every role and every secret is printed on this screen.
-            Turn Test game off in the house rules to play it straight.
-          </Text>
+          <Text style={styles.bannerText}>{t('ui.host.testGame')}</Text>
         </View>
       )}
 
       {/* The host plays too, so his own role must be as visible to him as a
           guest's role card is to a guest. */}
       <View style={styles.roleCard}>
-        <Text style={styles.roleLabel}>Your Role</Text>
+        <Text style={styles.roleLabel}>{t('ui.play.yourRole')}</Text>
         <Text style={styles.roleName}>
-          {role ? roleName(role.id, role.name) : 'unassigned'}
+          {role ? roleName(role.id, role.name) : t('ui.host.unassigned')}
         </Text>
         <Text style={styles.roleTeam}>{role ? teamOf(role.team) : ''}</Text>
         {role && (
@@ -325,7 +322,7 @@ export const NarratorDashboard = () => {
           ownRole.allies.length > 0 &&
           (ownRole.team !== 'Wolf' || packReady) && (
           <Text style={styles.roleDescription}>
-            {ownRole.team === 'Wolf' ? 'Your pack' : 'Your alliance'}:{' '}
+            {ownRole.team === 'Wolf' ? t('ui.pack.yours') : t('ui.pack.alliance')}:{' '}
             {ownRole.allies.map(ally => ally.name).join(', ')}
           </Text>
         )}
@@ -333,40 +330,53 @@ export const NarratorDashboard = () => {
 
       <View style={styles.statusCard}>
         <Text style={styles.statusText}>
-          Phase: {manager.state.currentPhase} (round {round})
+          {t('ui.play.phaseLine', {
+            phase: t(
+              `phase.${manager.state.currentPhase}`,
+              undefined,
+              manager.state.currentPhase,
+            ),
+            round,
+          })}
         </Text>
         <Text style={styles.statusText}>
-          Alive: {aliveCount} / {players.length}
+          {t('ui.host.aliveLine', { alive: aliveCount, total: players.length })}
         </Text>
         {manager.getMayor() && (
           <Text style={styles.statusText}>
-            Mayor: {manager.getMayor()?.name}
-            {manager.getMayor()?.id === localPlayer.id ? ' (you)' : ''}
+            {t('ui.play.mayorLine', { name: manager.getMayor()?.name ?? '' })}
+            {manager.getMayor()?.id === localPlayer.id ? t('ui.roster.you') : ''}
           </Text>
         )}
-        <Text style={styles.statusText}>You are: {localPlayer.name}</Text>
+        <Text style={styles.statusText}>
+          {t('ui.host.youAre', { name: localPlayer.name })}
+        </Text>
 
         {/* The host plays too: a blind host is told how many players still
             have to act, not which ones. */}
         {pendingActors.length > 0 && (
           <Text style={styles.pending}>
             {seeEverything
-              ? `Waiting on night actions: ${pendingActors.map(p => p.name).join(', ')}`
-              : `${pendingActors.length} player${pendingActors.length > 1 ? 's' : ''} still to act tonight.`}
+              ? t('ui.host.waitingNight', {
+                  names: pendingActors.map(p => p.name).join(', '),
+                })
+              : t('ui.host.stillToAct', { count: pendingActors.length })}
           </Text>
         )}
         {pendingVoters.length > 0 && (
           <Text style={styles.pending}>
             {seeEverything
-              ? `Waiting on votes: ${pendingVoters.map(p => p.name).join(', ')}`
-              : `${pendingVoters.length} player${pendingVoters.length > 1 ? 's' : ''} still to vote.`}
+              ? t('ui.host.waitingVotes', {
+                  names: pendingVoters.map(p => p.name).join(', '),
+                })
+              : t('ui.host.stillToVote', { count: pendingVoters.length })}
           </Text>
         )}
         {pendingHunter && (
           <Text style={styles.pending}>
             {seeEverything
-              ? `${pendingHunter.name} is choosing who to take down.`
-              : 'A dying player is choosing who to take down.'}
+              ? t('ui.host.hunterChoosing', { name: pendingHunter.name })
+              : t('ui.host.dyingChoosing')}
           </Text>
         )}
 
@@ -375,11 +385,11 @@ export const NarratorDashboard = () => {
             a narrator sees everything. Nobody else does. */}
         {phase === 'Night' && (hostIsWolf || seeEverything) && packPicks.length > 0 && (
           <Text style={styles.pending}>
-            The pack is aiming at: {packPicks.join(', ')}
+            {t('ui.host.packAiming', { names: packPicks.join(', ') })}
           </Text>
         )}
         {phase === 'Vote' && aliveCount > 0 && pendingVoters.length === 0 && (
-          <Text style={styles.ready}>Everyone has voted.</Text>
+          <Text style={styles.ready}>{t('ui.host.everyoneVoted')}</Text>
         )}
 
         {/* The clock is the host's: a party game dies when the day never ends.
@@ -390,17 +400,35 @@ export const NarratorDashboard = () => {
             {manager.getTimerRemainingMs() !== null ? (
               <>
                 <Text style={styles.timerText}>
-                  {formatRemaining(manager.getTimerRemainingMs() ?? 0)} left
+                  {t('ui.host.left', {
+                    time: formatRemaining(manager.getTimerRemainingMs() ?? 0),
+                  })}
                 </Text>
-                <BaseButton title="Stop the clock" onPress={() => manager.clearTimer()} variant="secondary" />
+                <BaseButton
+                  title={t('ui.host.stopClock')}
+                  onPress={() => manager.clearTimer()}
+                  variant="secondary"
+                />
               </>
             ) : (
               <>
-                <Text style={styles.pending}>Put the phase on a clock:</Text>
+                <Text style={styles.pending}>{t('ui.host.putOnClock')}</Text>
                 <View style={styles.timerButtons}>
-                  <BaseButton title="1 min" onPress={() => manager.startTimer(60)} variant="secondary" />
-                  <BaseButton title="2 min" onPress={() => manager.startTimer(120)} variant="secondary" />
-                  <BaseButton title="5 min" onPress={() => manager.startTimer(300)} variant="secondary" />
+                  <BaseButton
+                    title={t('ui.host.minutes', { count: 1 })}
+                    onPress={() => manager.startTimer(60)}
+                    variant="secondary"
+                  />
+                  <BaseButton
+                    title={t('ui.host.minutes', { count: 2 })}
+                    onPress={() => manager.startTimer(120)}
+                    variant="secondary"
+                  />
+                  <BaseButton
+                    title={t('ui.host.minutes', { count: 5 })}
+                    onPress={() => manager.startTimer(300)}
+                    variant="secondary"
+                  />
                 </View>
               </>
             )}
@@ -411,7 +439,7 @@ export const NarratorDashboard = () => {
             answered, so this only ever counts down to a decision. */}
         {deadline !== null && !manager.winner && (
           <Text style={[styles.timerText, deadline <= 10_000 && styles.urgentText]}>
-            {formatRemaining(deadline)} left on this stage
+            {t('ui.host.stageLeft', { time: formatRemaining(deadline) })}
           </Text>
         )}
       </View>
@@ -421,14 +449,10 @@ export const NarratorDashboard = () => {
           <Text style={styles.winnerText}>
             {winnerText(manager.winner, t, manager.getWinnerKey())}
           </Text>
-          <Text style={styles.winnerSub}>
-            Everyone keeps their seat. Playing again deals new roles to the
-            same table; changing the table keeps the seats but lets you pick
-            another setup first.
-          </Text>
-          <BaseButton title="Play again" onPress={rematch} />
+          <Text style={styles.winnerSub}>{t('ui.host.playAgainHint')}</Text>
+          <BaseButton title={t('ui.host.playAgain')} onPress={rematch} />
           <BaseButton
-            title="Change the table"
+            title={t('ui.host.changeTable')}
             onPress={changeTable}
             variant="secondary"
           />
@@ -438,14 +462,15 @@ export const NarratorDashboard = () => {
       {manager.lastVote && (
         <View style={styles.statusCard}>
           <Text style={styles.statusText}>
-            Last vote:{' '}
-            {manager.lastVote.revote
-              ? 'tied, voting again'
-              : manager.lastVote.eliminatedName
-              ? `${manager.lastVote.eliminatedName} was eliminated`
-              : manager.lastVote.tie
-              ? 'tied, nobody eliminated'
-              : 'no votes cast'}
+            {t('ui.play.lastVote', {
+              what: manager.lastVote.revote
+                ? t('ui.vote.revote')
+                : manager.lastVote.eliminatedName
+                ? t('ui.vote.eliminated', { name: manager.lastVote.eliminatedName })
+                : manager.lastVote.tie
+                ? t('ui.vote.tied')
+                : t('ui.vote.none'),
+            })}
           </Text>
           {manager.lastVote.tally
             .filter(entry => entry.count > 0)
@@ -459,7 +484,10 @@ export const NarratorDashboard = () => {
               table. */}
           {manager.lastVote.ballots?.map(ballot => (
             <Text key={ballot.voterId} style={styles.ballotText}>
-              {ballot.voterName} → {ballot.targetName}
+              {t('ui.host.voteArrow', {
+                voter: ballot.voterName,
+                target: ballot.targetName,
+              })}
             </Text>
           ))}
         </View>
@@ -469,13 +497,13 @@ export const NarratorDashboard = () => {
         <>
           <Text style={styles.hint}>
             {manager.getPackTieBreakerId()
-              ? 'The pack split its vote: the infectious father names the victim, and a test game lets you answer for him.'
-              : 'The pack split its vote. Choose the victim.'}
+              ? t('ui.host.splitVoteFather')
+              : t('ui.host.splitVote')}
           </Text>
           {manager.getPackTieTargets().map(target => (
             <BaseButton
               key={target.id}
-              title={`Devour ${target.name}`}
+              title={t('ui.host.devour', { name: target.name })}
               variant="secondary"
               onPress={() => {
                 manager.handlePackTie(target.id);
@@ -530,7 +558,7 @@ export const NarratorDashboard = () => {
 
       {secrets.length > 0 && (
         <View style={styles.secretCard}>
-          <Text style={styles.secretHeading}>Your private information</Text>
+          <Text style={styles.secretHeading}>{t('ui.play.privateInfo')}</Text>
           {secrets.map((secret, index) => (
             <Text key={index} style={styles.secretText}>
               {t(secret.key, secret.params)}
@@ -539,34 +567,37 @@ export const NarratorDashboard = () => {
         </View>
       )}
 
-      <Text style={styles.subHeader}>Players</Text>
+      <Text style={styles.subHeader}>{t('ui.play.players')}</Text>
       {players.map(player => {
         const dropped = lobby.disconnectedPlayers().some(p => p.id === player.id);
+        const card = manager.getRoleOf(player.id);
 
         return (
           <View key={player.id} style={styles.playerRow}>
             <View style={styles.playerInfo}>
               <Text style={[styles.playerName, !player.isAlive && styles.dead]}>
                 {player.name}
-                {player.id === localPlayer.id ? ' (you)' : ''}
-                {player.isBot ? ' [bot]' : ''}
+                {player.id === localPlayer.id ? t('ui.roster.you') : ''}
+                {player.isBot ? t('ui.roster.botTag') : ''}
               </Text>
               {/* A blind host sees who is alive and who has voted, nothing
                   more: the roles belong to the narrator view. */}
               <Text style={styles.playerRole}>
                 {seeEverything
-                  ? `${manager.getRoleOf(player.id)?.name ?? 'unknown'}${
-                      player.isAlive ? '' : ' — dead'
+                  ? `${card ? roleName(card.id, card.name) : t('ui.host.unknownRole')}${
+                      player.isAlive ? '' : t('ui.roster.dead')
                     }`
                   : player.isAlive
-                  ? 'alive'
+                  ? t('ui.host.aliveTag')
                   : revealedCards.has(player.id)
-                  ? `dead — ${revealedCards.get(player.id)}`
-                  : 'dead'}
-                {player.isAlive && packIds.has(player.id) ? ' — Wolf' : ''}
-                {dropped ? ' — no connection' : ''}
+                  ? t('ui.roster.deadWithRole', {
+                      role: revealedCards.get(player.id) ?? '',
+                    })
+                  : t('ui.common.dead')}
+                {player.isAlive && packIds.has(player.id) ? t('ui.pack.wolfTag') : ''}
+                {dropped ? t('ui.roster.noConnection') : ''}
                 {manager.state.currentPhase === 'Vote' && player.isAlive && manager.hasVoted(player.id)
-                  ? ' — voted'
+                  ? t('ui.roster.voted')
                   : ''}
               </Text>
             </View>
@@ -577,7 +608,7 @@ export const NarratorDashboard = () => {
                 onPress={() => lobby.removePlayer(player.id)}
                 activeOpacity={0.7}
               >
-                <Text style={styles.removeText}>Remove</Text>
+                <Text style={styles.removeText}>{t('ui.common.remove')}</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -585,8 +616,11 @@ export const NarratorDashboard = () => {
       })}
 
       <Text style={styles.hint}>
-        Guests connected: {guests.length - droppedGuests} / {guests.length}
-        {droppedGuests > 0 ? ' — a dropped guest keeps their seat and can rejoin' : ''}
+        {t('ui.host.guests', {
+          here: guests.length - droppedGuests,
+          total: guests.length,
+        })}
+        {droppedGuests > 0 ? t('ui.host.dropHint') : ''}
       </Text>
 
         </>
@@ -597,7 +631,7 @@ export const NarratorDashboard = () => {
       {tab === 'notes' && (
         <NotesTab
           gameKey={`host-${String(gameId)}`}
-          myRole={role?.name ?? 'Host'}
+          myRole={role ? roleName(role.id, role.name) : t('ui.host.hostRole')}
           players={players.map(player => player.name)}
         />
       )}
