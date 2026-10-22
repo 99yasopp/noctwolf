@@ -4883,6 +4883,32 @@ console.log('\n41. the catalogue covers what the game can say');
     misplaced.length === 0,
     misplaced.join(', '),
   );
+
+  const arabic = catalogKeys('ar');
+  check(
+    'Arabic fills every English key',
+    arabic.length === english.size,
+    `${arabic.length} of ${english.size}`,
+  );
+  const movedInArabic = arabic.filter(
+    key =>
+      placeholders(translate('ar', key as Key)) !==
+      placeholders(translate('en', key as Key)),
+  );
+  check(
+    'and keeps every placeholder of its line',
+    movedInArabic.length === 0,
+    movedInArabic.join(', '),
+  );
+
+  // A name or a count inside an Arabic line is fenced with invisible isolate
+  // marks, so a Latin name does not drag the sentence around it.
+  const fenced = translate('ar', 'log.vote', { voter: 'Ali', target: 'Sam' });
+  check(
+    'Arabic fences what it fills off in its own direction',
+    fenced.includes('\u2068') && fenced.includes('\u2069'),
+    fenced,
+  );
 }
 
 console.log(failures === 0 ? `\nAll checks passed.` : `\n${failures} check(s) failed.`);

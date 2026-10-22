@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { Text } from '../text';
 import { theme } from '../theme/colors';
 import { InfoSection } from '../info';
 import { useI18n } from '../i18n';

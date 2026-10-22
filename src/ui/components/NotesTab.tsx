@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, TouchableOpacity } from 'react-native';
+import { Text, TextInput } from '../text';
 import { theme } from '../theme/colors';
 import { BaseButton } from './BaseButton';
 import {

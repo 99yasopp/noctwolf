@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { Text, TextInput } from '../text';
 import { theme } from '../theme/colors';
 import { BaseButton } from './BaseButton';
 import { ChatGroup, ChatLine } from '../../engine/types';

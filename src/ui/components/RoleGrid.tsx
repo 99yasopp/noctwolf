@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, TouchableOpacity } from 'react-native';
+import { Text, TextInput } from '../text';
 import { theme, teamColor } from '../theme/colors';
 import { PlayableRole } from '../../engine/roleSet';
 import { actionLabel, roleDescription, roleName, teamName } from '../../i18n';

@@ -1,5 +1,6 @@
 import { Catalog, Key, en } from './en';
 import { fr } from './fr';
+import { ar } from './ar';
 
 export type { Catalog, Key } from './en';
 
@@ -43,7 +44,7 @@ export const roleRef = (role: { id: string; name: string } | undefined): RoleRef
 const catalogs: Record<Language, Partial<Catalog>> = {
   en,
   fr,
-  ar: {},
+  ar,
 };
 
 // Arabic reads right to left, and so does anything laid out around it.

@@ -1,13 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
-  TextInput,
   ScrollView,
   Platform,
   TouchableOpacity,
 } from 'react-native';
+import { Text, TextInput } from '../text';
 import * as SecureStore from 'expo-secure-store';
 import { theme } from '../theme/colors';
 import { BaseButton } from '../components/BaseButton';

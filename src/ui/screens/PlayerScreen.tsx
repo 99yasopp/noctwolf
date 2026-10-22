@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { View, StyleSheet, ScrollView } from 'react-native';
+import { Text } from '../text';
 import { theme } from '../theme/colors';
 import { BaseButton } from '../components/BaseButton';
 import { BackBar } from '../components/BackBar';

@@ -1,10 +1,18 @@
 import React, { createContext, useContext, useMemo } from 'react';
-import { Language, Translate, setLanguage as setCurrent, translator } from '../i18n';
+import {
+  Language,
+  Translate,
+  isRtl,
+  setLanguage as setCurrent,
+  translator,
+} from '../i18n';
 
 interface I18n {
   language: Language;
   setLanguage: (language: Language) => void;
   t: Translate;
+  // Arabic reads right to left, and so does the layout around it.
+  rtl: boolean;
 }
 
 // The device's own language, for every screen and every reader below.
@@ -12,6 +20,7 @@ const I18nContext = createContext<I18n>({
   language: 'en',
   setLanguage: () => {},
   t: translator('en'),
+  rtl: false,
 });
 
 interface Props {
@@ -26,7 +35,12 @@ export const I18nProvider: React.FC<Props> = ({ language, onChange, children }) 
   setCurrent(language);
 
   const value = useMemo<I18n>(
-    () => ({ language, setLanguage: onChange, t: translator(language) }),
+    () => ({
+      language,
+      setLanguage: onChange,
+      t: translator(language),
+      rtl: isRtl(language),
+    }),
     [language, onChange],
   );
 

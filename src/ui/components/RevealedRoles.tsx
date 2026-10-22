@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { Text } from '../text';
 import { theme } from '../theme/colors';
 import { RevealEntry } from '../../network/protocol';
 import { roleName, teamName } from '../../i18n';

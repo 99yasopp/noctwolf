@@ -1,13 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
-  TextInput,
   ScrollView,
   Platform,
   TouchableOpacity,
 } from 'react-native';
+import { Text, TextInput } from '../text';
 import { theme } from '../theme/colors';
 import { BaseButton } from '../components/BaseButton';
 import { BackBar } from '../components/BackBar';
