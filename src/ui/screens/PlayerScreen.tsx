@@ -1,13 +1,20 @@
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
+import { View, StyleSheet, ScrollView, InteractionManager } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Text } from '../text';
 import { theme } from '../theme/colors';
 import { BaseButton } from '../components/BaseButton';
 import { ScreenHeader } from '../components/ScreenHeader';
-import { RoleCard } from '../components/RoleCard';
-import { RosterRow } from '../components/RosterRow';
+import { PlayerGrid } from '../components/PlayerGrid';
+import { RoleBar } from '../components/RoleBar';
+import { RolePanel } from '../components/RolePanel';
+import { RoleSigil } from '../components/RoleSigil';
+import { Sheet } from '../components/Sheet';
+import { TableMenu } from '../components/TableMenu';
+import { PageOverlay } from '../components/PageOverlay';
 import { TableStrip } from '../components/TableStrip';
 import { useBack } from '../back';
+import { useResponsive } from '../layout';
 import { ActionPanel, OwnRole } from '../components/ActionPanel';
 import { useGame } from '../GameContext';
 import { lobby } from '../../network/lobby';
@@ -38,6 +45,8 @@ import { digestSections, flatSection } from '../info';
 import { formatRemaining, winnerText } from '../format';
 import { useI18n } from '../i18n';
 import { SaidLine, roleName } from '../../i18n';
+import { RulesScreen } from './RulesScreen';
+import { SettingsScreen } from './SettingsScreen';
 
 export const PlayerScreen = () => {
   const { localPlayer, returnToLobby, gameId } = useGame();
@@ -87,6 +96,19 @@ export const PlayerScreen = () => {
   const [barredVoters, setBarredVoters] = useState<string[]>([]);
   // Whether the role card is covered, for when phones are handed around.
   const [roleHidden, setRoleHidden] = useState(false);
+  const [roleOpen, setRoleOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [overlay, setOverlay] = useState<'rules' | 'settings' | null>(null);
+  const [inspect, setInspect] = useState<string | null>(null);
+  const { gutter } = useResponsive();
+
+  // The menu is a modal of its own; let it finish closing before the page
+  // overlay takes the screen.
+  const openOverlay = (page: 'rules' | 'settings') => {
+    setMenuOpen(false);
+    InteractionManager.runAfterInteractions(() => setOverlay(page));
+  };
+
   // The public story of the game, built from what the host already tells us.
   // The countdown is anchored when TIME_SYNC arrives, never on the raw clock,
   // because two phones rarely agree on the time.
@@ -527,6 +549,8 @@ export const PlayerScreen = () => {
   const packIds = new Set(packReady ? (ownRole?.allies ?? []).map(ally => ally.id) : []);
   // The roster is the first word on a death; the reveal follows it.
   const selfAlive = roster.find(entry => entry.id === localPlayer?.id)?.isAlive ?? true;
+  const inspected = inspect ? roster.find(entry => entry.id === inspect) : null;
+  const inspectedKnown = inspect ? (reveal ?? []).find(card => card.id === inspect) : null;
 
   // The Info tab reads by round and phase; the table's own rules close it.
   const infoSections = [
@@ -555,21 +579,40 @@ export const PlayerScreen = () => {
   return (
     <View style={styles.container}>
       <ScreenHeader
-        title={t('ui.play.title')}
-        meta={
+        title={
           phase
             ? t('ui.play.phaseLine', {
                 phase: t(`phase.${phase}`, undefined, phase),
                 round,
               })
+            : t('ui.play.title')
+        }
+        meta={
+          lobby.getRoomCode()
+            ? `${t('ui.lobby.roomCodeLabel')} ${lobby.getRoomCode()}`
             : undefined
         }
         backLabel={t('ui.back.lobby')}
+        onMenu={() => setMenuOpen(true)}
+        right={
+          clock ? (
+            <View style={[styles.topClock, urgent && styles.topClockUrgent]}>
+              <Ionicons
+                name="timer-outline"
+                size={14}
+                color={urgent ? theme.colors.danger : theme.colors.primary}
+              />
+              <Text style={[styles.topClockText, urgent && styles.urgentText]}>
+                {formatRemaining(ticksLeft)}
+              </Text>
+            </View>
+          ) : undefined
+        }
       />
       <ScrollView
         ref={scrollRef}
         style={styles.container}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingHorizontal: gutter }]}
       >
       {tab === 'play' && (
         <>
@@ -583,21 +626,11 @@ export const PlayerScreen = () => {
         </View>
       )}
 
-      {/* Phones get passed around and glanced at: the role can be covered. */}
-      <RoleCard
-        role={
-          role
-            ? {
-                id: role.roleId,
-                name: role.roleName,
-                team: role.team,
-                description: role.description,
-              }
-            : null
-        }
+      {/* Phones get passed around and glanced at: the card stays behind a tap. */}
+      <RoleBar
+        roleName={role?.roleName}
         hidden={!!role && roleHidden}
-        onShow={() => setRoleHidden(false)}
-        onHide={role ? () => setRoleHidden(true) : undefined}
+        onPress={() => setRoleOpen(true)}
       />
 
       {/* Out of the game, the dead read the whole table without asking. */}
@@ -617,12 +650,7 @@ export const PlayerScreen = () => {
               params: outcome.winnerParams,
             })}
           </Text>
-          {outcome.reveal.map(entry => (
-            <Text key={entry.id} style={styles.revealText}>
-              {entry.name}: {roleName(entry.roleId ?? '', entry.role)}
-              {entry.isAlive ? '' : t('ui.roster.deadParen')}
-            </Text>
-          ))}
+          <RevealedRoles entries={outcome.reveal} />
         </View>
       )}
 
@@ -687,27 +715,37 @@ export const PlayerScreen = () => {
         </TableStrip>
       )}
 
-      {/* Covering the card has to cover the pack too, or the card was never
-          really hidden. */}
-      {!outcome &&
-        !roleHidden &&
-        ownRole?.allies &&
-        ownRole.allies.length > 0 &&
-        (!isWolf || packReady) && (
-        <View style={styles.secretCard}>
-          <Text style={styles.secretHeading}>
-            {ownRole.team === 'Wolf' ? t('ui.pack.yours') : t('ui.pack.alliance')}
-          </Text>
-          {ownRole.allies.map(ally => (
-            <Text key={ally.id} style={styles.secretText}>
-              {ally.name}
-              {/* The pack is wolves, and only wolves: the cards stay their
-                  owners'. */}
-              {isWolf ? t('ui.pack.wolfTag') : ''}
-            </Text>
-          ))}
-        </View>
-      )}
+      <View style={styles.sectionRow}>
+        <Text style={styles.subHeader}>{t('ui.play.players')}</Text>
+        <Text style={styles.sectionCount}>{roster.length}</Text>
+      </View>
+      <PlayerGrid
+        seats={roster.map(entry => {
+          const you = entry.id === localPlayer?.id;
+          const dead = !entry.isAlive;
+          const known = (reveal ?? []).find(card => card.id === entry.id);
+          return {
+            id: entry.id,
+            name: entry.name,
+            isAlive: entry.isAlive,
+            self: you,
+            pack: !dead && packIds.has(entry.id),
+            roleId: dead ? known?.roleId ?? entry.roleId : undefined,
+            roleTeam: known?.team,
+            accent: dead
+              ? theme.colors.dim
+              : packIds.has(entry.id)
+              ? theme.colors.danger
+              : you
+              ? theme.colors.primary
+              : theme.colors.secondary,
+            badge: dead ? t('ui.common.dead') : you ? t('ui.roster.you') : undefined,
+            badgeIcon: you ? 'person-outline' : undefined,
+            badgeTone: you ? theme.colors.primary : theme.colors.dim,
+            onPress: () => setInspect(entry.id),
+          };
+        })}
+      />
 
       {roleHidden ? (
         // The panel names the night action, so it would give the role away just
@@ -742,53 +780,6 @@ export const PlayerScreen = () => {
         />
       )}
 
-      {!roleHidden && secrets.length > 0 && (
-        <View style={styles.secretCard}>
-          <Text style={styles.secretHeading}>{t('ui.play.privateInfo')}</Text>
-          {secrets.map((secret, index) => (
-            <Text key={index} style={styles.secretText}>
-              {t(secret.key, secret.params)}
-            </Text>
-          ))}
-        </View>
-      )}
-
-      <View style={styles.sectionRow}>
-        <Text style={styles.subHeader}>{t('ui.play.players')}</Text>
-        <Text style={styles.sectionCount}>{roster.length}</Text>
-      </View>
-      {roster.map(entry => {
-        const you = entry.id === localPlayer?.id;
-        const dead = !entry.isAlive;
-        const tags =
-          `${you ? t('ui.roster.you') : ''}` +
-          `${dead ? t('ui.roster.dead') : ''}` +
-          `${!dead && packIds.has(entry.id) ? t('ui.roster.wolfTag') : ''}` +
-          `${
-            dead && entry.role
-              ? t('ui.roster.roleTag', { role: roleName(entry.roleId ?? '', entry.role) })
-              : ''
-          }`;
-
-        return (
-          <RosterRow
-            key={entry.id}
-            name={entry.name}
-            tags={tags}
-            dead={dead}
-            dotColor={
-              dead
-                ? theme.colors.dim
-                : packIds.has(entry.id)
-                ? theme.colors.danger
-                : you
-                ? theme.colors.primary
-                : theme.colors.success
-            }
-          />
-        );
-      })}
-
         </>
       )}
 
@@ -814,6 +805,68 @@ export const PlayerScreen = () => {
 
       </ScrollView>
       <TabBar tabs={tabs} active={tab} onSelect={selectTab} />
+
+      <Sheet
+        visible={roleOpen}
+        onClose={() => setRoleOpen(false)}
+        title={t('ui.play.yourRole')}
+      >
+        <RolePanel
+          role={ownRole}
+          hidden={!!role && roleHidden}
+          onShow={() => setRoleHidden(false)}
+          onHide={role ? () => setRoleHidden(true) : undefined}
+          alliesKnown={!isWolf || packReady}
+          secrets={secrets}
+        />
+      </Sheet>
+
+      <Sheet
+        visible={!!inspected}
+        onClose={() => setInspect(null)}
+        title={inspected?.name}
+      >
+        {inspected ? (
+          <View style={styles.inspector}>
+            {inspectedKnown || inspected.roleId ? (
+              <RoleSigil
+                roleId={inspectedKnown?.roleId ?? inspected.roleId}
+                team={inspectedKnown?.team ?? 'Village'}
+                size={78}
+                muted={!inspected.isAlive}
+              />
+            ) : (
+              <View style={styles.inspectorSeal}>
+                <Ionicons name="person" size={30} color={theme.colors.secondary} />
+              </View>
+            )}
+            <Text style={styles.inspectorName}>{inspected.name}</Text>
+            <Text style={styles.inspectorState}>
+              {inspected.isAlive ? t('ui.host.aliveTag') : t('ui.common.dead')}
+            </Text>
+            {inspectedKnown ? (
+              <Text style={styles.inspectorRole}>
+                {roleName(inspectedKnown.roleId ?? '', inspectedKnown.role)}
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
+      </Sheet>
+
+      <TableMenu
+        visible={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        onRules={() => openOverlay('rules')}
+        onSettings={() => openOverlay('settings')}
+      />
+
+      <PageOverlay visible={overlay === 'rules'}>
+        <RulesScreen onBack={() => setOverlay(null)} />
+      </PageOverlay>
+
+      <PageOverlay visible={overlay === 'settings'}>
+        <SettingsScreen onBack={() => setOverlay(null)} />
+      </PageOverlay>
     </View>
   );
 };
@@ -821,19 +874,19 @@ export const PlayerScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background,
   },
   content: {
     width: '100%',
-    maxWidth: 560,
+    maxWidth: 720,
     alignSelf: 'center',
-    padding: theme.spacing.medium,
+    paddingVertical: theme.spacing.medium,
     paddingBottom: theme.spacing.large,
   },
   alertCard: {
     backgroundColor: theme.colors.tintDanger,
-    borderStartWidth: 3,
-    borderStartColor: theme.colors.danger,
+    borderWidth: 1,
+    borderColor: theme.colors.danger,
+    borderRadius: theme.radius.card,
     padding: theme.spacing.medium,
     marginBottom: theme.spacing.medium,
   },
@@ -848,8 +901,61 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '900',
   },
+  topClock: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    minHeight: 32,
+    borderRadius: theme.radius.pill,
+    backgroundColor: 'rgba(246,198,103,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(246,198,103,0.28)',
+  },
+  topClockUrgent: {
+    backgroundColor: theme.colors.tintDanger,
+    borderColor: theme.colors.danger,
+  },
+  topClockText: {
+    color: theme.colors.primary,
+    fontSize: 13,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+  },
   urgentText: {
     color: theme.colors.danger,
+  },
+  inspector: {
+    alignItems: 'center',
+    paddingVertical: 12,
+    gap: 8,
+  },
+  inspectorSeal: {
+    width: 78,
+    height: 78,
+    borderRadius: 39,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.raised,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  inspectorName: {
+    color: theme.colors.text,
+    fontSize: 24,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  inspectorState: {
+    color: theme.colors.dim,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  inspectorRole: {
+    color: theme.colors.primary,
+    fontSize: 16,
+    fontWeight: '800',
+    textAlign: 'center',
   },
   ballotText: {
     color: theme.colors.dim,
@@ -870,8 +976,9 @@ const styles = StyleSheet.create({
   },
   winnerCard: {
     backgroundColor: theme.colors.surface,
-    borderTopWidth: 3,
-    borderTopColor: theme.colors.primary,
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
+    borderRadius: theme.radius.card,
     padding: theme.spacing.medium,
     marginBottom: theme.spacing.medium,
   },
@@ -881,31 +988,6 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     textAlign: 'center',
     marginBottom: theme.spacing.small,
-  },
-  revealText: {
-    color: theme.colors.text,
-    fontSize: 15,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  secretCard: {
-    backgroundColor: theme.colors.tintAlliance,
-    borderStartWidth: 3,
-    borderStartColor: theme.colors.secondary,
-    padding: theme.spacing.medium,
-    marginBottom: theme.spacing.medium,
-  },
-  secretHeading: {
-    color: theme.colors.primary,
-    fontSize: theme.type.card,
-    fontWeight: '800',
-    marginBottom: theme.spacing.small,
-  },
-  secretText: {
-    color: theme.colors.text,
-    fontSize: 15,
-    lineHeight: 21,
-    marginVertical: 2,
   },
   sectionRow: {
     flexDirection: 'row',

@@ -46,7 +46,7 @@ export const InfoTab: React.FC<{ sections: InfoSection[] }> = ({ sections }) => 
 const styles = StyleSheet.create({
   card: {
     backgroundColor: theme.colors.surface,
-    borderRadius: theme.borderRadius,
+    borderRadius: theme.radius.card,
     borderWidth: 1,
     borderColor: theme.colors.border,
     padding: theme.spacing.medium,

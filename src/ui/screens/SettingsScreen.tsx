@@ -4,13 +4,16 @@ import {
   StyleSheet,
   ScrollView,
   Platform,
-  TouchableOpacity,
+  Pressable,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text, TextInput } from '../text';
 import { theme } from '../theme/colors';
 import { BaseButton } from '../components/BaseButton';
+import { RoleSigil } from '../components/RoleSigil';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { useBack } from '../back';
+import { useResponsive } from '../layout';
 import { useI18n } from '../i18n';
 import { LANGUAGES, teamName } from '../../i18n';
 import { RoleDraftScreen } from './RoleDraftScreen';
@@ -31,6 +34,8 @@ interface Props {
 
 export const SettingsScreen = ({ onBack }: Props) => {
   const { t, language, setLanguage } = useI18n();
+  const insets = useSafeAreaInsets();
+  const { gutter } = useResponsive();
   const [apiKey, setApiKey] = useState('');
   // Both providers take an sk-… key, so the key alone cannot say which one it
   // belongs to: the player names the provider here.
@@ -128,7 +133,14 @@ export const SettingsScreen = ({ onBack }: Props) => {
   return (
     <View style={styles.container}>
       <ScreenHeader title={t('ui.settings.title')} />
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[
+          styles.content,
+          { paddingHorizontal: gutter, paddingBottom: insets.bottom + 24 },
+        ]}
+        keyboardShouldPersistTaps="handled"
+      >
 
       <Text style={styles.subHeader}>{t('ui.settings.language')}</Text>
       <Text style={styles.hint}>{t('ui.settings.languageHint')}</Text>
@@ -189,6 +201,7 @@ export const SettingsScreen = ({ onBack }: Props) => {
       ) : (
         saved.map(role => (
           <View key={role.id} style={styles.roleRow}>
+            <RoleSigil roleId={role.id} name={role.name} team={role.team} size={38} />
             <View style={styles.roleInfo}>
               <Text style={styles.roleName}>
                 {role.name} ({teamName(role.team)})
@@ -198,14 +211,13 @@ export const SettingsScreen = ({ onBack }: Props) => {
                   t('ui.settings.noNightAction')}
               </Text>
             </View>
-            <TouchableOpacity
-              style={styles.removeButton}
+            <Pressable
+              style={({ pressed }) => [styles.removeButton, pressed && styles.removePressed]}
               onPress={() => remove(role.id)}
-              activeOpacity={0.75}
               accessibilityRole="button"
             >
               <Text style={styles.removeText}>{t('ui.settings.delete')}</Text>
-            </TouchableOpacity>
+            </Pressable>
           </View>
         ))
       )}
@@ -218,14 +230,12 @@ export const SettingsScreen = ({ onBack }: Props) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background,
   },
   content: {
     width: '100%',
-    maxWidth: 560,
+    maxWidth: 720,
     alignSelf: 'center',
-    padding: theme.spacing.medium,
-    paddingBottom: theme.spacing.large,
+    paddingVertical: theme.spacing.medium,
   },
   subHeader: {
     fontSize: theme.type.section,
@@ -270,10 +280,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 10,
     marginBottom: theme.spacing.small,
+    padding: 12,
+    borderRadius: theme.radius.control,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
   },
   roleInfo: {
-    flexShrink: 1,
+    flex: 1,
   },
   roleName: {
     color: theme.colors.text,
@@ -296,5 +312,9 @@ const styles = StyleSheet.create({
     color: theme.colors.danger,
     fontSize: theme.type.small,
     fontWeight: '700',
+  },
+  removePressed: {
+    backgroundColor: theme.colors.tintDanger,
+    transform: [{ scale: 0.96 }],
   },
 });

@@ -1,13 +1,20 @@
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
+import { View, StyleSheet, ScrollView, InteractionManager } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Text } from '../text';
 import { theme } from '../theme/colors';
 import { BaseButton } from '../components/BaseButton';
 import { ScreenHeader } from '../components/ScreenHeader';
-import { RoleCard } from '../components/RoleCard';
-import { RosterRow } from '../components/RosterRow';
+import { PlayerGrid } from '../components/PlayerGrid';
+import { RoleBar } from '../components/RoleBar';
+import { RolePanel } from '../components/RolePanel';
+import { RoleSigil } from '../components/RoleSigil';
+import { Sheet } from '../components/Sheet';
+import { TableMenu } from '../components/TableMenu';
+import { PageOverlay } from '../components/PageOverlay';
 import { TableStrip } from '../components/TableStrip';
 import { useBack } from '../back';
+import { useResponsive } from '../layout';
 import { ActionPanel, OwnRole } from '../components/ActionPanel';
 import { TabBar } from '../components/TabBar';
 import { NotesTab } from '../components/NotesTab';
@@ -19,6 +26,8 @@ import { formatRemaining, winnerText } from '../format';
 import { useI18n } from '../i18n';
 import { SaidLine, roleName } from '../../i18n';
 import { packIsKnown } from '../../engine/gameManager';
+import { RulesScreen } from './RulesScreen';
+import { SettingsScreen } from './SettingsScreen';
 import { useGame } from '../GameContext';
 import { Phase } from '../../engine/types';
 import { lobby } from '../../network/lobby';
@@ -33,6 +42,19 @@ export const NarratorDashboard = () => {
   // notes about it, the private windows he holds as a player, or — once he is
   // out of the game — every card on the table.
   const [tab, setTab] = useState<'play' | 'info' | 'notes' | 'chat'>('play');
+  const [roleHidden, setRoleHidden] = useState(false);
+  const [roleOpen, setRoleOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [overlay, setOverlay] = useState<'rules' | 'settings' | null>(null);
+  const [inspect, setInspect] = useState<string | null>(null);
+  const { gutter } = useResponsive();
+
+  // The menu is a modal of its own; let it finish closing before the page
+  // overlay takes the screen.
+  const openOverlay = (page: 'rules' | 'settings') => {
+    setMenuOpen(false);
+    InteractionManager.runAfterInteractions(() => setOverlay(page));
+  };
 
   useEffect(() => {
     if (!manager || !localPlayer) return;
@@ -283,6 +305,13 @@ export const NarratorDashboard = () => {
   useBack(returnToLobby);
 
   const mayor = manager.getMayor();
+  const inspected = inspect ? players.find(player => player.id === inspect) ?? null : null;
+  const inspectedCard = inspected ? manager.getRoleOf(inspected.id) : null;
+  const inspectedKnown =
+    inspected && (seeEverything || (!inspected.isAlive && revealedCards.has(inspected.id)))
+      ? inspectedCard
+      : null;
+  const topMs = deadline ?? remaining;
   const tabs = [
     { id: 'play', label: t('ui.tab.play') },
     { id: 'info', label: t('ui.tab.info') },
@@ -300,21 +329,40 @@ export const NarratorDashboard = () => {
   return (
     <View style={styles.container}>
       <ScreenHeader
-        title={t('ui.host.title')}
-        meta={
+        title={
           phase
             ? t('ui.play.phaseLine', {
                 phase: t(`phase.${phase}`, undefined, phase),
                 round,
               })
+            : t('ui.play.title')
+        }
+        meta={
+          lobby.getRoomCode()
+            ? `${t('ui.lobby.roomCodeLabel')} ${lobby.getRoomCode()}`
             : undefined
         }
         backLabel={t('ui.back.lobby')}
+        onMenu={() => setMenuOpen(true)}
+        right={
+          topMs !== null ? (
+            <View style={[styles.topClock, topMs <= 10_000 && styles.topClockUrgent]}>
+              <Ionicons
+                name="timer-outline"
+                size={14}
+                color={topMs <= 10_000 ? theme.colors.danger : theme.colors.primary}
+              />
+              <Text style={[styles.topClockText, topMs <= 10_000 && styles.urgentText]}>
+                {formatRemaining(topMs)}
+              </Text>
+            </View>
+          ) : undefined
+        }
       />
       <ScrollView
         ref={scrollRef}
         style={styles.container}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingHorizontal: gutter }]}
       >
       {tab === 'play' && (
         <>
@@ -324,34 +372,18 @@ export const NarratorDashboard = () => {
         </View>
       )}
 
-      {/* The host plays too, so his own role must be as visible to him as a
-          guest's role card is to a guest. */}
-      <RoleCard
-        role={
-          role
-            ? {
-                id: role.id,
-                name: role.name,
-                team: role.team,
-                description: role.description,
-              }
-            : null
-        }
+      {/* The host plays too; the card waits behind the same private tap. */}
+      <RoleBar
+        roleName={role?.name}
+        hidden={!!role && roleHidden}
         emptyLabel={t('ui.host.unassigned')}
-        extra={
-          ownRole &&
-          ownRole.allies &&
-          ownRole.allies.length > 0 &&
-          (ownRole.team !== 'Wolf' || packReady)
-            ? `${ownRole.team === 'Wolf' ? t('ui.pack.yours') : t('ui.pack.alliance')}: ${ownRole.allies
-                .map(ally => ally.name)
-                .join(', ')}`
-            : undefined
-        }
+        onPress={() => setRoleOpen(true)}
       />
 
       {/* Out of the game, the host reads the table like any other corpse. */}
-      {!selfAlive && !seeEverything && <RevealedRoles entries={manager.getReveal()} />}
+      {!manager.winner && !selfAlive && !seeEverything && (
+        <RevealedRoles entries={manager.getReveal()} />
+      )}
 
       <TableStrip
         cells={[
@@ -360,8 +392,13 @@ export const NarratorDashboard = () => {
             ? [
                 {
                   value:
-                    t('ui.play.mayorLine', { name: mayor.name }) +
-                    (mayor.id === localPlayer.id ? t('ui.roster.you') : ''),
+                    t('ui.play.mayorLine', {
+                      name: mayor.name,
+                      how:
+                        manager.getSettings()['mayor.doubleVote'] === false
+                          ? t('ui.play.mayorSingle')
+                          : t('ui.play.mayorDouble'),
+                    }) + (mayor.id === localPlayer.id ? t('ui.roster.you') : ''),
                 },
               ]
             : []),
@@ -478,6 +515,8 @@ export const NarratorDashboard = () => {
         </View>
       )}
 
+      {manager.winner && <RevealedRoles entries={manager.getReveal()} />}
+
       {manager.lastVote && (
         <View style={styles.ledgerBlock}>
           <Text style={styles.statusText}>
@@ -546,103 +585,92 @@ export const NarratorDashboard = () => {
         />
       )}
 
-      <ActionPanel
-        phase={manager.state.currentPhase}
-        role={ownRole}
-        selfId={localPlayer.id}
-        targets={players}
-        submitted={submitted}
-        gameOver={!!manager.winner}
-        quietNight={manager.isQuietNight()}
-        dayFrozen={manager.isDayFrozen()}
-        ravenTiming={String(manager.getSettings()['raven.timing'] ?? 'night')}
-        ravenMark={manager.getRavenMark()}
-        barredVoters={manager.getBarredVoters()}
-        selfAlive={localPlayer.isAlive}
-        nightStage={manager.getNightStage()}
-        victim={manager.getHealTarget()}
-        tieTargets={
-          manager.hasOpenPackTie() && manager.getPackTieBreakerId() === localPlayer.id
-            ? manager.getPackTieTargets()
-            : undefined
-        }
-        electionStage={manager.getElectionStage()}
-        mayorCandidates={manager.getElectionList()}
-        successionMayorId={manager.getPendingSuccessionMayor()?.id ?? null}
-        candidates={
-          revoteCandidates.length > 0 ? revoteCandidates : undefined
-        }
-        onChoose={submitLocalAction}
-      />
-
-      {secrets.length > 0 && (
-        <View style={styles.secretCard}>
-          <Text style={styles.secretHeading}>{t('ui.play.privateInfo')}</Text>
-          {secrets.map((secret, index) => (
-            <Text key={index} style={styles.secretText}>
-              {t(secret.key, secret.params)}
-            </Text>
-          ))}
-        </View>
-      )}
-
       <View style={styles.sectionRow}>
         <Text style={styles.subHeader}>{t('ui.play.players')}</Text>
         <Text style={styles.sectionCount}>{players.length}</Text>
       </View>
-      {players.map(player => {
-        const dropped = lobby.disconnectedPlayers().some(p => p.id === player.id);
-        const card = manager.getRoleOf(player.id);
-        const dead = !player.isAlive;
-        const tags =
-          `${player.id === localPlayer.id ? t('ui.roster.you') : ''}` +
-          `${player.isBot ? t('ui.roster.botTag') : ''}` +
-          `${player.isAlive && packIds.has(player.id) ? t('ui.pack.wolfTag') : ''}` +
-          `${dropped ? t('ui.roster.noConnection') : ''}` +
-          `${
-            phase === 'Vote' && player.isAlive && manager.hasVoted(player.id)
-              ? t('ui.roster.voted')
-              : ''
-          }`;
-        // A blind host sees who is alive and who has voted, nothing more: the
-        // roles belong to the narrator view.
-        const detail = seeEverything
-          ? `${card ? roleName(card.id, card.name) : t('ui.host.unknownRole')}${
-              player.isAlive ? '' : t('ui.roster.dead')
-            }`
-          : player.isAlive
-          ? t('ui.host.aliveTag')
-          : revealedCards.has(player.id)
-          ? t('ui.roster.deadWithRole', {
-              role: revealedCards.get(player.id) ?? '',
-            })
-          : t('ui.common.dead');
+      <PlayerGrid
+        seats={players.map(player => {
+          const dropped = lobby.disconnectedPlayers().some(p => p.id === player.id);
+          const card = manager.getRoleOf(player.id);
+          const dead = !player.isAlive;
+          const known =
+            seeEverything || (dead && revealedCards.has(player.id)) ? card : null;
+          const waiting =
+            pendingActors.some(actor => actor.id === player.id)
+              ? { label: t('ui.roster.toAct'), icon: 'time-outline' as const }
+              : phase === 'Vote' &&
+                player.isAlive &&
+                pendingVoters.some(voter => voter.id === player.id)
+              ? { label: t('ui.roster.toVote'), icon: 'time-outline' as const }
+              : null;
+          const voted =
+            phase === 'Vote' && player.isAlive && manager.hasVoted(player.id);
+          const badge = dropped
+            ? { label: t('ui.roster.noConnection'), icon: 'cloud-offline-outline' as const, tone: theme.colors.danger }
+            : voted
+            ? { label: t('ui.roster.voted'), icon: 'checkmark-circle-outline' as const, tone: theme.colors.success }
+            : waiting
+            ? { ...waiting, tone: theme.colors.primary }
+            : dead
+            ? { label: t('ui.common.dead'), icon: 'skull-outline' as const, tone: theme.colors.dim }
+            : player.id === localPlayer.id
+            ? { label: t('ui.roster.you'), icon: 'person-outline' as const, tone: theme.colors.primary }
+            : undefined;
 
-        return (
-          <RosterRow
-            key={player.id}
-            name={player.name}
-            tags={tags}
-            detail={detail}
-            dead={dead}
-            dotColor={
-              dead
-                ? theme.colors.dim
-                : packIds.has(player.id)
-                ? theme.colors.danger
-                : player.id === localPlayer.id
-                ? theme.colors.primary
-                : theme.colors.success
-            }
-            onRemove={
-              player.id !== localPlayer.id
-                ? () => lobby.removePlayer(player.id)
-                : undefined
-            }
-            removeLabel={t('ui.common.remove')}
-          />
-        );
-      })}
+          return {
+            id: player.id,
+            name: player.name,
+            isAlive: player.isAlive,
+            roleId: known?.id,
+            roleTeam: known?.team,
+            self: player.id === localPlayer.id,
+            pack: player.isAlive && packIds.has(player.id),
+            badge: badge?.label,
+            badgeIcon: badge?.icon,
+            badgeTone: badge?.tone,
+            accent: dropped || dead
+              ? theme.colors.dim
+              : packIds.has(player.id)
+              ? theme.colors.danger
+              : player.id === localPlayer.id
+              ? theme.colors.primary
+              : theme.colors.secondary,
+            onPress: () => setInspect(player.id),
+          };
+        })}
+      />
+
+      {roleHidden ? (
+        <Text style={styles.hint}>{t('ui.play.showToAct')}</Text>
+      ) : (
+        <ActionPanel
+          phase={manager.state.currentPhase}
+          role={ownRole}
+          selfId={localPlayer.id}
+          targets={players}
+          submitted={submitted}
+          gameOver={!!manager.winner}
+          quietNight={manager.isQuietNight()}
+          dayFrozen={manager.isDayFrozen()}
+          ravenTiming={String(manager.getSettings()['raven.timing'] ?? 'night')}
+          ravenMark={manager.getRavenMark()}
+          barredVoters={manager.getBarredVoters()}
+          selfAlive={localPlayer.isAlive}
+          nightStage={manager.getNightStage()}
+          victim={manager.getHealTarget()}
+          tieTargets={
+            manager.hasOpenPackTie() && manager.getPackTieBreakerId() === localPlayer.id
+              ? manager.getPackTieTargets()
+              : undefined
+          }
+          electionStage={manager.getElectionStage()}
+          mayorCandidates={manager.getElectionList()}
+          successionMayorId={manager.getPendingSuccessionMayor()?.id ?? null}
+          candidates={revoteCandidates.length > 0 ? revoteCandidates : undefined}
+          onChoose={submitLocalAction}
+        />
+      )}
 
       <Text style={styles.hint}>
         {t('ui.host.guests', {
@@ -680,6 +708,76 @@ export const NarratorDashboard = () => {
 
     </ScrollView>
     <TabBar tabs={tabs} active={tab} onSelect={selectTab} />
+
+    <Sheet visible={roleOpen} onClose={() => setRoleOpen(false)} title={t('ui.play.yourRole')}>
+      <RolePanel
+        role={ownRole}
+        hidden={!!role && roleHidden}
+        onShow={() => setRoleHidden(false)}
+        onHide={role ? () => setRoleHidden(true) : undefined}
+        emptyLabel={t('ui.host.unassigned')}
+        alliesKnown={!hostIsWolf || packReady}
+        secrets={secrets}
+      />
+    </Sheet>
+
+    <Sheet
+      visible={!!inspected}
+      onClose={() => setInspect(null)}
+      title={inspected?.name}
+    >
+      {inspected ? (
+        <View style={styles.inspector}>
+          {inspectedKnown ? (
+            <RoleSigil
+              roleId={inspectedKnown.id}
+              team={inspectedKnown.team}
+              size={78}
+              muted={!inspected.isAlive}
+            />
+          ) : (
+            <View style={styles.inspectorSeal}>
+              <Ionicons name="person" size={30} color={theme.colors.secondary} />
+            </View>
+          )}
+          <Text style={styles.inspectorName}>{inspected.name}</Text>
+          <Text style={styles.inspectorState}>
+            {inspected.isAlive ? t('ui.host.aliveTag') : t('ui.common.dead')}
+            {inspected.isBot ? t('ui.roster.botTag') : ''}
+          </Text>
+          {inspectedKnown ? (
+            <Text style={styles.inspectorRole}>
+              {roleName(inspectedKnown.id, inspectedKnown.name)}
+            </Text>
+          ) : null}
+          {inspected.id !== localPlayer.id ? (
+            <BaseButton
+              title={t('ui.common.remove')}
+              variant="danger"
+              onPress={() => {
+                lobby.removePlayer(inspected.id);
+                setInspect(null);
+              }}
+            />
+          ) : null}
+        </View>
+      ) : null}
+    </Sheet>
+
+    <TableMenu
+      visible={menuOpen}
+      onClose={() => setMenuOpen(false)}
+      onRules={() => openOverlay('rules')}
+      onSettings={() => openOverlay('settings')}
+    />
+
+    <PageOverlay visible={overlay === 'rules'}>
+      <RulesScreen onBack={() => setOverlay(null)} />
+    </PageOverlay>
+
+    <PageOverlay visible={overlay === 'settings'}>
+      <SettingsScreen onBack={() => setOverlay(null)} />
+    </PageOverlay>
     </View>
   );
 };
@@ -687,14 +785,66 @@ export const NarratorDashboard = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background,
   },
   content: {
     width: '100%',
-    maxWidth: 560,
+    maxWidth: 720,
     alignSelf: 'center',
-    padding: theme.spacing.medium,
+    paddingVertical: theme.spacing.medium,
     paddingBottom: theme.spacing.large,
+  },
+  topClock: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    minHeight: 32,
+    borderRadius: theme.radius.pill,
+    backgroundColor: 'rgba(246,198,103,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(246,198,103,0.28)',
+  },
+  topClockUrgent: {
+    backgroundColor: theme.colors.tintDanger,
+    borderColor: theme.colors.danger,
+  },
+  topClockText: {
+    color: theme.colors.primary,
+    fontSize: 13,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+  },
+  inspector: {
+    alignItems: 'center',
+    paddingVertical: 12,
+    gap: 10,
+  },
+  inspectorSeal: {
+    width: 78,
+    height: 78,
+    borderRadius: 39,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.raised,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  inspectorName: {
+    color: theme.colors.text,
+    fontSize: 24,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  inspectorState: {
+    color: theme.colors.dim,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  inspectorRole: {
+    color: theme.colors.primary,
+    fontSize: 16,
+    fontWeight: '800',
+    textAlign: 'center',
   },
   youAre: {
     color: theme.colors.dim,
@@ -742,25 +892,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
     marginBottom: theme.spacing.small,
-  },
-  secretCard: {
-    backgroundColor: theme.colors.tintAlliance,
-    borderStartWidth: 3,
-    borderStartColor: theme.colors.secondary,
-    padding: theme.spacing.medium,
-    marginBottom: theme.spacing.medium,
-  },
-  secretHeading: {
-    color: theme.colors.primary,
-    fontSize: theme.type.card,
-    fontWeight: '800',
-    marginBottom: theme.spacing.small,
-  },
-  secretText: {
-    color: theme.colors.text,
-    fontSize: 15,
-    lineHeight: 21,
-    marginVertical: 2,
   },
   sectionRow: {
     flexDirection: 'row',

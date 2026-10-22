@@ -4,6 +4,17 @@
     "slug": "werewolf-manager",
     "version": "1.0.0",
     "newArchEnabled": false,
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#070B14",
+    "androidStatusBar": {
+      "backgroundColor": "#070B14",
+      "barStyle": "light-content",
+      "translucent": true
+    },
+    "androidNavigationBar": {
+      "backgroundColor": "#070B14",
+      "barStyle": "light-content"
+    },
     "ios": {
       "bundleIdentifier": "com.loupgarou.game",
       "infoPlist": {

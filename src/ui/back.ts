@@ -1,21 +1,33 @@
 import { useEffect, useRef } from 'react';
 import { BackHandler, Platform } from 'react-native';
 
-// What "back" means on the screen that is up. Only one screen is up at a time,
-// so one handler is enough, and the visible back control goes through it.
+// What "back" means on the layer that is up. Screens, sheets and modals push
+// their own handler, so a sheet closes before the table behind it.
 type Back = () => void;
-let active: Back | null = null;
+
+const stack: Back[] = [];
+let listening = false;
+
+const onPop = () => {
+  stack[stack.length - 1]?.();
+};
+
+const listenForBrowserBack = () => {
+  if (listening) return;
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+  window.addEventListener('popstate', onPop);
+  listening = true;
+};
 
 // The phone's back gesture, the hardware key and the browser's back button all
-// land on the screen's own back action.
+// land on the top layer's own action.
 export const leaveScreen = () => {
-  if (Platform.OS === 'web' && typeof window !== 'undefined' && active) {
-    // The entry pushed when this screen came up pops back onto it.
-    window.history.back();
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    if (stack.length > 0) window.history.back();
     return;
   }
 
-  active?.();
+  stack[stack.length - 1]?.();
 };
 
 export const useBack = (onBack: Back | null) => {
@@ -27,29 +39,24 @@ export const useBack = (onBack: Back | null) => {
     if (!on) return;
 
     const go = () => ref.current?.();
-    active = go;
+    stack.push(go);
+    listenForBrowserBack();
 
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      go();
+      stack[stack.length - 1]?.();
       return true;
     });
 
-    if (Platform.OS !== 'web' || typeof window === 'undefined') {
-      return () => {
-        active = null;
-        sub.remove();
-      };
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      // One entry of our own, so the browser's back button returns here instead
+      // of leaving the app.
+      window.history.pushState({ back: true }, '');
     }
 
-    // One entry of our own, so the browser's back button returns here instead
-    // of leaving the app.
-    window.history.pushState({ back: true }, '');
-    window.addEventListener('popstate', go);
-
     return () => {
-      active = null;
+      const at = stack.lastIndexOf(go);
+      if (at >= 0) stack.splice(at, 1);
       sub.remove();
-      window.removeEventListener('popstate', go);
     };
   }, [on]);
 };

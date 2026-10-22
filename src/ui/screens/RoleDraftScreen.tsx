@@ -1,9 +1,13 @@
 import React from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '../text';
 import { theme } from '../theme/colors';
 import { BaseButton } from '../components/BaseButton';
+import { RoleSigil } from '../components/RoleSigil';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { useBack } from '../back';
+import { useResponsive } from '../layout';
 import { DraftRole } from '../../engine/generatedRole';
 import { useI18n } from '../i18n';
 import { teamName } from '../../i18n';
@@ -17,13 +21,28 @@ interface Props {
 export const RoleDraftScreen = ({ draft, onApprove, onReject }: Props) => {
   const { role, unsupported } = draft;
   const { t } = useI18n();
+  const insets = useSafeAreaInsets();
+  const { gutter } = useResponsive();
+
+  // The draft keeps its own history entry, so leaving it returns to Settings
+  // rather than closing the workshop.
+  useBack(onReject);
 
   return (
     <View style={styles.container}>
       <ScreenHeader title={t('ui.draft.title')} />
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[
+          styles.content,
+          { paddingHorizontal: gutter, paddingBottom: insets.bottom + 24 },
+        ]}
+      >
         <View style={styles.card}>
-          <Text style={styles.title}>{role.name}</Text>
+          <View style={styles.head}>
+            <RoleSigil roleId={role.id} name={role.name} team={role.team} size={64} />
+            <Text style={styles.title}>{role.name}</Text>
+          </View>
           <Text style={styles.text}>{t('ui.draft.team', { team: teamName(role.team) })}</Text>
           <Text style={styles.text}>{role.description}</Text>
         </View>
@@ -58,25 +77,31 @@ export const RoleDraftScreen = ({ draft, onApprove, onReject }: Props) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background,
   },
   content: {
     width: '100%',
-    maxWidth: 560,
+    maxWidth: 720,
     alignSelf: 'center',
-    padding: theme.spacing.medium,
-    paddingBottom: theme.spacing.large,
+    paddingVertical: theme.spacing.medium,
   },
   card: {
     backgroundColor: theme.colors.surface,
     padding: theme.spacing.large,
-    borderRadius: theme.borderRadius,
+    borderRadius: theme.radius.card,
     borderWidth: 1,
     borderColor: theme.colors.border,
     marginBottom: theme.spacing.large,
   },
+  head: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginBottom: 4,
+  },
   title: {
-    fontSize: 22,
+    flex: 1,
+    fontSize: 24,
+    lineHeight: 30,
     color: theme.colors.primary,
     fontWeight: '900',
   },
@@ -100,7 +125,9 @@ const styles = StyleSheet.create({
   warningCard: {
     backgroundColor: theme.colors.tintDanger,
     padding: theme.spacing.medium,
-    borderRadius: theme.borderRadius,
+    borderRadius: theme.radius.control,
+    borderWidth: 1,
+    borderColor: theme.colors.danger,
     marginTop: theme.spacing.medium,
   },
   warningText: {

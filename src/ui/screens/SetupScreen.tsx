@@ -1,10 +1,12 @@
 import React from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, ScrollView, Pressable } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text, TextInput } from '../text';
 import { theme } from '../theme/colors';
 import { BaseButton } from '../components/BaseButton';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { useBack } from '../back';
+import { useResponsive } from '../layout';
 import { RoleGrid } from '../components/RoleGrid';
 import { ALL_ROLES, getCustomRoles } from '../../engine/roleSet';
 import { say } from '../../i18n';
@@ -73,14 +75,17 @@ const Stepper: React.FC<{
         {note ? <Text style={styles.roleNote}>{note}</Text> : null}
       </View>
       <View style={styles.stepperButtons}>
-        <TouchableOpacity
-          style={[styles.stepButton, count <= 0 && styles.stepButtonOff]}
+        <Pressable
+          style={({ pressed }) => [
+            styles.stepButton,
+            count <= 0 && styles.stepButtonOff,
+            pressed && styles.pressed,
+          ]}
           onPress={() => step(-1)}
-          activeOpacity={0.75}
           accessibilityRole="button"
         >
           <Text style={styles.stepText}>−</Text>
-        </TouchableOpacity>
+        </Pressable>
         {unit ? (
           <View style={styles.typedCount}>
             <TextInput
@@ -98,14 +103,13 @@ const Stepper: React.FC<{
         ) : (
           <Text style={styles.count}>{count}</Text>
         )}
-        <TouchableOpacity
-          style={styles.stepButton}
+        <Pressable
+          style={({ pressed }) => [styles.stepButton, pressed && styles.pressed]}
           onPress={() => step(1)}
-          activeOpacity={0.75}
           accessibilityRole="button"
         >
           <Text style={styles.stepText}>+</Text>
-        </TouchableOpacity>
+        </Pressable>
       </View>
     </View>
   );
@@ -124,6 +128,8 @@ export const SetupScreen: React.FC<Props> = ({
   const seats = setupSeatsUsed(setup);
   const customRoles = getCustomRoles();
   const { t } = useI18n();
+  const insets = useSafeAreaInsets();
+  const { gutter } = useResponsive();
 
   // Every built-in role, then whatever the host made with the AI. The grid
   // groups them by side on its own.
@@ -153,7 +159,14 @@ export const SetupScreen: React.FC<Props> = ({
         meta={t('ui.setup.seats', { seats, total: playerCount })}
         backLabel={t('ui.setup.back')}
       />
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[
+          styles.content,
+          { paddingHorizontal: gutter, paddingBottom: insets.bottom + 32 },
+        ]}
+        keyboardShouldPersistTaps="handled"
+      >
       {problem ? (
         <View style={styles.problemCard}>
           <Text style={styles.problemText}>{problem}</Text>
@@ -212,14 +225,12 @@ export const SetupScreen: React.FC<Props> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background,
   },
   content: {
     width: '100%',
-    maxWidth: 560,
+    maxWidth: 720,
     alignSelf: 'center',
-    padding: theme.spacing.medium,
-    paddingBottom: theme.spacing.large * 2,
+    paddingVertical: theme.spacing.medium,
   },
   subHeader: {
     color: theme.colors.text,
@@ -239,12 +250,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: theme.colors.surface,
-    borderRadius: theme.borderRadius,
+    borderRadius: theme.radius.card,
     borderWidth: 1,
     borderColor: theme.colors.border,
-    paddingHorizontal: theme.spacing.medium,
-    paddingVertical: theme.spacing.small,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     marginVertical: 4,
+    gap: 8,
   },
   stepperLabel: {
     flex: 1,
@@ -273,6 +285,10 @@ const styles = StyleSheet.create({
   },
   stepButtonOff: {
     opacity: 0.4,
+  },
+  pressed: {
+    opacity: 0.78,
+    transform: [{ scale: 0.95 }],
   },
   stepText: {
     color: theme.colors.background,
@@ -313,8 +329,9 @@ const styles = StyleSheet.create({
   },
   problemCard: {
     backgroundColor: theme.colors.tintDanger,
-    borderStartWidth: 3,
-    borderStartColor: theme.colors.danger,
+    borderWidth: 1,
+    borderColor: theme.colors.danger,
+    borderRadius: theme.radius.control,
     padding: theme.spacing.medium,
     marginBottom: theme.spacing.small,
   },

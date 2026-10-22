@@ -1,9 +1,12 @@
 import React from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '../text';
 import { theme } from '../theme/colors';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { RoleSigil } from '../components/RoleSigil';
 import { useBack } from '../back';
+import { useResponsive } from '../layout';
 import { actionLabel, roleDescription, roleName, roleTips, teamName } from '../../i18n';
 import { ALL_ROLES, getCustomRoles } from '../../engine/roleSet';
 import { getRoleTips } from '../../engine/rolepedia';
@@ -44,6 +47,8 @@ export const RulesScreen = ({ onBack }: Props) => {
   const customRoles = getCustomRoles();
   const roles = [...ALL_ROLES, ...customRoles];
   const { t } = useI18n();
+  const insets = useSafeAreaInsets();
+  const { gutter } = useResponsive();
 
   // The long pages travel as one key with one line per row: a language rewrites
   // the whole page in its own words, and the screen only counts the lines.
@@ -58,7 +63,13 @@ export const RulesScreen = ({ onBack }: Props) => {
   return (
     <View style={styles.container}>
       <ScreenHeader title={t('ui.rules.title')} />
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[
+          styles.content,
+          { paddingHorizontal: gutter, paddingBottom: insets.bottom + 24 },
+        ]}
+      >
 
       {lines('ui.rules.howTo', HOW_TO_PLAY).map((line, index) => (
         <Text key={index} style={styles.text}>
@@ -83,13 +94,16 @@ export const RulesScreen = ({ onBack }: Props) => {
       <Text style={styles.subHeader}>{t('ui.rules.roles')}</Text>
       {roles.map(role => (
         <View key={role.id} style={styles.card}>
-          <Text style={styles.roleName}>
-            {roleName(role.id, role.name)}
-            <Text style={styles.roleTeam}> — {teamName(role.team)}</Text>
-            {role.id.startsWith('custom-') ? (
-              <Text style={styles.roleTeam}> {t('ui.rules.yourOwn')}</Text>
-            ) : null}
-          </Text>
+          <View style={styles.roleHead}>
+            <RoleSigil roleId={role.id} name={role.name} team={role.team} size={46} />
+            <Text style={styles.roleName}>
+              {roleName(role.id, role.name)}
+              <Text style={styles.roleTeam}> — {teamName(role.team)}</Text>
+              {role.id.startsWith('custom-') ? (
+                <Text style={styles.roleTeam}> {t('ui.rules.yourOwn')}</Text>
+              ) : null}
+            </Text>
+          </View>
           <Text style={styles.text}>{roleDescription(role.id, role.description)}</Text>
 
           {roleTips(role.id, getRoleTips(role.id)).map((tip, index) => (
@@ -123,14 +137,12 @@ export const RulesScreen = ({ onBack }: Props) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background,
   },
   content: {
     width: '100%',
-    maxWidth: 560,
+    maxWidth: 720,
     alignSelf: 'center',
-    padding: theme.spacing.medium,
-    paddingBottom: theme.spacing.large,
+    paddingVertical: theme.spacing.medium,
   },
   subHeader: {
     fontSize: theme.type.section,
@@ -148,16 +160,22 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: theme.colors.surface,
     padding: theme.spacing.medium,
-    borderRadius: theme.borderRadius,
+    borderRadius: theme.radius.card,
     borderWidth: 1,
     borderColor: theme.colors.border,
     marginBottom: theme.spacing.small,
   },
+  roleHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: theme.spacing.small,
+  },
   roleName: {
+    flex: 1,
     color: theme.colors.primary,
     fontSize: theme.type.card,
     fontWeight: '800',
-    marginBottom: theme.spacing.small,
   },
   roleTeam: {
     color: theme.colors.dim,

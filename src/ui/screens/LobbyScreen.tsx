@@ -4,15 +4,18 @@ import {
   StyleSheet,
   ScrollView,
   Platform,
-  TouchableOpacity,
+  Pressable,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Text, TextInput } from '../text';
 import { theme } from '../theme/colors';
 import { BaseButton } from '../components/BaseButton';
+import { TactileButton } from '../components/TactileButton';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { RosterRow } from '../components/RosterRow';
 import { useBack } from '../back';
+import { useResponsive } from '../layout';
 import { GAME_PORT, HOST_PLAYER_ID, LOCAL_GUEST_ID, lobby } from '../../network/lobby';
 import { splitHostAddress } from '../../network/address';
 import { setCustomRoles } from '../../engine/roleSet';
@@ -55,37 +58,6 @@ const lastBotNumber = () =>
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
-// The two doors into a game, not two equal buttons: hosting is the gold path,
-// joining is the same door outlined.
-const MenuAction = ({
-  title,
-  icon,
-  primary,
-  onPress,
-}: {
-  title: string;
-  icon: IconName;
-  primary?: boolean;
-  onPress: () => void;
-}) => {
-  const { rtl } = useI18n();
-  const ink = primary ? theme.colors.background : theme.colors.primary;
-
-  return (
-    <TouchableOpacity
-      style={[styles.action, primary && styles.actionPrimary]}
-      onPress={onPress}
-      activeOpacity={0.8}
-      accessibilityRole="button"
-      accessibilityLabel={title}
-    >
-      <Ionicons name={icon} size={22} color={ink} />
-      <Text style={[styles.actionText, primary && styles.actionTextPrimary]}>{title}</Text>
-      <Ionicons name={rtl ? 'chevron-back' : 'chevron-forward'} size={18} color={ink} />
-    </TouchableOpacity>
-  );
-};
-
 const MenuLink = ({
   title,
   icon,
@@ -95,16 +67,15 @@ const MenuLink = ({
   icon: IconName;
   onPress: () => void;
 }) => (
-  <TouchableOpacity
-    style={styles.link}
+  <Pressable
+    style={({ pressed }) => [styles.link, pressed && styles.linkPressed]}
     onPress={onPress}
-    activeOpacity={0.7}
     accessibilityRole="button"
     accessibilityLabel={title}
   >
     <Ionicons name={icon} size={17} color={theme.colors.dim} />
     <Text style={styles.linkText}>{title}</Text>
-  </TouchableOpacity>
+  </Pressable>
 );
 
 export const LobbyScreen = () => {
@@ -114,6 +85,8 @@ export const LobbyScreen = () => {
   // between the join attempt and the game starting.
   const guestRef = React.useRef<Player | null>(null);
   const { t } = useI18n();
+  const insets = useSafeAreaInsets();
+  const { gutter } = useResponsive();
 
   const [view, setView] = useState<LobbyView>('menu');
   const [roomCode, setRoomCode] = useState('');
@@ -130,16 +103,11 @@ export const LobbyScreen = () => {
   // Reading the saved table has to finish before an empty one is kept in its
   // place, or it would be overwritten the moment the waiting room opens.
   const [prefsLoaded, setPrefsLoaded] = useState(false);
-  // Lets the setup picker show Custom only once there are roles to deal.
-  const [customRoleCount, setCustomRoleCount] = useState(0);
   // A room the host left and came back to may already have bots on it.
   const botSeq = React.useRef(lastBotNumber());
 
   useEffect(() => {
-    loadCustomRoles().then(roles => {
-      setCustomRoles(roles);
-      setCustomRoleCount(roles.length);
-    });
+    loadCustomRoles().then(roles => setCustomRoles(roles));
 
     // Remember where this device last joined, and the setup this host likes.
     loadPreferences().then(saved => {
@@ -412,19 +380,20 @@ export const LobbyScreen = () => {
                 value={playerName}
                 onChangeText={setPlayerName}
               />
-              {lobby.canHost() && (
-                <MenuAction
+              {lobby.canHost() ? (
+                <TactileButton
                   title={t('ui.lobby.host')}
                   icon="people"
-                  primary
                   onPress={() => setView('host')}
+                  style={styles.menuButton}
                 />
-              )}
-              <MenuAction
+              ) : null}
+              <TactileButton
                 title={t('ui.lobby.join')}
                 icon={lobby.canHost() ? 'log-in-outline' : 'log-in'}
-                primary={!lobby.canHost()}
+                variant={lobby.canHost() ? 'secondary' : 'primary'}
                 onPress={() => setView('join')}
+                style={styles.menuButton}
               />
               {!lobby.canHost() && (
                 <Text style={styles.menuHint}>{t('ui.lobby.webGuest')}</Text>
@@ -598,16 +567,7 @@ export const LobbyScreen = () => {
   }
 
   if (view === 'settings') {
-    return (
-      <SettingsScreen
-        onBack={() => {
-          setView('menu');
-          // Roles made in the workshop have to show up in the setup picker
-          // straight away, without restarting the app.
-          loadCustomRoles().then(roles => setCustomRoleCount(roles.length));
-        }}
-      />
-    );
+    return <SettingsScreen onBack={() => setView('menu')} />;
   }
 
   const menu = view === 'menu';
@@ -628,7 +588,15 @@ export const LobbyScreen = () => {
       )}
       <ScrollView
         style={styles.container}
-        contentContainerStyle={[styles.page, menu && styles.menuPage]}
+        contentContainerStyle={[
+          styles.page,
+          menu && styles.menuPage,
+          {
+            paddingHorizontal: menu ? Math.max(24, gutter) : gutter,
+            paddingTop: menu ? insets.top + 24 : theme.spacing.medium,
+            paddingBottom: insets.bottom + 24,
+          },
+        ]}
         keyboardShouldPersistTaps="handled"
       >
         {error ? (
@@ -658,11 +626,10 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background,
   },
   page: {
     width: '100%',
-    maxWidth: 560,
+    maxWidth: 720,
     alignSelf: 'center',
     padding: theme.spacing.medium,
     paddingBottom: theme.spacing.large,
@@ -670,9 +637,7 @@ const styles = StyleSheet.create({
   menuPage: {
     flexGrow: 1,
     justifyContent: 'center',
-    maxWidth: 420,
-    paddingHorizontal: 24,
-    paddingVertical: 32,
+    maxWidth: 440,
   },
   brand: {
     alignItems: 'center',
@@ -730,42 +695,31 @@ const styles = StyleSheet.create({
   },
   field: {
     color: theme.colors.text,
-    fontSize: 18,
-    fontWeight: '600',
-    minHeight: theme.touchTarget,
-    paddingVertical: 8,
-    borderBottomWidth: 2,
-    borderBottomColor: theme.colors.fieldBorder,
+    fontSize: 17,
+    fontWeight: '700',
+    minHeight: 50,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: theme.radius.control,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.fieldBorder,
     marginBottom: theme.spacing.medium,
   },
-  action: {
-    minHeight: 60,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: theme.spacing.medium,
-    borderWidth: 1.5,
-    borderColor: theme.colors.primary,
-    borderRadius: theme.borderRadius,
+  menuButton: {
     marginTop: 10,
-  },
-  actionPrimary: {
-    backgroundColor: theme.colors.primary,
-  },
-  actionText: {
-    flex: 1,
-    color: theme.colors.text,
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  actionTextPrimary: {
-    color: theme.colors.background,
   },
   links: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: theme.spacing.medium,
+    borderRadius: theme.radius.pill,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface,
+    paddingHorizontal: 8,
+    alignSelf: 'center',
   },
   link: {
     minHeight: theme.inlineTouchTarget,
@@ -773,10 +727,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 12,
+    borderRadius: theme.radius.pill,
+  },
+  linkPressed: {
+    backgroundColor: theme.colors.highlight,
   },
   linkText: {
     color: theme.colors.dim,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
   },
   linkDivider: {
@@ -799,23 +757,32 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   ticket: {
-    borderTopWidth: 2,
-    borderTopColor: theme.colors.primary,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-    paddingVertical: 14,
-    marginBottom: 12,
+    borderRadius: theme.radius.card,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: 'rgba(246,198,103,0.38)',
+    padding: 16,
+    marginBottom: 14,
+    shadowColor: theme.colors.primary,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 3,
   },
   ticketLabel: {
     color: theme.colors.dim,
     fontSize: theme.type.label,
     fontWeight: '800',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
   },
   ticketCode: {
     color: theme.colors.primary,
     fontSize: 40,
-    lineHeight: 44,
+    lineHeight: 46,
     fontWeight: '900',
+    letterSpacing: 4,
+    fontVariant: ['tabular-nums'],
   },
   ticketAddress: {
     color: theme.colors.dim,
@@ -837,8 +804,9 @@ const styles = StyleSheet.create({
   },
   errorNote: {
     backgroundColor: theme.colors.tintDanger,
-    borderStartWidth: 3,
-    borderStartColor: theme.colors.danger,
+    borderWidth: 1,
+    borderColor: theme.colors.danger,
+    borderRadius: theme.radius.control,
     padding: 12,
     marginBottom: theme.spacing.medium,
   },

@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Keyboard, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Keyboard, Pressable, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Text } from '../text';
 import { theme } from '../theme/colors';
+import { Glass } from './Glass';
 
 export interface TabDef {
   id: string;
@@ -26,9 +28,10 @@ const icons: Record<string, [IconName, IconName]> = {
 };
 
 // The stations of the table, fixed to the bottom where a thumb already is.
-// The open one is a gold notch over a gold mark, not a filled pill.
+// The open one is a gold notch and a soft seat, not a wall of tabs.
 export const TabBar: React.FC<Props> = ({ tabs, active, onSelect }) => {
   const [shown, setShown] = useState(true);
+  const insets = useSafeAreaInsets();
 
   // A keyboard and a bottom rail fight for the same space. The rail steps out
   // while a field has focus, and comes back when it closes.
@@ -44,72 +47,88 @@ export const TabBar: React.FC<Props> = ({ tabs, active, onSelect }) => {
   if (!shown) return null;
 
   return (
-    <View style={styles.bar}>
-      <View style={styles.rail}>
+    <Glass style={styles.bar}>
+      <View style={[styles.rail, { paddingBottom: Math.max(insets.bottom, 6) }]}>
         {tabs.map(tab => {
           const selected = tab.id === active;
           const [filled, outline] = icons[tab.id] ?? ['ellipse', 'ellipse-outline'];
           return (
-            <TouchableOpacity
+            <Pressable
               key={tab.id}
-              style={styles.tab}
+              style={({ pressed }) => [styles.tab, pressed && styles.pressed]}
               onPress={() => onSelect(tab.id)}
-              activeOpacity={0.7}
               accessibilityRole="tab"
               accessibilityLabel={tab.label}
               accessibilityState={{ selected }}
             >
               <View style={[styles.notch, selected && styles.notchActive]} />
-              <Ionicons
-                name={selected ? filled : outline}
-                size={21}
-                color={selected ? theme.colors.primary : theme.colors.dim}
-              />
+              <View style={[styles.iconSeat, selected && styles.iconSeatActive]}>
+                <Ionicons
+                  name={selected ? filled : outline}
+                  size={20}
+                  color={selected ? theme.colors.primary : theme.colors.dim}
+                />
+              </View>
               <Text style={[styles.label, selected && styles.labelActive]}>{tab.label}</Text>
-            </TouchableOpacity>
+            </Pressable>
           );
         })}
       </View>
-    </View>
+    </Glass>
   );
 };
 
 const styles = StyleSheet.create({
   bar: {
-    width: '100%',
-    backgroundColor: theme.colors.surface,
     borderTopWidth: 1,
     borderTopColor: theme.colors.border,
-    paddingBottom: 6,
   },
   rail: {
     width: '100%',
-    maxWidth: 560,
+    maxWidth: 720,
     alignSelf: 'center',
     flexDirection: 'row',
+    paddingTop: 5,
   },
   tab: {
     flex: 1,
-    minHeight: 58,
+    minHeight: 52,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 2,
     paddingHorizontal: 4,
   },
+  pressed: {
+    transform: [{ scale: 0.96 }],
+  },
   notch: {
-    width: 28,
+    width: 24,
     height: 3,
     borderRadius: 2,
-    marginBottom: 4,
+    marginBottom: 3,
     backgroundColor: 'transparent',
   },
   notchActive: {
     backgroundColor: theme.colors.primary,
+    shadowColor: theme.colors.primary,
+    shadowOpacity: 0.7,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  iconSeat: {
+    width: 34,
+    height: 28,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconSeatActive: {
+    backgroundColor: 'rgba(246,198,103,0.12)',
   },
   label: {
     color: theme.colors.dim,
     fontWeight: '700',
-    fontSize: theme.type.label,
+    fontSize: 11,
   },
   labelActive: {
     color: theme.colors.primary,

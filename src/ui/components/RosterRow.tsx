@@ -1,5 +1,6 @@
 import React from 'react';
-import { StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Text } from '../text';
 import { theme } from '../theme/colors';
 
@@ -15,7 +16,7 @@ interface Props {
   removeLabel?: string;
 }
 
-// One seat on a ledger, not a card. The dot carries the only colour the table
+// One seat on a ledger: a small avatar, the name, and the one colour the table
 // is allowed to know about that player.
 export const RosterRow: React.FC<Props> = ({
   name,
@@ -27,7 +28,10 @@ export const RosterRow: React.FC<Props> = ({
   removeLabel,
 }) => (
   <View style={styles.row}>
-    <View style={[styles.dot, { backgroundColor: dotColor ?? theme.colors.success }]} />
+    <View style={[styles.avatar, { borderColor: dotColor ?? theme.colors.success }]}>
+      <Text style={styles.initial}>{(name.trim()[0] ?? '?').toUpperCase()}</Text>
+      <View style={[styles.dot, { backgroundColor: dotColor ?? theme.colors.success }]} />
+    </View>
     <View style={styles.body}>
       <Text style={[styles.name, dead && styles.dead]} numberOfLines={2}>
         {name}
@@ -36,51 +40,69 @@ export const RosterRow: React.FC<Props> = ({
       {detail ? <Text style={styles.detail}>{detail}</Text> : null}
     </View>
     {onRemove ? (
-      <TouchableOpacity
-        style={styles.remove}
+      <Pressable
+        style={({ pressed }) => [styles.remove, pressed && styles.removePressed]}
         onPress={onRemove}
-        activeOpacity={0.7}
         accessibilityRole="button"
         accessibilityLabel={removeLabel ?? 'Remove'}
       >
-        <Text style={styles.removeText}>{removeLabel ?? 'Remove'}</Text>
-      </TouchableOpacity>
+        <Ionicons name="trash-outline" size={17} color={theme.colors.danger} />
+      </Pressable>
     ) : null}
   </View>
 );
 
 const styles = StyleSheet.create({
   row: {
-    minHeight: 52,
+    minHeight: 58,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
   },
+  avatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 1.5,
+    backgroundColor: theme.colors.raised,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginEnd: 12,
+  },
+  initial: {
+    color: theme.colors.text,
+    fontSize: 14,
+    fontWeight: '900',
+  },
   dot: {
+    position: 'absolute',
     width: 8,
     height: 8,
     borderRadius: 4,
-    marginEnd: 12,
+    bottom: -1,
+    end: -1,
+    borderWidth: 2,
+    borderColor: theme.colors.background,
   },
   body: {
     flex: 1,
   },
   name: {
     color: theme.colors.text,
-    fontSize: theme.type.body,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: '800',
   },
   tags: {
     color: theme.colors.dim,
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
   },
   detail: {
     color: theme.colors.dim,
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 12,
+    lineHeight: 17,
     marginTop: 1,
   },
   dead: {
@@ -88,19 +110,18 @@ const styles = StyleSheet.create({
     textDecorationLine: 'line-through',
   },
   remove: {
-    minWidth: theme.inlineTouchTarget,
-    minHeight: theme.inlineTouchTarget,
+    width: theme.inlineTouchTarget,
+    height: theme.inlineTouchTarget,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 10,
+    borderRadius: theme.radius.control,
+    backgroundColor: theme.colors.tintDanger,
     borderWidth: 1,
     borderColor: theme.colors.danger,
-    borderRadius: 8,
-    marginStart: 12,
+    marginStart: 10,
   },
-  removeText: {
-    color: theme.colors.danger,
-    fontSize: theme.type.label,
-    fontWeight: '700',
+  removePressed: {
+    transform: [{ scale: 0.94 }],
+    opacity: 0.8,
   },
 });

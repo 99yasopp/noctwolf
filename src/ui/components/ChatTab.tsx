@@ -97,7 +97,9 @@ export const ChatTab: React.FC<Props> = ({ groups, open, lines, selfId, onSend }
 const styles = StyleSheet.create({
   card: {
     backgroundColor: theme.colors.surface,
-    borderRadius: theme.borderRadius,
+    borderRadius: theme.radius.card,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
     padding: theme.spacing.medium,
     marginBottom: theme.spacing.medium,
   },
@@ -126,18 +128,18 @@ const styles = StyleSheet.create({
   composer: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
     marginTop: theme.spacing.small,
   },
   input: {
     flex: 1,
     backgroundColor: theme.colors.raised,
     color: theme.colors.text,
-    borderRadius: theme.borderRadius,
+    borderRadius: theme.radius.control,
     borderWidth: 1,
     borderColor: theme.colors.fieldBorder,
     paddingHorizontal: 12,
-    paddingVertical: 12,
-    minHeight: theme.inlineTouchTarget,
-    marginRight: theme.spacing.small,
+    paddingVertical: 10,
+    minHeight: theme.touchTarget,
   },
 });

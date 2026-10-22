@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, TouchableOpacity } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { Text, TextInput } from '../text';
 import { theme, teamColor } from '../theme/colors';
 import { PlayableRole } from '../../engine/roleSet';
 import { actionLabel, roleDescription, roleName, teamName } from '../../i18n';
 import { useI18n } from '../i18n';
+import { useResponsive } from '../layout';
+import { RoleSigil } from './RoleSigil';
 
 // The sides in the order the host reads them. A custom role may bring a side
 // of its own, which lands in the last group.
@@ -21,8 +23,12 @@ interface Props {
 // many seats it takes. Tapping a tile opens what the role does.
 export const RoleGrid: React.FC<Props> = ({ roles, counts, onChange }) => {
   const { t } = useI18n();
+  const { roleColumns } = useResponsive();
   const [openRole, setOpenRole] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [width, setWidth] = useState(0);
+  const gap = 8;
+  const tileWidth = width ? Math.floor((width - gap * (roleColumns - 1)) / roleColumns) : 0;
 
   const query = search.trim().toLowerCase();
   // The host searches in the words he sees; the name the card was dealt with
@@ -58,9 +64,12 @@ export const RoleGrid: React.FC<Props> = ({ roles, counts, onChange }) => {
 
       {open && (
         <View style={[styles.card, { borderColor: teamColor(open.team) }]}>
-          <Text style={[styles.cardName, { color: teamColor(open.team) }]}>
-            {roleName(open.id, open.name)} — {teamName(open.team)}
-          </Text>
+          <View style={styles.cardHead}>
+            <RoleSigil roleId={open.id} name={open.name} team={open.team} size={44} />
+            <Text style={[styles.cardName, { color: teamColor(open.team) }]}>
+              {roleName(open.id, open.name)} — {teamName(open.team)}
+            </Text>
+          </View>
           <Text style={styles.cardText}>
             {roleDescription(open.id, open.description)}
           </Text>
@@ -69,81 +78,95 @@ export const RoleGrid: React.FC<Props> = ({ roles, counts, onChange }) => {
               • {actionLabel(open.id, action.id, action.label)}
             </Text>
           ))}
-          <TouchableOpacity
-            style={styles.cardCloseButton}
+          <Pressable
+            style={({ pressed }) => [styles.cardCloseButton, pressed && styles.pressed]}
             onPress={() => setOpenRole(null)}
-            activeOpacity={0.75}
             accessibilityRole="button"
           >
             <Text style={styles.cardClose}>{t('ui.grid.close')}</Text>
-          </TouchableOpacity>
+          </Pressable>
         </View>
       )}
 
-      {groups.map(group => (
-        <View key={group.team}>
-          <Text style={[styles.groupHeader, { color: teamColor(group.team) }]}>
-            {group.team === OTHER ? t('ui.grid.otherSides') : teamName(group.team)}
-          </Text>
-          <View style={styles.grid}>
-            {group.roles.map(role => {
-              const count = counts[role.id] ?? 0;
-              const colour = teamColor(role.team);
+      <View
+        style={styles.gridHost}
+        onLayout={event => setWidth(event.nativeEvent.layout.width)}
+      >
+        {groups.map(group => (
+          <View key={group.team}>
+            <Text style={[styles.groupHeader, { color: teamColor(group.team) }]}>
+              {group.team === OTHER ? t('ui.grid.otherSides') : teamName(group.team)}
+            </Text>
+            <View style={[styles.grid, { gap }]}>
+              {group.roles.map(role => {
+                const count = counts[role.id] ?? 0;
+                const colour = teamColor(role.team);
 
-              return (
-                <View
-                  key={role.id}
-                  style={[styles.tile, { borderColor: colour }, count > 0 && styles.tileTaken]}
-                >
-                  <TouchableOpacity
-                    style={styles.tileNameButton}
-                    onPress={() => setOpenRole(role.id === openRole ? null : role.id)}
-                    activeOpacity={0.75}
-                    accessibilityRole="button"
+                return (
+                  <View
+                    key={role.id}
+                    style={[
+                      styles.tile,
+                      { borderColor: colour, width: tileWidth || '48%' },
+                      count > 0 && styles.tileTaken,
+                    ]}
                   >
-                    <Text style={styles.tileName}>{roleName(role.id, role.name)}</Text>
-                  </TouchableOpacity>
-                  <View style={styles.tileButtons}>
-                    <TouchableOpacity
-                      style={styles.stepButton}
-                      onPress={() => step(role.id, -1)}
-                      activeOpacity={0.75}
+                    <Pressable
+                      style={({ pressed }) => [styles.tileNameButton, pressed && styles.pressed]}
+                      onPress={() => setOpenRole(role.id === openRole ? null : role.id)}
                       accessibilityRole="button"
                     >
-                      <Text style={styles.stepText}>−</Text>
-                    </TouchableOpacity>
-                    <Text style={[styles.tileCount, count > 0 && { color: colour }]}>
-                      {count}
-                    </Text>
-                    <TouchableOpacity
-                      style={styles.stepButton}
-                      onPress={() => step(role.id, 1)}
-                      activeOpacity={0.75}
-                      accessibilityRole="button"
-                    >
-                      <Text style={styles.stepText}>+</Text>
-                    </TouchableOpacity>
+                      <RoleSigil
+                        roleId={role.id}
+                        name={role.name}
+                        team={role.team}
+                        size={34}
+                        muted={count === 0}
+                      />
+                      <Text style={styles.tileName} numberOfLines={2}>
+                        {roleName(role.id, role.name)}
+                      </Text>
+                    </Pressable>
+                    <View style={styles.tileButtons}>
+                      <Pressable
+                        style={({ pressed }) => [styles.stepButton, pressed && styles.pressed]}
+                        onPress={() => step(role.id, -1)}
+                        accessibilityRole="button"
+                      >
+                        <Text style={styles.stepText}>−</Text>
+                      </Pressable>
+                      <Text style={[styles.tileCount, count > 0 && { color: colour }]}>
+                        {count}
+                      </Text>
+                      <Pressable
+                        style={({ pressed }) => [styles.stepButton, pressed && styles.pressed]}
+                        onPress={() => step(role.id, 1)}
+                        accessibilityRole="button"
+                      >
+                        <Text style={styles.stepText}>+</Text>
+                      </Pressable>
+                    </View>
                   </View>
-                </View>
-              );
-            })}
+                );
+              })}
+            </View>
           </View>
-        </View>
-      ))}
+        ))}
+      </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   search: {
-    backgroundColor: theme.colors.raised,
+    backgroundColor: theme.colors.surface,
     color: theme.colors.text,
-    borderRadius: theme.borderRadius,
+    borderRadius: theme.radius.control,
     borderWidth: 1,
     borderColor: theme.colors.fieldBorder,
-    paddingHorizontal: theme.spacing.small,
-    paddingVertical: theme.spacing.small,
-    minHeight: theme.inlineTouchTarget,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    minHeight: theme.touchTarget,
     marginBottom: theme.spacing.small,
   },
   groupHeader: {
@@ -152,30 +175,39 @@ const styles = StyleSheet.create({
     marginTop: theme.spacing.small,
     marginBottom: theme.spacing.small,
   },
+  gridHost: {
+    width: '100%',
+  },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    marginBottom: 4,
   },
   tile: {
-    width: '48%',
     backgroundColor: theme.colors.surface,
     borderWidth: 1,
-    borderRadius: theme.borderRadius,
-    padding: theme.spacing.small,
-    marginBottom: theme.spacing.small,
+    borderRadius: theme.radius.card,
+    padding: 10,
+    marginBottom: 4,
+    minHeight: 118,
+    justifyContent: 'space-between',
   },
   tileTaken: {
     backgroundColor: theme.colors.raised,
   },
   tileNameButton: {
-    minHeight: theme.inlineTouchTarget,
-    justifyContent: 'center',
+    minHeight: 58,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: theme.radius.control,
   },
   tileName: {
     color: theme.colors.text,
-    fontSize: theme.type.body,
-    fontWeight: '700',
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: '800',
+    flex: 1,
   },
   tileButtons: {
     flexDirection: 'row',
@@ -186,7 +218,7 @@ const styles = StyleSheet.create({
   stepButton: {
     width: theme.inlineTouchTarget,
     height: theme.inlineTouchTarget,
-    borderRadius: theme.borderRadius,
+    borderRadius: theme.inlineTouchTarget / 2,
     backgroundColor: theme.colors.background,
     borderWidth: 1,
     borderColor: theme.colors.border,
@@ -202,20 +234,30 @@ const styles = StyleSheet.create({
     color: theme.colors.dim,
     fontSize: 18,
     fontWeight: '800',
-    minWidth: 32,
+    minWidth: 28,
     textAlign: 'center',
+  },
+  pressed: {
+    opacity: 0.75,
+    transform: [{ scale: 0.97 }],
   },
   card: {
     backgroundColor: theme.colors.raised,
     borderWidth: 1,
-    borderRadius: theme.borderRadius,
-    padding: theme.spacing.small,
+    borderRadius: theme.radius.card,
+    padding: theme.spacing.medium,
+    marginBottom: theme.spacing.small,
+  },
+  cardHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
     marginBottom: theme.spacing.small,
   },
   cardName: {
+    flex: 1,
     fontSize: theme.type.card,
     fontWeight: '800',
-    marginBottom: theme.spacing.small,
   },
   cardText: {
     color: theme.colors.text,

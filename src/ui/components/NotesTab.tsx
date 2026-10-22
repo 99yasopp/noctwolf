@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, StyleSheet, TouchableOpacity } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { Text, TextInput } from '../text';
 import { theme } from '../theme/colors';
 import { BaseButton } from './BaseButton';
+import { useResponsive } from '../layout';
 import {
   GameNoteEntry,
   GameNotes,
@@ -31,6 +32,7 @@ interface Props {
 // clearing it is final.
 export const NotesTab: React.FC<Props> = ({ gameKey, myRole, players }) => {
   const { t } = useI18n();
+  const { compact } = useResponsive();
   const [page, setPage] = useState<GameNotes>(() => openPageFor(gameKey, myRole));
   const [index, setIndex] = useState<GameNoteEntry[]>([]);
   const [reading, setReading] = useState<GameNotes | null>(null);
@@ -131,8 +133,13 @@ export const NotesTab: React.FC<Props> = ({ gameKey, myRole, players }) => {
 
           <Text style={styles.subHeader}>{t('ui.notes.aboutPlayers')}</Text>
           {players.map(name => (
-            <View key={name} style={styles.playerRow}>
-              <Text style={styles.playerName}>{name}</Text>
+            <View key={name} style={[styles.playerRow, compact && styles.playerRowCompact]}>
+              <Text
+                style={[styles.playerName, compact && styles.playerNameCompact]}
+                numberOfLines={1}
+              >
+                {name}
+              </Text>
               <TextInput
                 style={styles.playerInput}
                 value={page.players[name] ?? ''}
@@ -151,11 +158,10 @@ export const NotesTab: React.FC<Props> = ({ gameKey, myRole, players }) => {
         <Text style={styles.hint}>{t('ui.notes.noPages')}</Text>
       ) : (
         index.map(entry => (
-          <TouchableOpacity
+          <Pressable
             key={entry.id}
-            style={styles.pastButton}
+            style={({ pressed }) => [styles.pastButton, pressed && styles.pressed]}
             onPress={() => openPast(entry.id)}
-            activeOpacity={0.75}
             accessibilityRole="button"
           >
             <Text style={styles.entry}>
@@ -164,7 +170,7 @@ export const NotesTab: React.FC<Props> = ({ gameKey, myRole, players }) => {
                 role: entry.myRole,
               })}
             </Text>
-          </TouchableOpacity>
+          </Pressable>
         ))
       )}
 
@@ -216,13 +222,13 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.small,
   },
   pad: {
-    backgroundColor: theme.colors.raised,
+    backgroundColor: theme.colors.surface,
     color: theme.colors.text,
-    borderRadius: theme.borderRadius,
+    borderRadius: theme.radius.control,
     borderWidth: 1,
     borderColor: theme.colors.fieldBorder,
-    padding: theme.spacing.small,
-    minHeight: 96,
+    padding: 12,
+    minHeight: 120,
     textAlignVertical: 'top',
     marginBottom: theme.spacing.small,
   },
@@ -236,21 +242,34 @@ const styles = StyleSheet.create({
   playerRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
     marginBottom: theme.spacing.small,
+  },
+  playerRowCompact: {
+    alignItems: 'stretch',
+    flexDirection: 'column',
+    gap: 4,
   },
   playerName: {
     color: theme.colors.text,
-    width: 96,
+    fontSize: 14,
+    fontWeight: '700',
+    minWidth: 72,
+    maxWidth: 120,
+    flexShrink: 1,
+  },
+  playerNameCompact: {
+    maxWidth: '100%',
   },
   playerInput: {
     flex: 1,
-    backgroundColor: theme.colors.raised,
+    backgroundColor: theme.colors.surface,
     color: theme.colors.text,
-    borderRadius: theme.borderRadius,
+    borderRadius: theme.radius.control,
     borderWidth: 1,
     borderColor: theme.colors.fieldBorder,
-    paddingHorizontal: theme.spacing.small,
-    paddingVertical: theme.spacing.small,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     minHeight: theme.inlineTouchTarget,
   },
   pastLine: {
@@ -260,10 +279,20 @@ const styles = StyleSheet.create({
   pastButton: {
     minHeight: theme.inlineTouchTarget,
     justifyContent: 'center',
+    paddingHorizontal: 10,
+    borderRadius: theme.radius.control,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    marginBottom: 6,
+  },
+  pressed: {
+    backgroundColor: theme.colors.raised,
+    transform: [{ scale: 0.99 }],
   },
   entry: {
     color: theme.colors.secondary,
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '700',
   },
 });
