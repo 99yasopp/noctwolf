@@ -25,15 +25,49 @@ import { digestSections, flatSection } from '../info';
 import { formatRemaining, winnerText } from '../format';
 import { useI18n } from '../i18n';
 import { SaidLine, roleName } from '../../i18n';
-import { packIsKnown } from '../../engine/gameManager';
+import { GameManager, packIsKnown } from '../../engine/gameManager';
 import { RulesScreen } from './RulesScreen';
 import { SettingsScreen } from './SettingsScreen';
 import { useGame } from '../GameContext';
-import { Phase } from '../../engine/types';
+import { Phase, Player } from '../../engine/types';
 import { lobby } from '../../network/lobby';
 
+interface NarratorDashboardLiveProps {
+  manager: GameManager;
+  localPlayer: Player;
+  returnToLobby: () => void;
+  rematch: () => void;
+  changeTable: () => void;
+  gameId: number;
+}
+
+// The live screen must unmount as a whole when the table closes. Returning
+// null from inside it skipped hooks mid-life and crashed on the way back.
 export const NarratorDashboard = () => {
   const { manager, localPlayer, returnToLobby, rematch, changeTable, gameId } = useGame();
+
+  if (!manager || !localPlayer) return null;
+
+  return (
+    <NarratorDashboardLive
+      manager={manager}
+      localPlayer={localPlayer}
+      returnToLobby={returnToLobby}
+      rematch={rematch}
+      changeTable={changeTable}
+      gameId={gameId}
+    />
+  );
+};
+
+const NarratorDashboardLive: React.FC<NarratorDashboardLiveProps> = ({
+  manager,
+  localPlayer,
+  returnToLobby,
+  rematch,
+  changeTable,
+  gameId,
+}) => {
   const { t } = useI18n();
   const [, forceRender] = useState(0);
   const [secrets, setSecrets] = useState<SaidLine[]>([]);
@@ -99,8 +133,6 @@ export const NarratorDashboard = () => {
   useEffect(() => {
     if (manager?.lastVote?.revote) setSubmitted([]);
   }, [manager?.lastVote]);
-
-  if (!manager || !localPlayer) return null;
 
   const players = manager.state.players;
   const role = manager.getRoleOf(localPlayer.id);

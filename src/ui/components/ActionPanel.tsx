@@ -645,6 +645,7 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.border,
     borderRadius: theme.radius.card,
     padding: 14,
+    marginTop: theme.spacing.medium,
     marginBottom: theme.spacing.medium,
     gap: 4,
     shadowColor: theme.shadow.color,
