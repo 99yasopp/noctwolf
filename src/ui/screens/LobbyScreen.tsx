@@ -6,10 +6,12 @@ import {
   Platform,
   TouchableOpacity,
 } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Text, TextInput } from '../text';
 import { theme } from '../theme/colors';
 import { BaseButton } from '../components/BaseButton';
-import { BackBar } from '../components/BackBar';
+import { ScreenHeader } from '../components/ScreenHeader';
+import { RosterRow } from '../components/RosterRow';
 import { useBack } from '../back';
 import { GAME_PORT, HOST_PLAYER_ID, LOCAL_GUEST_ID, lobby } from '../../network/lobby';
 import { splitHostAddress } from '../../network/address';
@@ -50,6 +52,60 @@ const lastBotNumber = () =>
     const n = p.isBot ? Number(p.id.split('-')[1]) : 0;
     return n > max ? n : max;
   }, 0);
+
+type IconName = React.ComponentProps<typeof Ionicons>['name'];
+
+// The two doors into a game, not two equal buttons: hosting is the gold path,
+// joining is the same door outlined.
+const MenuAction = ({
+  title,
+  icon,
+  primary,
+  onPress,
+}: {
+  title: string;
+  icon: IconName;
+  primary?: boolean;
+  onPress: () => void;
+}) => {
+  const { rtl } = useI18n();
+  const ink = primary ? theme.colors.background : theme.colors.primary;
+
+  return (
+    <TouchableOpacity
+      style={[styles.action, primary && styles.actionPrimary]}
+      onPress={onPress}
+      activeOpacity={0.8}
+      accessibilityRole="button"
+      accessibilityLabel={title}
+    >
+      <Ionicons name={icon} size={22} color={ink} />
+      <Text style={[styles.actionText, primary && styles.actionTextPrimary]}>{title}</Text>
+      <Ionicons name={rtl ? 'chevron-back' : 'chevron-forward'} size={18} color={ink} />
+    </TouchableOpacity>
+  );
+};
+
+const MenuLink = ({
+  title,
+  icon,
+  onPress,
+}: {
+  title: string;
+  icon: IconName;
+  onPress: () => void;
+}) => (
+  <TouchableOpacity
+    style={styles.link}
+    onPress={onPress}
+    activeOpacity={0.7}
+    accessibilityRole="button"
+    accessibilityLabel={title}
+  >
+    <Ionicons name={icon} size={17} color={theme.colors.dim} />
+    <Text style={styles.linkText}>{title}</Text>
+  </TouchableOpacity>
+);
 
 export const LobbyScreen = () => {
   const { startHostGame, enterPlayerMode } = useGame();
@@ -339,34 +395,55 @@ export const LobbyScreen = () => {
       case 'menu':
         return (
           <View style={styles.menu}>
-            <TextInput
-              style={styles.input}
-              placeholder={t('ui.lobby.namePlaceholder')}
-              placeholderTextColor={theme.colors.dim}
-              value={playerName}
-              onChangeText={setPlayerName}
-            />
-            {lobby.canHost() && (
-              <BaseButton title={t('ui.lobby.host')} onPress={() => setView('host')} />
-            )}
-            <BaseButton
-              title={t('ui.lobby.join')}
-              onPress={() => setView('join')}
-              variant="secondary"
-            />
-            {!lobby.canHost() && (
-              <Text style={styles.hint}>{t('ui.lobby.webGuest')}</Text>
-            )}
-            <BaseButton
-              title={t('ui.lobby.howToPlay')}
-              onPress={() => setView('rules')}
-              variant="secondary"
-            />
-            <BaseButton
-              title={t('ui.lobby.settings')}
-              onPress={() => setView('settings')}
-              variant="secondary"
-            />
+            <View style={styles.brand}>
+              <View style={styles.mark}>
+                <View style={styles.moon} />
+                <View style={styles.moonCut} />
+              </View>
+              <Text style={styles.wordmark}>Loup</Text>
+              <Text style={[styles.wordmark, styles.wordmarkGold]}>Garou</Text>
+              <Text style={styles.tagline}>{t('ui.lobby.tagline')}</Text>
+            </View>
+
+            <View style={styles.form}>
+              <Text style={styles.fieldLabel}>{t('ui.lobby.namePlaceholder')}</Text>
+              <TextInput
+                style={styles.field}
+                value={playerName}
+                onChangeText={setPlayerName}
+              />
+              {lobby.canHost() && (
+                <MenuAction
+                  title={t('ui.lobby.host')}
+                  icon="people"
+                  primary
+                  onPress={() => setView('host')}
+                />
+              )}
+              <MenuAction
+                title={t('ui.lobby.join')}
+                icon={lobby.canHost() ? 'log-in-outline' : 'log-in'}
+                primary={!lobby.canHost()}
+                onPress={() => setView('join')}
+              />
+              {!lobby.canHost() && (
+                <Text style={styles.menuHint}>{t('ui.lobby.webGuest')}</Text>
+              )}
+
+              <View style={styles.links}>
+                <MenuLink
+                  title={t('ui.lobby.howToPlay')}
+                  icon="book-outline"
+                  onPress={() => setView('rules')}
+                />
+                <View style={styles.linkDivider} />
+                <MenuLink
+                  title={t('ui.lobby.settings')}
+                  icon="settings-outline"
+                  onPress={() => setView('settings')}
+                />
+              </View>
+            </View>
           </View>
         );
 
@@ -382,19 +459,19 @@ export const LobbyScreen = () => {
         return (
           <View style={styles.menu}>
             {!WEB && (
-              <TextInput
-                style={styles.input}
-                placeholder={t('ui.lobby.roomCodePlaceholder')}
-                placeholderTextColor={theme.colors.dim}
-                value={inputCode}
-                onChangeText={setInputCode}
-                autoCapitalize="characters"
-              />
+              <>
+                <Text style={styles.fieldLabel}>{t('ui.lobby.roomCodePlaceholder')}</Text>
+                <TextInput
+                  style={styles.field}
+                  value={inputCode}
+                  onChangeText={setInputCode}
+                  autoCapitalize="characters"
+                />
+              </>
             )}
+            <Text style={styles.fieldLabel}>{t('ui.lobby.hostIpPlaceholder')}</Text>
             <TextInput
-              style={styles.input}
-              placeholder={t('ui.lobby.hostIpPlaceholder')}
-              placeholderTextColor={theme.colors.dim}
+              style={styles.field}
               value={inputIp}
               onChangeText={setInputIp}
               keyboardType="numbers-and-punctuation"
@@ -413,22 +490,20 @@ export const LobbyScreen = () => {
 
       case 'waiting':
         return (
-          <ScrollView contentContainerStyle={styles.menu}>
-            {isHost && <Text style={styles.text}>
-              {t('ui.lobby.roomCodeLine', { code: roomCode })}
-            </Text>}
-            {isHost && (
-              <Text style={styles.text}>
-                {t('ui.lobby.addressLine', {
-                  address: lobby.getHostAddress() ?? t('ui.lobby.unknownAddress'),
-                })}
-              </Text>
-            )}
-            {isHost && (
-              <Text style={styles.hint}>{t('ui.lobby.twoWays')}</Text>
-            )}
-            <Text style={styles.title}>{t('ui.lobby.waitingRoom')}</Text>
-            <Text style={styles.text}>
+          <View style={styles.menu}>
+            {isHost && roomCode ? (
+              <View style={styles.ticket}>
+                <Text style={styles.ticketLabel}>{t('ui.lobby.roomCodeLabel')}</Text>
+                <Text style={styles.ticketCode}>{roomCode}</Text>
+                <Text style={styles.ticketAddress}>
+                  {t('ui.lobby.addressLine', {
+                    address: lobby.getHostAddress() ?? t('ui.lobby.unknownAddress'),
+                  })}
+                </Text>
+              </View>
+            ) : null}
+            {isHost && <Text style={styles.hint}>{t('ui.lobby.twoWays')}</Text>}
+            <Text style={styles.connected}>
               {t('ui.lobby.connected', { count: players.length })}
             </Text>
             {/* Links that reached the phone, even before a seat exists. A
@@ -443,23 +518,22 @@ export const LobbyScreen = () => {
             )}
 
             {players.map(p => (
-              <View key={p.id} style={styles.playerRow}>
-                <Text style={styles.playerText}>
-                  {p.name}
-                  {p.id === HOST_PLAYER_ID ? t('ui.common.hostTag') : ''}
-                  {p.isBot ? t('ui.roster.botTag') : ''}
-                </Text>
-                {isHost && p.isBot && (
-                  <TouchableOpacity
-                    style={styles.removeButton}
-                    onPress={() => removeBot(p.id)}
-                    activeOpacity={0.75}
-                    accessibilityRole="button"
-                  >
-                    <Text style={styles.removeText}>{t('ui.common.remove')}</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+              <RosterRow
+                key={p.id}
+                name={p.name}
+                tags={`${p.id === HOST_PLAYER_ID ? t('ui.common.hostTag') : ''}${
+                  p.isBot ? t('ui.roster.botTag') : ''
+                }`}
+                dotColor={
+                  p.id === HOST_PLAYER_ID
+                    ? theme.colors.primary
+                    : p.isBot
+                    ? theme.colors.secondary
+                    : theme.colors.success
+                }
+                onRemove={isHost && p.isBot ? () => removeBot(p.id) : undefined}
+                removeLabel={t('ui.common.remove')}
+              />
             ))}
 
             {isHost && setup && (
@@ -502,7 +576,7 @@ export const LobbyScreen = () => {
             )}
 
             {!isHost && <Text style={styles.hint}>{t('ui.lobby.waitingForHost')}</Text>}
-          </ScrollView>
+          </View>
         );
     }
   };
@@ -536,14 +610,34 @@ export const LobbyScreen = () => {
     );
   }
 
+  const menu = view === 'menu';
+  const title =
+    view === 'host'
+      ? t('ui.lobby.host')
+      : view === 'join'
+      ? t('ui.lobby.join')
+      : t('ui.lobby.waitingRoom');
+
   return (
     <View style={styles.container}>
-      {view !== 'menu' && <BackBar />}
-      <View style={styles.center}>
-        <Text style={styles.title}>Werewolf Manager</Text>
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+      {!menu && (
+        <ScreenHeader
+          title={title}
+          backLabel={view === 'waiting' ? t('ui.back.lobby') : t('ui.common.back')}
+        />
+      )}
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[styles.page, menu && styles.menuPage]}
+        keyboardShouldPersistTaps="handled"
+      >
+        {error ? (
+          <View style={styles.errorNote}>
+            <Text style={styles.error}>{error}</Text>
+          </View>
+        ) : null}
         {renderView()}
-      </View>
+      </ScrollView>
     </View>
   );
 };
@@ -566,77 +660,192 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.colors.background,
   },
-  // The main menu sits in the middle of the screen; the back bar stays on top.
-  center: {
-    flex: 1,
+  page: {
+    width: '100%',
+    maxWidth: 560,
+    alignSelf: 'center',
+    padding: theme.spacing.medium,
+    paddingBottom: theme.spacing.large,
+  },
+  menuPage: {
+    flexGrow: 1,
     justifyContent: 'center',
-    padding: theme.spacing.medium,
+    maxWidth: 420,
+    paddingHorizontal: 24,
+    paddingVertical: 32,
   },
-  title: {
-    fontSize: theme.type.display,
+  brand: {
+    alignItems: 'center',
+  },
+  mark: {
+    width: 64,
+    height: 64,
+    marginBottom: 10,
+  },
+  moon: {
+    position: 'absolute',
+    left: 4,
+    top: 4,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: theme.colors.primary,
+  },
+  moonCut: {
+    position: 'absolute',
+    left: 22,
+    top: -8,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: theme.colors.background,
+  },
+  wordmark: {
     color: theme.colors.text,
-    textAlign: 'center',
-    marginBottom: theme.spacing.large,
+    fontSize: 44,
+    lineHeight: 43,
     fontWeight: '900',
-  },
-  input: {
-    backgroundColor: theme.colors.surface,
-    color: theme.colors.text,
-    padding: theme.spacing.medium,
-    borderRadius: theme.borderRadius,
-    borderWidth: 1,
-    borderColor: theme.colors.fieldBorder,
-    fontSize: theme.type.body,
-    minHeight: theme.touchTarget,
-    marginBottom: theme.spacing.small,
-  },
-  playerText: {
-    color: theme.colors.secondary,
-    fontSize: 18,
-    fontWeight: '700',
     textAlign: 'center',
-    marginVertical: 4,
   },
-  playerRow: {
+  wordmarkGold: {
+    color: theme.colors.primary,
+  },
+  tagline: {
+    color: theme.colors.dim,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+    maxWidth: 280,
+    marginTop: 10,
+  },
+  form: {
+    marginTop: 28,
+  },
+  fieldLabel: {
+    color: theme.colors.dim,
+    fontSize: theme.type.label,
+    lineHeight: 16,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  field: {
+    color: theme.colors.text,
+    fontSize: 18,
+    fontWeight: '600',
+    minHeight: theme.touchTarget,
+    paddingVertical: 8,
+    borderBottomWidth: 2,
+    borderBottomColor: theme.colors.fieldBorder,
+    marginBottom: theme.spacing.medium,
+  },
+  action: {
+    minHeight: 60,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: theme.spacing.medium,
+    borderWidth: 1.5,
+    borderColor: theme.colors.primary,
+    borderRadius: theme.borderRadius,
+    marginTop: 10,
+  },
+  actionPrimary: {
+    backgroundColor: theme.colors.primary,
+  },
+  actionText: {
+    flex: 1,
+    color: theme.colors.text,
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  actionTextPrimary: {
+    color: theme.colors.background,
+  },
+  links: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginVertical: 2,
+    marginTop: theme.spacing.medium,
   },
-  removeButton: {
+  link: {
     minHeight: theme.inlineTouchTarget,
-    minWidth: theme.inlineTouchTarget,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 6,
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: theme.borderRadius,
-    borderWidth: 1,
-    borderColor: theme.colors.danger,
-    marginLeft: theme.spacing.small,
   },
-  removeText: {
-    color: theme.colors.danger,
-    fontSize: theme.type.small,
+  linkText: {
+    color: theme.colors.dim,
+    fontSize: 14,
     fontWeight: '700',
+  },
+  linkDivider: {
+    width: 1,
+    height: 16,
+    backgroundColor: theme.colors.border,
+  },
+  menuHint: {
+    color: theme.colors.dim,
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: 'center',
+    marginTop: theme.spacing.small,
+  },
+  connected: {
+    color: theme.colors.dim,
+    fontSize: theme.type.label,
+    fontWeight: '800',
+    marginTop: theme.spacing.medium,
+    marginBottom: 4,
+  },
+  ticket: {
+    borderTopWidth: 2,
+    borderTopColor: theme.colors.primary,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    paddingVertical: 14,
+    marginBottom: 12,
+  },
+  ticketLabel: {
+    color: theme.colors.dim,
+    fontSize: theme.type.label,
+    fontWeight: '800',
+  },
+  ticketCode: {
+    color: theme.colors.primary,
+    fontSize: 40,
+    lineHeight: 44,
+    fontWeight: '900',
+  },
+  ticketAddress: {
+    color: theme.colors.dim,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 6,
   },
   text: {
     color: theme.colors.text,
     fontSize: theme.type.body,
-    textAlign: 'center',
-    marginBottom: theme.spacing.small,
+    lineHeight: 23,
+    marginBottom: 12,
   },
   hint: {
     color: theme.colors.dim,
-    fontSize: theme.type.small,
-    textAlign: 'center',
-    marginBottom: theme.spacing.small,
+    fontSize: 13,
+    lineHeight: 19,
+    marginBottom: 10,
+  },
+  errorNote: {
+    backgroundColor: theme.colors.tintDanger,
+    borderStartWidth: 3,
+    borderStartColor: theme.colors.danger,
+    padding: 12,
+    marginBottom: theme.spacing.medium,
   },
   error: {
     color: theme.colors.danger,
-    fontSize: 15,
+    fontSize: 14,
+    lineHeight: 20,
     fontWeight: '600',
-    textAlign: 'center',
-    marginBottom: theme.spacing.small,
   },
 });

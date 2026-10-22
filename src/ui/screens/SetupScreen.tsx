@@ -3,7 +3,7 @@ import { View, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { Text, TextInput } from '../text';
 import { theme } from '../theme/colors';
 import { BaseButton } from '../components/BaseButton';
-import { BackBar } from '../components/BackBar';
+import { ScreenHeader } from '../components/ScreenHeader';
 import { useBack } from '../back';
 import { RoleGrid } from '../components/RoleGrid';
 import { ALL_ROLES, getCustomRoles } from '../../engine/roleSet';
@@ -148,13 +148,12 @@ export const SetupScreen: React.FC<Props> = ({
 
   return (
     <View style={styles.container}>
-      <BackBar label={t('ui.setup.back')} />
+      <ScreenHeader
+        title={t('ui.setup.title')}
+        meta={t('ui.setup.seats', { seats, total: playerCount })}
+        backLabel={t('ui.setup.back')}
+      />
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>{t('ui.setup.title')}</Text>
-      <Text style={styles.hint}>
-        {t('ui.setup.seats', { seats, total: playerCount })}
-      </Text>
-
       {problem ? (
         <View style={styles.problemCard}>
           <Text style={styles.problemText}>{problem}</Text>
@@ -216,15 +215,11 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.background,
   },
   content: {
+    width: '100%',
+    maxWidth: 560,
+    alignSelf: 'center',
     padding: theme.spacing.medium,
     paddingBottom: theme.spacing.large * 2,
-  },
-  title: {
-    fontSize: theme.type.title,
-    color: theme.colors.text,
-    textAlign: 'center',
-    fontWeight: '900',
-    marginBottom: theme.spacing.small,
   },
   subHeader: {
     color: theme.colors.text,
@@ -236,7 +231,7 @@ const styles = StyleSheet.create({
   hint: {
     color: theme.colors.dim,
     fontSize: theme.type.small,
-    textAlign: 'center',
+    lineHeight: 19,
     marginBottom: theme.spacing.small,
   },
   stepperRow: {
@@ -317,8 +312,9 @@ const styles = StyleSheet.create({
     marginLeft: 2,
   },
   problemCard: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.borderRadius,
+    backgroundColor: theme.colors.tintDanger,
+    borderStartWidth: 3,
+    borderStartColor: theme.colors.danger,
     padding: theme.spacing.medium,
     marginBottom: theme.spacing.small,
   },
@@ -333,7 +329,6 @@ const styles = StyleSheet.create({
     color: theme.colors.secondary,
     fontSize: theme.type.small,
     fontWeight: '700',
-    textAlign: 'center',
     marginBottom: theme.spacing.small,
   },
 });

@@ -640,16 +640,14 @@ export const ActionPanel: React.FC<Props> = ({
 
 const styles = StyleSheet.create({
   panel: {
-    backgroundColor: theme.colors.surface,
-    padding: theme.spacing.medium,
-    borderRadius: theme.borderRadius,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+    paddingTop: theme.spacing.small,
     marginBottom: theme.spacing.medium,
   },
   heading: {
     color: theme.colors.text,
-    fontSize: 19,
+    fontSize: theme.type.card,
     fontWeight: '800',
     marginBottom: theme.spacing.small,
   },

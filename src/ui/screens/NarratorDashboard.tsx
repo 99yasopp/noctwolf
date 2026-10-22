@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, ScrollView } from 'react-native';
 import { Text } from '../text';
 import { theme } from '../theme/colors';
 import { BaseButton } from '../components/BaseButton';
-import { BackBar } from '../components/BackBar';
+import { ScreenHeader } from '../components/ScreenHeader';
+import { RoleCard } from '../components/RoleCard';
+import { RosterRow } from '../components/RosterRow';
+import { TableStrip } from '../components/TableStrip';
 import { useBack } from '../back';
 import { ActionPanel, OwnRole } from '../components/ActionPanel';
 import { TabBar } from '../components/TabBar';
@@ -14,7 +17,7 @@ import { InfoTab } from '../components/InfoTab';
 import { digestSections, flatSection } from '../info';
 import { formatRemaining, winnerText } from '../format';
 import { useI18n } from '../i18n';
-import { SaidLine, roleDescription, roleName, teamOf } from '../../i18n';
+import { SaidLine, roleName } from '../../i18n';
 import { packIsKnown } from '../../engine/gameManager';
 import { useGame } from '../GameContext';
 import { Phase } from '../../engine/types';
@@ -279,23 +282,40 @@ export const NarratorDashboard = () => {
   // The phone's back gesture leaves the table, like the button used to.
   useBack(returnToLobby);
 
+  const mayor = manager.getMayor();
+  const tabs = [
+    { id: 'play', label: t('ui.tab.play') },
+    { id: 'info', label: t('ui.tab.info') },
+    { id: 'notes', label: t('ui.tab.notes') },
+    ...(hostGroups.length > 0 ? [{ id: 'chat', label: t('ui.tab.chat') }] : []),
+  ];
+  // The rail is outside the scroll now, so a page change has to send the new
+  // page back to its top itself.
+  const scrollRef = React.useRef<ScrollView>(null);
+  const selectTab = (id: string) => {
+    setTab(id as 'play' | 'info' | 'notes' | 'chat');
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  };
+
   return (
     <View style={styles.container}>
-      <BackBar label={t('ui.back.lobby')} />
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.header}>{t('ui.host.title')}</Text>
-
-      <TabBar
-        tabs={[
-          { id: 'play', label: t('ui.tab.play') },
-          { id: 'info', label: t('ui.tab.info') },
-          { id: 'notes', label: t('ui.tab.notes') },
-          ...(hostGroups.length > 0 ? [{ id: 'chat', label: t('ui.tab.chat') }] : []),
-        ]}
-        active={tab}
-        onSelect={id => setTab(id as 'play' | 'info' | 'notes' | 'chat')}
+      <ScreenHeader
+        title={t('ui.host.title')}
+        meta={
+          phase
+            ? t('ui.play.phaseLine', {
+                phase: t(`phase.${phase}`, undefined, phase),
+                round,
+              })
+            : undefined
+        }
+        backLabel={t('ui.back.lobby')}
       />
-
+      <ScrollView
+        ref={scrollRef}
+        style={styles.container}
+        contentContainerStyle={styles.content}
+      >
       {tab === 'play' && (
         <>
       {isTestGame && (
@@ -306,52 +326,48 @@ export const NarratorDashboard = () => {
 
       {/* The host plays too, so his own role must be as visible to him as a
           guest's role card is to a guest. */}
-      <View style={styles.roleCard}>
-        <Text style={styles.roleLabel}>{t('ui.play.yourRole')}</Text>
-        <Text style={styles.roleName}>
-          {role ? roleName(role.id, role.name) : t('ui.host.unassigned')}
-        </Text>
-        <Text style={styles.roleTeam}>{role ? teamOf(role.team) : ''}</Text>
-        {role && (
-          <Text style={styles.roleDescription}>
-            {roleDescription(role.id, role.description)}
-          </Text>
-        )}
-        {ownRole &&
+      <RoleCard
+        role={
+          role
+            ? {
+                id: role.id,
+                name: role.name,
+                team: role.team,
+                description: role.description,
+              }
+            : null
+        }
+        emptyLabel={t('ui.host.unassigned')}
+        extra={
+          ownRole &&
           ownRole.allies &&
           ownRole.allies.length > 0 &&
-          (ownRole.team !== 'Wolf' || packReady) && (
-          <Text style={styles.roleDescription}>
-            {ownRole.team === 'Wolf' ? t('ui.pack.yours') : t('ui.pack.alliance')}:{' '}
-            {ownRole.allies.map(ally => ally.name).join(', ')}
-          </Text>
-        )}
-      </View>
+          (ownRole.team !== 'Wolf' || packReady)
+            ? `${ownRole.team === 'Wolf' ? t('ui.pack.yours') : t('ui.pack.alliance')}: ${ownRole.allies
+                .map(ally => ally.name)
+                .join(', ')}`
+            : undefined
+        }
+      />
 
       {/* Out of the game, the host reads the table like any other corpse. */}
       {!selfAlive && !seeEverything && <RevealedRoles entries={manager.getReveal()} />}
 
-      <View style={styles.statusCard}>
-        <Text style={styles.statusText}>
-          {t('ui.play.phaseLine', {
-            phase: t(
-              `phase.${manager.state.currentPhase}`,
-              undefined,
-              manager.state.currentPhase,
-            ),
-            round,
-          })}
-        </Text>
-        <Text style={styles.statusText}>
-          {t('ui.host.aliveLine', { alive: aliveCount, total: players.length })}
-        </Text>
-        {manager.getMayor() && (
-          <Text style={styles.statusText}>
-            {t('ui.play.mayorLine', { name: manager.getMayor()?.name ?? '' })}
-            {manager.getMayor()?.id === localPlayer.id ? t('ui.roster.you') : ''}
-          </Text>
-        )}
-        <Text style={styles.statusText}>
+      <TableStrip
+        cells={[
+          { value: t('ui.host.aliveLine', { alive: aliveCount, total: players.length }) },
+          ...(mayor
+            ? [
+                {
+                  value:
+                    t('ui.play.mayorLine', { name: mayor.name }) +
+                    (mayor.id === localPlayer.id ? t('ui.roster.you') : ''),
+                },
+              ]
+            : []),
+        ]}
+      >
+        <Text style={styles.youAre}>
           {t('ui.host.youAre', { name: localPlayer.name })}
         </Text>
 
@@ -445,7 +461,7 @@ export const NarratorDashboard = () => {
             {t('ui.host.stageLeft', { time: formatRemaining(deadline) })}
           </Text>
         )}
-      </View>
+      </TableStrip>
 
       {manager.winner && (
         <View style={styles.winnerCard}>
@@ -463,7 +479,7 @@ export const NarratorDashboard = () => {
       )}
 
       {manager.lastVote && (
-        <View style={styles.statusCard}>
+        <View style={styles.ledgerBlock}>
           <Text style={styles.statusText}>
             {t('ui.play.lastVote', {
               what: manager.lastVote.revote
@@ -570,52 +586,61 @@ export const NarratorDashboard = () => {
         </View>
       )}
 
-      <Text style={styles.subHeader}>{t('ui.play.players')}</Text>
+      <View style={styles.sectionRow}>
+        <Text style={styles.subHeader}>{t('ui.play.players')}</Text>
+        <Text style={styles.sectionCount}>{players.length}</Text>
+      </View>
       {players.map(player => {
         const dropped = lobby.disconnectedPlayers().some(p => p.id === player.id);
         const card = manager.getRoleOf(player.id);
+        const dead = !player.isAlive;
+        const tags =
+          `${player.id === localPlayer.id ? t('ui.roster.you') : ''}` +
+          `${player.isBot ? t('ui.roster.botTag') : ''}` +
+          `${player.isAlive && packIds.has(player.id) ? t('ui.pack.wolfTag') : ''}` +
+          `${dropped ? t('ui.roster.noConnection') : ''}` +
+          `${
+            phase === 'Vote' && player.isAlive && manager.hasVoted(player.id)
+              ? t('ui.roster.voted')
+              : ''
+          }`;
+        // A blind host sees who is alive and who has voted, nothing more: the
+        // roles belong to the narrator view.
+        const detail = seeEverything
+          ? `${card ? roleName(card.id, card.name) : t('ui.host.unknownRole')}${
+              player.isAlive ? '' : t('ui.roster.dead')
+            }`
+          : player.isAlive
+          ? t('ui.host.aliveTag')
+          : revealedCards.has(player.id)
+          ? t('ui.roster.deadWithRole', {
+              role: revealedCards.get(player.id) ?? '',
+            })
+          : t('ui.common.dead');
 
         return (
-          <View key={player.id} style={styles.playerRow}>
-            <View style={styles.playerInfo}>
-              <Text style={[styles.playerName, !player.isAlive && styles.dead]}>
-                {player.name}
-                {player.id === localPlayer.id ? t('ui.roster.you') : ''}
-                {player.isBot ? t('ui.roster.botTag') : ''}
-              </Text>
-              {/* A blind host sees who is alive and who has voted, nothing
-                  more: the roles belong to the narrator view. */}
-              <Text style={styles.playerRole}>
-                {seeEverything
-                  ? `${card ? roleName(card.id, card.name) : t('ui.host.unknownRole')}${
-                      player.isAlive ? '' : t('ui.roster.dead')
-                    }`
-                  : player.isAlive
-                  ? t('ui.host.aliveTag')
-                  : revealedCards.has(player.id)
-                  ? t('ui.roster.deadWithRole', {
-                      role: revealedCards.get(player.id) ?? '',
-                    })
-                  : t('ui.common.dead')}
-                {player.isAlive && packIds.has(player.id) ? t('ui.pack.wolfTag') : ''}
-                {dropped ? t('ui.roster.noConnection') : ''}
-                {manager.state.currentPhase === 'Vote' && player.isAlive && manager.hasVoted(player.id)
-                  ? t('ui.roster.voted')
-                  : ''}
-              </Text>
-            </View>
-
-            {player.id !== localPlayer.id && (
-              <TouchableOpacity
-                style={styles.removeButton}
-                onPress={() => lobby.removePlayer(player.id)}
-                activeOpacity={0.75}
-                accessibilityRole="button"
-              >
-                <Text style={styles.removeText}>{t('ui.common.remove')}</Text>
-              </TouchableOpacity>
-            )}
-          </View>
+          <RosterRow
+            key={player.id}
+            name={player.name}
+            tags={tags}
+            detail={detail}
+            dead={dead}
+            dotColor={
+              dead
+                ? theme.colors.dim
+                : packIds.has(player.id)
+                ? theme.colors.danger
+                : player.id === localPlayer.id
+                ? theme.colors.primary
+                : theme.colors.success
+            }
+            onRemove={
+              player.id !== localPlayer.id
+                ? () => lobby.removePlayer(player.id)
+                : undefined
+            }
+            removeLabel={t('ui.common.remove')}
+          />
         );
       })}
 
@@ -654,6 +679,7 @@ export const NarratorDashboard = () => {
       )}
 
     </ScrollView>
+    <TabBar tabs={tabs} active={tab} onSelect={selectTab} />
     </View>
   );
 };
@@ -664,91 +690,69 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.background,
   },
   content: {
+    width: '100%',
+    maxWidth: 560,
+    alignSelf: 'center',
     padding: theme.spacing.medium,
     paddingBottom: theme.spacing.large,
   },
-  header: {
-    fontSize: theme.type.title,
-    color: theme.colors.text,
-    fontWeight: '900',
-    marginBottom: theme.spacing.medium,
-  },
-  statusCard: {
-    backgroundColor: theme.colors.surface,
-    padding: theme.spacing.medium,
-    borderRadius: theme.borderRadius,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    marginBottom: theme.spacing.medium,
-  },
-  roleCard: {
-    backgroundColor: theme.colors.primary,
-    padding: theme.spacing.large,
-    borderRadius: theme.borderRadius,
-    alignItems: 'center',
-    marginBottom: theme.spacing.medium,
-  },
-  roleLabel: {
-    color: theme.colors.background,
-    fontSize: theme.type.small,
-    fontWeight: '700',
-  },
-  roleName: {
-    color: theme.colors.background,
-    fontSize: theme.type.hero,
-    fontWeight: '900',
-    textAlign: 'center',
-  },
-  roleTeam: {
-    color: theme.colors.background,
-    fontSize: 15,
-    fontWeight: '700',
-    marginTop: 4,
-  },
-  roleDescription: {
-    color: theme.colors.background,
-    fontSize: 15,
-    lineHeight: 21,
-    textAlign: 'center',
-    marginTop: theme.spacing.small,
-  },
-  statusText: {
-    color: theme.colors.text,
-    fontSize: theme.type.body,
-    lineHeight: 22,
-    marginVertical: 4,
+  youAre: {
+    color: theme.colors.dim,
+    fontSize: 13,
+    lineHeight: 18,
   },
   pending: {
     color: theme.colors.secondary,
     fontSize: theme.type.small,
     fontWeight: '600',
-    marginTop: 4,
   },
   tallyText: {
     color: theme.colors.dim,
     fontSize: theme.type.small,
   },
+  statusText: {
+    color: theme.colors.text,
+    fontSize: theme.type.body,
+    lineHeight: 22,
+    marginVertical: 2,
+  },
+  ledgerBlock: {
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: theme.colors.border,
+    paddingVertical: 10,
+    marginBottom: theme.spacing.medium,
+  },
   winnerCard: {
-    backgroundColor: theme.colors.primary,
+    backgroundColor: theme.colors.surface,
+    borderTopWidth: 3,
+    borderTopColor: theme.colors.primary,
     padding: theme.spacing.medium,
-    borderRadius: theme.borderRadius,
     marginBottom: theme.spacing.medium,
   },
   winnerText: {
-    color: theme.colors.background,
+    color: theme.colors.primary,
     fontSize: 22,
     fontWeight: '900',
     textAlign: 'center',
   },
+  winnerSub: {
+    color: theme.colors.dim,
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: theme.spacing.small,
+  },
   secretCard: {
     backgroundColor: theme.colors.tintAlliance,
+    borderStartWidth: 3,
+    borderStartColor: theme.colors.secondary,
     padding: theme.spacing.medium,
-    borderRadius: theme.borderRadius,
     marginBottom: theme.spacing.medium,
   },
   secretHeading: {
     color: theme.colors.primary,
-    fontSize: 17,
+    fontSize: theme.type.card,
     fontWeight: '800',
     marginBottom: theme.spacing.small,
   },
@@ -758,37 +762,21 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     marginVertical: 2,
   },
+  sectionRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    marginTop: theme.spacing.small,
+    marginBottom: 4,
+  },
   subHeader: {
     fontSize: theme.type.section,
     color: theme.colors.text,
     fontWeight: '800',
-    marginTop: theme.spacing.medium,
-    marginBottom: theme.spacing.small,
   },
-  playerRow: {
-    marginBottom: theme.spacing.small,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  playerInfo: {
-    flexShrink: 1,
-  },
-  removeButton: {
-    minHeight: theme.inlineTouchTarget,
-    minWidth: theme.inlineTouchTarget,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: theme.borderRadius,
-    borderWidth: 1,
-    borderColor: theme.colors.danger,
-    marginLeft: theme.spacing.small,
-  },
-  removeText: {
-    color: theme.colors.danger,
-    fontSize: theme.type.small,
+  sectionCount: {
+    color: theme.colors.dim,
+    fontSize: 13,
     fontWeight: '700',
   },
   timerRow: {
@@ -818,30 +806,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 2,
   },
-  winnerSub: {
-    color: theme.colors.background,
-    fontSize: 13,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginBottom: theme.spacing.small,
-  },
-  playerName: {
-    color: theme.colors.text,
-    fontSize: theme.type.body,
-    fontWeight: '600',
-  },
-  playerRole: {
-    color: theme.colors.dim,
-    fontSize: theme.type.small,
-  },
-  dead: {
-    textDecorationLine: 'line-through',
-    color: theme.colors.dim,
-  },
   testBanner: {
     backgroundColor: theme.colors.tintGood,
+    borderStartWidth: 3,
+    borderStartColor: theme.colors.success,
     padding: theme.spacing.medium,
-    borderRadius: theme.borderRadius,
     marginBottom: theme.spacing.medium,
   },
   bannerText: {

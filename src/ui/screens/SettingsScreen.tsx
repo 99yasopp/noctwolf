@@ -9,7 +9,7 @@ import {
 import { Text, TextInput } from '../text';
 import { theme } from '../theme/colors';
 import { BaseButton } from '../components/BaseButton';
-import { BackBar } from '../components/BackBar';
+import { ScreenHeader } from '../components/ScreenHeader';
 import { useBack } from '../back';
 import { useI18n } from '../i18n';
 import { LANGUAGES, teamName } from '../../i18n';
@@ -127,9 +127,8 @@ export const SettingsScreen = ({ onBack }: Props) => {
 
   return (
     <View style={styles.container}>
-      <BackBar />
+      <ScreenHeader title={t('ui.settings.title')} />
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.header}>{t('ui.settings.title')}</Text>
 
       <Text style={styles.subHeader}>{t('ui.settings.language')}</Text>
       <Text style={styles.hint}>{t('ui.settings.languageHint')}</Text>
@@ -222,14 +221,11 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.background,
   },
   content: {
+    width: '100%',
+    maxWidth: 560,
+    alignSelf: 'center',
     padding: theme.spacing.medium,
     paddingBottom: theme.spacing.large,
-  },
-  header: {
-    fontSize: theme.type.title,
-    color: theme.colors.text,
-    fontWeight: '900',
-    marginBottom: theme.spacing.medium,
   },
   subHeader: {
     fontSize: theme.type.section,

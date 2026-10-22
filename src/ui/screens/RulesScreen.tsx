@@ -2,7 +2,7 @@ import React from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
 import { Text } from '../text';
 import { theme } from '../theme/colors';
-import { BackBar } from '../components/BackBar';
+import { ScreenHeader } from '../components/ScreenHeader';
 import { useBack } from '../back';
 import { actionLabel, roleDescription, roleName, roleTips, teamName } from '../../i18n';
 import { ALL_ROLES, getCustomRoles } from '../../engine/roleSet';
@@ -57,9 +57,8 @@ export const RulesScreen = ({ onBack }: Props) => {
 
   return (
     <View style={styles.container}>
-      <BackBar />
+      <ScreenHeader title={t('ui.rules.title')} />
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.header}>{t('ui.rules.title')}</Text>
 
       {lines('ui.rules.howTo', HOW_TO_PLAY).map((line, index) => (
         <Text key={index} style={styles.text}>
@@ -127,14 +126,11 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.background,
   },
   content: {
+    width: '100%',
+    maxWidth: 560,
+    alignSelf: 'center',
     padding: theme.spacing.medium,
     paddingBottom: theme.spacing.large,
-  },
-  header: {
-    fontSize: theme.type.title,
-    color: theme.colors.text,
-    fontWeight: '900',
-    marginBottom: theme.spacing.medium,
   },
   subHeader: {
     fontSize: theme.type.section,
