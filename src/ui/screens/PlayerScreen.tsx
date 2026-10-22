@@ -537,6 +537,7 @@ export const PlayerScreen = () => {
   // The windows the engine has open right now, read from the table's rules the
   // same way the engine reads them.
   const openGroups = chatGroups.filter(group => {
+    if (group === 'ghosts') return !outcome;
     if (group === 'lovers') return rules?.['loverChat'] !== 'off';
     if (rules?.['wolfChat'] === 'always') return true;
     if (phase !== 'Night') return false;

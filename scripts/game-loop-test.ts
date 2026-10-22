@@ -4131,6 +4131,88 @@ console.log('\n42. the private windows');
     groupsSentTo(packWolf.id) > wolfHeard && groupsSentTo(luckyThief.id) > thiefHeard,
   );
   check('and he holds the pack window', wolfGame.getChatGroups(luckyThief.id).includes('wolves'));
+
+  // The dead get a table of their own. A dead wolf loses the pack, and a phone
+  // that dies late is handed the ghost chat that came before.
+  const ghostTable = makePlayers(7);
+  const ghostTransport = new RecordingTransport();
+  const ghostGame = new GameManager(ghostTable, ghostTransport);
+  ghostGame.start([
+    WerewolfRole,
+    WerewolfRole,
+    SeerRole,
+    VillagerRole,
+    VillagerRole,
+    VillagerRole,
+    VillagerRole,
+  ]);
+  passElection(ghostGame);
+
+  const ghostWolves = ghostTable.filter(p => ghostGame.getRoleOf(p.id)?.id === 'werewolf');
+  const ghostSeer = findRole(ghostGame, ghostTable, 'seer')!;
+  const ghostVillagers = ghostTable.filter(p => ghostGame.getRoleOf(p.id)?.id === 'villager');
+
+  ghostGame.handleNightAction(ghostWolves[0].id, 'kill', ghostVillagers[0].id);
+  ghostGame.advance();
+  settleSuccession(ghostGame);
+
+  check(
+    'a dead player joins the departed',
+    ghostGame.getChatGroups(ghostVillagers[0].id).includes('ghosts') &&
+      ghostGame.getOpenChatGroups(ghostVillagers[0].id).includes('ghosts'),
+  );
+  check(
+    'and the living do not',
+    !ghostGame.getChatGroups(ghostSeer.id).includes('ghosts'),
+  );
+  check(
+    'the dead may write to their own table',
+    ghostGame.handleChat(ghostVillagers[0].id, 'ghosts', 'boo'),
+  );
+  ghostTransport.directs = [];
+
+  ghostGame.advance();
+  ghostGame.getAlivePlayers().forEach(player =>
+    ghostGame.handleVote(player.id, ghostWolves[0].id),
+  );
+  ghostGame.advance();
+  settleSuccession(ghostGame);
+
+  check(
+    'a dead wolf leaves the pack and joins the departed',
+    !ghostGame.getChatGroups(ghostWolves[0].id).includes('wolves') &&
+      ghostGame.getChatGroups(ghostWolves[0].id).includes('ghosts'),
+  );
+  check(
+    'and hears the ghost chat that came before',
+    ghostTransport.directs.some(
+      direct =>
+        direct.playerId === ghostWolves[0].id &&
+        direct.message.type === 'CHAT_MESSAGE' &&
+        direct.message.payload?.group === 'ghosts' &&
+        direct.message.payload?.message === 'boo',
+    ),
+  );
+  check(
+    'the living cannot write to the dead',
+    !ghostGame.handleChat(ghostSeer.id, 'ghosts', 'hello'),
+  );
+  check(
+    'and nothing said there reaches the journal',
+    !ghostGame.getPublicLog().some(line => line.includes('boo')),
+  );
+
+  ghostTransport.directs = [];
+  ghostGame.sendStateTo(ghostVillagers[0].id);
+  check(
+    'a dead phone that reconnects gets the ghost chat again',
+    ghostTransport.directs.some(
+      direct =>
+        direct.playerId === ghostVillagers[0].id &&
+        direct.message.type === 'CHAT_MESSAGE' &&
+        direct.message.payload?.group === 'ghosts',
+    ),
+  );
 }
 
 console.log('\n43. the last of the per-role rules');

@@ -585,6 +585,8 @@ export const fr: Partial<Catalog> = {
   'ui.chat.lovers': 'Les deux liés',
   'ui.chat.packClosed': 'La meute ne murmure que pendant qu’elle choisit sa victime.',
   'ui.chat.loversClosed': 'Cette table laisse les amoureux muets.',
+  'ui.chat.ghosts': 'Les défunts',
+  'ui.chat.ghostsClosed': 'La partie est finie. Les morts n’ont plus rien à murmurer.',
   'ui.chat.nothing': 'Rien n’a encore été dit.',
   'ui.chat.you': 'Vous',
   'ui.chat.write': 'Écrivez-leur',

@@ -584,6 +584,8 @@ export const en = {
   'ui.chat.lovers': 'The tied two',
   'ui.chat.packClosed': 'The pack whispers only while it is picking its victim.',
   'ui.chat.loversClosed': 'This table keeps the lovers quiet.',
+  'ui.chat.ghosts': 'The departed',
+  'ui.chat.ghostsClosed': 'The game is over. The dead have nothing left to whisper.',
   'ui.chat.nothing': 'Nothing said yet.',
   'ui.chat.you': 'You',
   'ui.chat.write': 'Write to them',

@@ -147,8 +147,8 @@ export class GameManager {
   private foxLost = new Set<string>();
   // The Raven's two votes against one player, counted in the next day's vote.
   private ravenTarget: string | null = null;
-  // The private windows: the wolves' whisper and the lovers' bond. Kept for
-  // one game in memory, and never written into the table's journal.
+  // The private windows: the wolves' whisper, the lovers' bond, and the dead's
+  // own table. Kept for one game in memory, never in the table's journal.
   private chatLog: ChatLine[] = [];
   private chatTimes = new Map<string, number[]>();
   // What the seer found, held until the morning so the village can be told.
@@ -514,10 +514,13 @@ export class GameManager {
   // names a successor first, then the hunter fires, and only then does the
   // phase close.
   private enterAfterDeaths(origin: 'Night' | 'Vote' | 'Day', deaths: Player[]) {
-    // A death closes the dead player's windows and ends the bond if he was one
-    // of the two.
+    // A death closes the dead player's living windows, ends the bond if he was
+    // one of the two, and opens the dead's own table with its history.
     if (deaths.length > 0) this.sendChatGroups();
-    deaths.forEach(dead => this.sendRevealTo(dead.id));
+    deaths.forEach(dead => {
+      this.sendRevealTo(dead.id);
+      this.sendChatLogTo(dead.id);
+    });
 
     const mayorId = this.state.presidentManager.getPresidentId();
 
@@ -1424,11 +1427,13 @@ export class GameManager {
 
   // ------------------------------------------------------------- private chat
 
-  // The windows this player may hear: the pack, and the bond Cupid tied. The
-  // dead hear nothing, and the bond is over the moment one of the two dies.
+  // The windows this player may hear: the pack, the bond Cupid tied, or the
+  // dead's own table. A dead player loses every living window; the bond is over
+  // the moment one of the two dies.
   private chatGroupsOf(playerId: string): ChatGroup[] {
     const player = this.state.players.find(p => p.id === playerId);
-    if (!player?.isAlive) return [];
+    if (!player) return [];
+    if (!player.isAlive) return this.winner ? [] : ['ghosts'];
 
     const groups: ChatGroup[] = [];
     // The pack window waits for the table's mayor, like the pack list does: a
@@ -1451,6 +1456,9 @@ export class GameManager {
   // A group's window, as the table set it. Membership is a separate question.
   private chatOpen(group: ChatGroup): boolean {
     if (this.winner) return false;
+
+    // The dead have their own table for as long as the game runs.
+    if (group === 'ghosts') return true;
 
     if (group === 'lovers') {
       // 'off' is the only other choice: the pair talks whenever both live.
@@ -1502,7 +1510,7 @@ export class GameManager {
   // decides who may listen, when, and how fast, and nothing said here reaches
   // the table's journal.
   handleChat(playerId: string, group: ChatGroup, text: string): boolean {
-    if (group !== 'wolves' && group !== 'lovers') return false;
+    if (group !== 'wolves' && group !== 'lovers' && group !== 'ghosts') return false;
     if (this.winner) return false;
     if (!this.chatGroupsOf(playerId).includes(group)) return false;
     if (!this.chatOpen(group)) return false;

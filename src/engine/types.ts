@@ -14,10 +14,10 @@ export type Phase =
 
 export type Team = 'Village' | 'Wolf' | 'Solitary';
 
-// The two private windows of the game: the wolves' whisper and the bond
-// between the lovers. Living members only, and whatever is said there stays
-// off the table's journal.
-export type ChatGroup = 'wolves' | 'lovers';
+// The private windows of the game: the wolves' whisper, the bond between the
+// lovers, and the dead's own table. Whatever is said there stays off the
+// table's journal.
+export type ChatGroup = 'wolves' | 'lovers' | 'ghosts';
 
 export interface ChatLine {
   group: ChatGroup;

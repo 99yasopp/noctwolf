@@ -19,6 +19,7 @@ interface Props {
 const GROUP_LABEL: Record<ChatGroup, Key> = {
   wolves: 'ui.chat.pack',
   lovers: 'ui.chat.lovers',
+  ghosts: 'ui.chat.ghosts',
 };
 
 // What a closed window says. The wolves' rule has two closed hours, and both
@@ -26,10 +27,11 @@ const GROUP_LABEL: Record<ChatGroup, Key> = {
 const CLOSED_HINT: Record<ChatGroup, Key> = {
   wolves: 'ui.chat.packClosed',
   lovers: 'ui.chat.loversClosed',
+  ghosts: 'ui.chat.ghostsClosed',
 };
 
-// The private half of a game: the wolves' whisper and the lovers' bond. What
-// is said here stays on the phones that are allowed to hear it.
+// The private half of a game: the wolves' whisper, the lovers' bond, and the
+// dead's own table. What is said here stays on the phones that may hear it.
 export const ChatTab: React.FC<Props> = ({ groups, open, lines, selfId, onSend }) => {
   const { t } = useI18n();
   const [drafts, setDrafts] = useState<Record<string, string>>({});

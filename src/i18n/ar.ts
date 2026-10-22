@@ -584,6 +584,8 @@ export const ar: Partial<Catalog> = {
   'ui.chat.lovers': 'المربوطان',
   'ui.chat.packClosed': 'القطيع يهمس فقط أثناء اختيار ضحيته.',
   'ui.chat.loversClosed': 'هذه الطاولة تُسكت العاشقين.',
+  'ui.chat.ghosts': 'الراحلون',
+  'ui.chat.ghostsClosed': 'انتهت اللعبة. لم يبقَ للموتى ما يهمسون به.',
   'ui.chat.nothing': 'لم يُقل شيء بعد.',
   'ui.chat.you': 'أنت',
   'ui.chat.write': 'اكتب إليهم',
