@@ -1,7 +1,13 @@
 import {
   ALL_ROLES,
+  CupidRole,
+  GuardRole,
+  HunterRole,
   PlayableRole,
+  SeerRole,
   VillagerRole,
+  WerewolfRole,
+  WitchRole,
   getCustomRoles,
 } from './roleSet';
 import { say } from '../i18n';
@@ -415,6 +421,25 @@ export const fillWithVillagers = (setup: RoleSetup, playerCount: number): RoleSe
   const villagers = Math.max(0, playerCount - others);
 
   return { ...setup, counts: { ...setup.counts, villager: villagers } };
+};
+
+// A table the host can deal without knowing the roles: one wolf per four
+// seats, then the village's familiar powers, and villagers in the rest. House
+// rules are left alone.
+export const recommendedSetup = (setup: RoleSetup, playerCount: number): RoleSetup => {
+  if (playerCount <= 0) return { ...setup, counts: {} };
+
+  const roles: PlayableRole[] = [];
+  const wolves = Math.max(1, Math.floor(playerCount / 4));
+  for (let index = 0; index < wolves; index++) roles.push(WerewolfRole);
+  if (playerCount >= 3) roles.push(SeerRole);
+  if (playerCount >= 4) roles.push(WitchRole);
+  if (playerCount >= 5) roles.push(HunterRole);
+  if (playerCount >= 6) roles.push(GuardRole);
+  if (playerCount >= 8) roles.push(CupidRole);
+  while (roles.length < playerCount) roles.push(VillagerRole);
+
+  return { ...setup, counts: countsFromRoles(roles.slice(0, playerCount)) };
 };
 
 // The witch's potions are the one role the host reshapes, so her card is

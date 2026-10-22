@@ -50,6 +50,7 @@ import {
   fillWithVillagers,
   migrateSetup,
   nextSettingValue,
+  recommendedSetup,
   settingLabel,
   setupFromRoles,
   setupProblem,
@@ -1513,6 +1514,37 @@ console.log('\n26. the host builds the table');
 
   const noWolf = { ...seeded, counts: { ...seeded.counts, werewolf: 0, villager: 3 } };
   check('a table without a wolf is flagged', !!setupProblem(noWolf, 8));
+
+  const quickSix = recommendedSetup(seeded, 6);
+  check(
+    'the quick table fills six seats',
+    setupSeatsUsed(quickSix) === 6 && setupProblem(quickSix, 6) === null,
+    JSON.stringify(quickSix.counts),
+  );
+  check(
+    'and brings the classic village powers',
+    quickSix.counts.werewolf === 1 &&
+      quickSix.counts.seer === 1 &&
+      quickSix.counts.witch === 1 &&
+      quickSix.counts.hunter === 1 &&
+      quickSix.counts.guard === 1 &&
+      quickSix.counts.villager === 1,
+    JSON.stringify(quickSix.counts),
+  );
+  const ruled = {
+    ...seeded,
+    settings: { ...seeded.settings, 'witch.healCharges': 2 },
+  };
+  check(
+    'the quick table leaves the house rules alone',
+    recommendedSetup(ruled, 6).settings['witch.healCharges'] === 2,
+  );
+  const quickTwelve = recommendedSetup(seeded, 12);
+  check(
+    'a bigger table gets a bigger pack',
+    quickTwelve.counts.werewolf === 3 && setupSeatsUsed(quickTwelve) === 12,
+    JSON.stringify(quickTwelve.counts),
+  );
 }
 
 console.log('\n26b. the host decides how many potions the witch holds');

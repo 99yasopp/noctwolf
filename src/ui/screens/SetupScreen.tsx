@@ -18,6 +18,7 @@ import {
   RoleSetup,
   fillWithVillagers,
   nextSettingValue,
+  recommendedSetup,
   settingLabel,
   settingName,
   settingHelp,
@@ -181,6 +182,13 @@ export const SetupScreen: React.FC<Props> = ({
       ) : (
         <Text style={styles.okText}>{t('ui.setup.ready')}</Text>
       )}
+
+      <BaseButton
+        title={t('ui.setup.quickTable')}
+        onPress={() => onChange(recommendedSetup(setup, playerCount))}
+        variant="secondary"
+      />
+      <Text style={styles.hint}>{t('ui.setup.quickTableHint')}</Text>
 
       <Text style={styles.subHeader}>{t('ui.setup.roles')}</Text>
       <RoleGrid roles={roles} counts={setup.counts} onChange={setCount} />

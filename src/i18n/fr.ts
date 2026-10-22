@@ -523,6 +523,8 @@ export const fr: Partial<Catalog> = {
   'ui.setup.roles': 'Rôles',
   'ui.setup.houseRules': 'Règles maison',
   'ui.setup.fillVillagers': 'Compléter les places libres avec des villageois',
+  'ui.setup.quickTable': 'Composer une table équilibrée',
+  'ui.setup.quickTableHint': 'Remplace le nombre de rôles ; les règles maison restent inchangées.',
   'ui.setup.back': 'Retour au salon',
 
   // --------------------------------------------------- the pages beside the table

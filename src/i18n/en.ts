@@ -522,6 +522,8 @@ export const en = {
   'ui.setup.roles': 'Roles',
   'ui.setup.houseRules': 'House rules',
   'ui.setup.fillVillagers': 'Fill the free seats with villagers',
+  'ui.setup.quickTable': 'Build a balanced table',
+  'ui.setup.quickTableHint': 'Replaces the role counts; the house rules stay as they are.',
   'ui.setup.back': 'Back to the waiting room',
 
   // --------------------------------------------------- the pages beside the table

@@ -522,6 +522,8 @@ export const ar: Partial<Catalog> = {
   'ui.setup.roles': 'الأدوار',
   'ui.setup.houseRules': 'قواعد الطاولة',
   'ui.setup.fillVillagers': 'املأ المقاعد الفارغة بقرويين',
+  'ui.setup.quickTable': 'ابنِ طاولة متوازنة',
+  'ui.setup.quickTableHint': 'يستبدل عدد الأدوار؛ تبقى قواعد الطاولة كما هي.',
   'ui.setup.back': 'رجوع إلى صالة الانتظار',
 
   // --------------------------------------------------- the pages beside the table
