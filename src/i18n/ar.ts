@@ -482,7 +482,7 @@ export const ar: Partial<Catalog> = {
   'ui.lobby.host': 'استضف لعبة',
   'ui.lobby.join': 'انضم إلى لعبة',
   'ui.lobby.webGuest': 'هذا المتصفح ينضم كضيف. استضف الطاولة من تطبيق الهاتف.',
-  'ui.lobby.tagline': 'We’re Wolves',
+  'ui.lobby.tagline': 'We’re Wolves!',
   'ui.lobby.howToPlay': 'كيف تلعب',
   'ui.lobby.settings': 'الإعدادات',
   'ui.lobby.hostIntro': 'ولّد رمز الغرفة لبدء الاستضافة. يمكن للضيوف الانضمام حين تُفتح صالة الانتظار.',

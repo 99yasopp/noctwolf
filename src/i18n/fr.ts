@@ -483,7 +483,7 @@ export const fr: Partial<Catalog> = {
   'ui.lobby.host': 'Héberger une partie',
   'ui.lobby.join': 'Rejoindre une partie',
   'ui.lobby.webGuest': 'Ce navigateur rejoint comme invité. Hébergez la table depuis l’application du téléphone.',
-  'ui.lobby.tagline': 'We’re Wolves',
+  'ui.lobby.tagline': 'We’re Wolves!',
   'ui.lobby.howToPlay': 'Comment jouer',
   'ui.lobby.settings': 'Réglages',
   'ui.lobby.hostIntro': 'Générez le code de la partie pour commencer l’hébergement. Les invités peuvent rejoindre dès que le salon s’ouvre.',

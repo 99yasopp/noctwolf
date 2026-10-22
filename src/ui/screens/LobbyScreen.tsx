@@ -6,7 +6,6 @@ import {
   Platform,
   Pressable,
   Share,
-  Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -431,11 +430,10 @@ export const LobbyScreen = () => {
         return (
           <View style={styles.menu}>
             <View style={styles.brand}>
-              <Image
-                source={require('../../../assets/icon.png')}
-                style={styles.logo}
-                resizeMode="contain"
-              />
+              <View style={styles.mark}>
+                <View style={styles.moon} />
+                <View style={styles.moonCut} />
+              </View>
               <Text style={styles.wordmark}>
                 Noct<Text style={styles.wordmarkGold}>wolf</Text>
               </Text>
@@ -730,10 +728,28 @@ const styles = StyleSheet.create({
   brand: {
     alignItems: 'center',
   },
-  logo: {
-    width: 104,
-    height: 104,
+  mark: {
+    width: 64,
+    height: 64,
     marginBottom: 10,
+  },
+  moon: {
+    position: 'absolute',
+    left: 4,
+    top: 4,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: theme.colors.primary,
+  },
+  moonCut: {
+    position: 'absolute',
+    left: 22,
+    top: -8,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: theme.colors.background,
   },
   wordmark: {
     color: theme.colors.text,

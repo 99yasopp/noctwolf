@@ -482,7 +482,7 @@ export const en = {
   'ui.lobby.host': 'Host a game',
   'ui.lobby.join': 'Join a game',
   'ui.lobby.webGuest': 'This browser joins as a guest. Host the table from the phone app.',
-  'ui.lobby.tagline': 'We’re Wolves',
+  'ui.lobby.tagline': 'We’re Wolves!',
   'ui.lobby.howToPlay': 'How to play',
   'ui.lobby.settings': 'Settings',
   'ui.lobby.hostIntro': 'Generate the room code to start hosting. Guests can join once the waiting room opens.',
