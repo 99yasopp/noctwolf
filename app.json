@@ -1,11 +1,17 @@
 {
   "expo": {
-    "name": "WerewolfManager",
+    "name": "Noctwolf",
     "slug": "werewolf-manager",
     "version": "1.0.0",
     "newArchEnabled": false,
     "userInterfaceStyle": "dark",
     "backgroundColor": "#070B14",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#04060A"
+    },
     "androidStatusBar": {
       "backgroundColor": "#070B14",
       "barStyle": "light-content",
@@ -26,6 +32,10 @@
     },
     "android": {
       "package": "com.loupgarou.game",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#04060A"
+      },
       "permissions": [
         "ACCESS_WIFI_STATE",
         "CHANGE_WIFI_STATE",

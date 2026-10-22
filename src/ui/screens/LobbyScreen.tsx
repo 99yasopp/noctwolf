@@ -6,6 +6,7 @@ import {
   Platform,
   Pressable,
   Share,
+  Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -430,12 +431,14 @@ export const LobbyScreen = () => {
         return (
           <View style={styles.menu}>
             <View style={styles.brand}>
-              <View style={styles.mark}>
-                <View style={styles.moon} />
-                <View style={styles.moonCut} />
-              </View>
-              <Text style={styles.wordmark}>Loup</Text>
-              <Text style={[styles.wordmark, styles.wordmarkGold]}>Garou</Text>
+              <Image
+                source={require('../../../assets/icon.png')}
+                style={styles.logo}
+                resizeMode="contain"
+              />
+              <Text style={styles.wordmark}>
+                Noct<Text style={styles.wordmarkGold}>wolf</Text>
+              </Text>
               <Text style={styles.tagline}>{t('ui.lobby.tagline')}</Text>
             </View>
 
@@ -727,33 +730,15 @@ const styles = StyleSheet.create({
   brand: {
     alignItems: 'center',
   },
-  mark: {
-    width: 64,
-    height: 64,
+  logo: {
+    width: 104,
+    height: 104,
     marginBottom: 10,
-  },
-  moon: {
-    position: 'absolute',
-    left: 4,
-    top: 4,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: theme.colors.primary,
-  },
-  moonCut: {
-    position: 'absolute',
-    left: 22,
-    top: -8,
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: theme.colors.background,
   },
   wordmark: {
     color: theme.colors.text,
     fontSize: 44,
-    lineHeight: 43,
+    lineHeight: 50,
     fontWeight: '900',
     textAlign: 'center',
   },
