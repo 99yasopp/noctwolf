@@ -211,6 +211,15 @@ export const LobbyScreen = () => {
     setView('waiting');
   };
 
+  // A browser can be stopped before the phone ever answers: an https page may
+  // not open ws://, and the machine may sit behind a VPN. Say which one it is.
+  const webFailureHint = () => {
+    if (typeof window !== 'undefined' && window.location?.protocol === 'https:') {
+      return t('ui.lobby.webHttps');
+    }
+    return t('ui.lobby.webCheck');
+  };
+
   const joinGame = async () => {
     setError('');
 
@@ -239,14 +248,13 @@ export const LobbyScreen = () => {
     setBusy(false);
 
     if (!succeeded) {
-      setError(
-        code
-          ? t('ui.lobby.codeNotFound')
-          : t('ui.lobby.hostUnreachable', {
-              host: address.host,
-              port: address.port,
-            }),
-      );
+      const reason = code
+        ? t('ui.lobby.codeNotFound')
+        : t('ui.lobby.hostUnreachable', {
+            host: address.host,
+            port: address.port,
+          });
+      setError(WEB ? `${reason}\n${webFailureHint()}` : reason);
       return;
     }
 
@@ -365,7 +373,7 @@ export const LobbyScreen = () => {
       case 'host':
         return (
           <View style={styles.menu}>
-            <Text style={styles.text}>{t('ui.lobby.hosting')}</Text>
+            <Text style={styles.text}>{t('ui.lobby.hostIntro')}</Text>
             <BaseButton title={t('ui.lobby.generate')} onPress={hostGame} />
           </View>
         );
@@ -423,6 +431,16 @@ export const LobbyScreen = () => {
             <Text style={styles.text}>
               {t('ui.lobby.connected', { count: players.length })}
             </Text>
+            {/* Links that reached the phone, even before a seat exists. A
+                browser that shows up here is on the network; one that never
+                does has not reached the host at all. */}
+            {isHost && lobby.getConnectionCount() > 0 && (
+              <Text style={styles.hint}>
+                {t('ui.lobby.devicesConnected', {
+                  count: lobby.getConnectionCount(),
+                })}
+              </Text>
+            )}
 
             {players.map(p => (
               <View key={p.id} style={styles.playerRow}>

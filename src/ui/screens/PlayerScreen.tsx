@@ -41,7 +41,7 @@ export const PlayerScreen = () => {
   const { t } = useI18n();
 
   // Which of the phone's pages is open. Play is the game itself.
-  const [tab, setTab] = useState<'play' | 'info' | 'notes' | 'chat' | 'roles'>('play');
+  const [tab, setTab] = useState<'play' | 'info' | 'notes' | 'chat'>('play');
   // The notes page belongs to one game: a fresh deal opens a new one. On a
   // guest phone the game id never moves, so the deal counts instead.
   const [deal, setDeal] = useState(0);
@@ -507,7 +507,6 @@ export const PlayerScreen = () => {
     { id: 'info', label: t('ui.tab.info') },
     { id: 'notes', label: t('ui.tab.notes') },
     ...(chatGroups.length > 0 ? [{ id: 'chat', label: t('ui.tab.chat') }] : []),
-    ...(reveal ? [{ id: 'roles', label: t('ui.tab.roles') }] : []),
   ];
 
   // The pack: a wolf sees who else wears the fur, never which card, and only
@@ -515,6 +514,8 @@ export const PlayerScreen = () => {
   const isWolf = ownRole?.team === 'Wolf';
   const packReady = isWolf && phase !== null && packIsKnown(phase);
   const packIds = new Set(packReady ? (ownRole?.allies ?? []).map(ally => ally.id) : []);
+  // The roster is the first word on a death; the reveal follows it.
+  const selfAlive = roster.find(entry => entry.id === localPlayer?.id)?.isAlive ?? true;
 
   // The Info tab reads by round and phase; the table's own rules close it.
   const infoSections = [
@@ -549,7 +550,7 @@ export const PlayerScreen = () => {
       <TabBar
         tabs={tabs}
         active={tab}
-        onSelect={id => setTab(id as 'play' | 'info' | 'notes' | 'chat' | 'roles')}
+        onSelect={id => setTab(id as 'play' | 'info' | 'notes' | 'chat')}
       />
 
       {tab === 'play' && (
@@ -597,6 +598,9 @@ export const PlayerScreen = () => {
           </>
         )}
       </View>
+
+      {/* Out of the game, the dead read the whole table without asking. */}
+      {!selfAlive && reveal && !outcome && <RevealedRoles entries={reveal} />}
 
       {!role && (
         <Text style={styles.hint}>
@@ -709,7 +713,7 @@ export const PlayerScreen = () => {
           submitted={submitted}
           gameOver={!!outcome}
           quietNight={quietNight}
-          selfAlive={roster.find(entry => entry.id === localPlayer?.id)?.isAlive ?? true}
+          selfAlive={selfAlive}
           candidates={voteResult?.revote ? voteResult.candidates?.map(c => c.id) : undefined}
           ravenTiming={
             typeof rules?.['raven.timing'] === 'string'
@@ -780,7 +784,6 @@ export const PlayerScreen = () => {
         />
       )}
 
-      {tab === 'roles' && <RevealedRoles entries={reveal ?? []} />}
       </ScrollView>
     </View>
   );

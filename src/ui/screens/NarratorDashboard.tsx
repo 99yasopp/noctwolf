@@ -29,7 +29,7 @@ export const NarratorDashboard = () => {
   // Which page of the dashboard is open: the running game, the host's own
   // notes about it, the private windows he holds as a player, or — once he is
   // out of the game — every card on the table.
-  const [tab, setTab] = useState<'play' | 'info' | 'notes' | 'chat' | 'roles'>('play');
+  const [tab, setTab] = useState<'play' | 'info' | 'notes' | 'chat'>('play');
 
   useEffect(() => {
     if (!manager || !localPlayer) return;
@@ -291,10 +291,9 @@ export const NarratorDashboard = () => {
           { id: 'info', label: t('ui.tab.info') },
           { id: 'notes', label: t('ui.tab.notes') },
           ...(hostGroups.length > 0 ? [{ id: 'chat', label: t('ui.tab.chat') }] : []),
-          ...(selfAlive ? [] : [{ id: 'roles', label: t('ui.tab.roles') }]),
         ]}
         active={tab}
-        onSelect={id => setTab(id as 'play' | 'info' | 'notes' | 'chat' | 'roles')}
+        onSelect={id => setTab(id as 'play' | 'info' | 'notes' | 'chat')}
       />
 
       {tab === 'play' && (
@@ -328,6 +327,9 @@ export const NarratorDashboard = () => {
           </Text>
         )}
       </View>
+
+      {/* Out of the game, the host reads the table like any other corpse. */}
+      {!selfAlive && !seeEverything && <RevealedRoles entries={manager.getReveal()} />}
 
       <View style={styles.statusCard}>
         <Text style={styles.statusText}>
@@ -650,7 +652,6 @@ export const NarratorDashboard = () => {
         />
       )}
 
-      {tab === 'roles' && <RevealedRoles entries={manager.getReveal()} />}
     </ScrollView>
     </View>
   );

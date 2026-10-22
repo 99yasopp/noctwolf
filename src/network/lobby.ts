@@ -383,6 +383,11 @@ export class LobbyManager implements GameTransport {
     return !!this.server?.isStarted();
   }
 
+  // Links that reached the host, including a browser still in its handshake.
+  getConnectionCount(): number {
+    return this.server?.clientCount() ?? 0;
+  }
+
   // Hosting binds a TCP port, which only the phone build can do; a browser is
   // a guest.
   canHost(): boolean {
@@ -484,6 +489,10 @@ export class LobbyManager implements GameTransport {
       });
 
       client.onError(fail);
+
+      // A host that answers and then hangs up (a full room, a stopped server)
+      // closes without an error; report that instead of timing out over it.
+      client.onClose(fail);
 
       // A refused connection reports an error, but an unreachable host can
       // hang, so time out rather than leave the UI spinning forever.

@@ -92,6 +92,13 @@ export class NarratorServer extends EventEmitter {
     return this.isListening;
   }
 
+  // Every accepted link, joined or not: a browser still in its handshake has
+  // reached the phone even though it has no seat yet. The waiting room shows
+  // this so a failed join can be told apart from a request that never arrived.
+  clientCount(): number {
+    return this.clients.length;
+  }
+
   // Broadcast to all clients
   broadcast(message: NetworkMessage) {
     if (Platform.OS === 'web') return;

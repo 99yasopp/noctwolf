@@ -38,6 +38,12 @@ const slug = (name: string) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '') || 'role';
 
+// Models sometimes wrap JSON in a ``` fence even when asked for raw JSON.
+export const stripCodeFence = (text: string): string => {
+  const fenced = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(text.trim());
+  return (fenced ? fenced[1] : text).trim();
+};
+
 // Turn whatever the AI produced into something the engine can actually run,
 // or explain why it cannot.
 export const translateGeneratedRole = (

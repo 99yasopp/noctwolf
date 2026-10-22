@@ -39,6 +39,7 @@ import {
 } from '../src/engine/roleSet';
 import {
   TRANSLATABLE_ACTIONS,
+  stripCodeFence,
   translateGeneratedRole,
 } from '../src/engine/generatedRole';
 import {
@@ -1062,6 +1063,13 @@ console.log('\n17. a generated role is translated into something playable');
     VALIDATED_ACTIONS.every(id => !!TRANSLATABLE_ACTIONS[id]),
     VALIDATED_ACTIONS.filter(id => !TRANSLATABLE_ACTIONS[id]).join(','),
   );
+
+  // Providers sometimes wrap the JSON in a markdown fence.
+  check(
+    'a fenced reply unwraps to the JSON',
+    stripCodeFence('```json\n{"name":"X"}\n```') === '{"name":"X"}',
+  );
+  check('plain JSON is left alone', stripCodeFence(' {"name":"X"} ') === '{"name":"X"}');
 }
 
 console.log("\n18. a custom role takes a villager's seat");
@@ -4210,6 +4218,26 @@ console.log('\n44. the address a guest types');
     'and an IPv6 address is left whole',
     JSON.stringify(splitHostAddress('::1', 12345)) ===
       JSON.stringify({ host: '::1', port: 12345 }),
+  );
+  check(
+    'a pasted URL keeps only the host and port',
+    JSON.stringify(splitHostAddress('http://192.168.0.42:12345/', 12345)) ===
+      JSON.stringify({ host: '192.168.0.42', port: 12345 }),
+  );
+  check(
+    'a pasted URL without a port keeps the game port',
+    JSON.stringify(splitHostAddress('ws://192.168.0.42/game', 12345)) ===
+      JSON.stringify({ host: '192.168.0.42', port: 12345 }),
+  );
+  check(
+    'a bracketed IPv6 address carries its port',
+    JSON.stringify(splitHostAddress('[fe80::1]:12345', 12345)) ===
+      JSON.stringify({ host: 'fe80::1', port: 12345 }),
+  );
+  check(
+    'a bracketed IPv6 address without a port keeps the game port',
+    JSON.stringify(splitHostAddress('[fe80::1]', 12345)) ===
+      JSON.stringify({ host: 'fe80::1', port: 12345 }),
   );
 }
 

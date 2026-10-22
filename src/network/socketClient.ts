@@ -165,7 +165,10 @@ export class WebPlayerClient extends GuestClient {
       return;
     }
 
-    const socket = new WebSocketImpl(`ws://${host}:${port}`);
+    // A browser URL brackets an IPv6 host; an unbracketed one is not a URL at
+    // all, so the phone could join an IPv6 host while the browser could not.
+    const wsHost = host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
+    const socket = new WebSocketImpl(`ws://${wsHost}:${port}`);
     this.socket = socket;
 
     socket.onopen = () => {

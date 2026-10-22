@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { Text, TextInput } from '../text';
-import * as SecureStore from 'expo-secure-store';
 import { theme } from '../theme/colors';
 import { BaseButton } from '../components/BaseButton';
 import { BackBar } from '../components/BackBar';
@@ -18,7 +17,13 @@ import { RoleDraftScreen } from './RoleDraftScreen';
 import { PlayableRole } from '../../engine/roleSet';
 import { DraftRole, translateGeneratedRole } from '../../engine/generatedRole';
 import { loadCustomRoles, persistCustomRoles } from '../../services/customRoles';
-import { generateCustomRole } from '../../services/aiGenerator';
+import {
+  AI_PROVIDERS,
+  AiProvider,
+  generateCustomRole,
+  loadAiSettings,
+  saveAiSettings,
+} from '../../services/aiGenerator';
 
 interface Props {
   onBack: () => void;
@@ -27,6 +32,9 @@ interface Props {
 export const SettingsScreen = ({ onBack }: Props) => {
   const { t, language, setLanguage } = useI18n();
   const [apiKey, setApiKey] = useState('');
+  // Both providers take an sk-… key, so the key alone cannot say which one it
+  // belongs to: the player names the provider here.
+  const [provider, setProvider] = useState<AiProvider>('deepseek');
   const [prompt, setPrompt] = useState('');
   const [draft, setDraft] = useState<DraftRole | null>(null);
   const [saved, setSaved] = useState<PlayableRole[]>([]);
@@ -38,8 +46,9 @@ export const SettingsScreen = ({ onBack }: Props) => {
     loadCustomRoles().then(roles => setSaved(roles));
 
     if (Platform.OS !== 'web') {
-      SecureStore.getItemAsync('openai_api_key').then(key => {
-        if (key) setApiKey(key);
+      loadAiSettings().then(settings => {
+        setProvider(settings.provider);
+        if (settings.apiKey) setApiKey(settings.apiKey);
       });
     }
   }, []);
@@ -54,7 +63,7 @@ export const SettingsScreen = ({ onBack }: Props) => {
       return;
     }
 
-    await SecureStore.setItemAsync('openai_api_key', apiKey);
+    await saveAiSettings(provider, apiKey);
     setStatus(t('ui.settings.keySaved'));
   };
 
@@ -69,7 +78,7 @@ export const SettingsScreen = ({ onBack }: Props) => {
     setBusy(true);
 
     try {
-      const generated = await generateCustomRole(prompt.trim());
+      const generated = await generateCustomRole(prompt.trim(), provider, apiKey);
       const translated = translateGeneratedRole(generated);
 
       if (!translated.draft) {
@@ -133,7 +142,19 @@ export const SettingsScreen = ({ onBack }: Props) => {
         />
       ))}
 
-      <Text style={styles.text}>{t('ui.settings.apiKey')}</Text>
+      <Text style={styles.subHeader}>{t('ui.settings.provider')}</Text>
+      {(['deepseek', 'openai'] as AiProvider[]).map(id => (
+        <BaseButton
+          key={id}
+          title={AI_PROVIDERS[id].label}
+          variant={provider === id ? 'primary' : 'secondary'}
+          onPress={() => setProvider(id)}
+        />
+      ))}
+
+      <Text style={styles.text}>
+        {t('ui.settings.apiKeyFor', { provider: AI_PROVIDERS[provider].label })}
+      </Text>
       <TextInput
         style={styles.input}
         placeholder="sk-..."
