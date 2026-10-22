@@ -504,6 +504,11 @@ export const fr: Partial<Catalog> = {
   'ui.lobby.roomCodeLabel': 'Code de la partie',
   'ui.lobby.roomCodeLine': 'Code de la partie : {code}',
   'ui.lobby.addressLine': 'Adresse : {address}',
+  'ui.lobby.shareTable': 'Partager la table',
+  'ui.lobby.shareMessage':
+    'Rejoignez ma table de Loup-Garou.\nCode de la partie : {code}\nAdresse : {address}',
+  'ui.lobby.shareCopied': 'Les informations ont été copiées.',
+  'ui.lobby.shareUnavailable': 'Le partage n’est pas disponible ici.',
   'ui.lobby.unknownAddress': 'inconnue — vérifiez le Wi-Fi',
   'ui.lobby.twoWays': 'Les invités saisissent l’un des deux : le code, ou l’adresse. Les deux marchent depuis l’application ; un navigateur prend l’adresse.',
   'ui.lobby.waitingRoom': 'Salon d’attente',

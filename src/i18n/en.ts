@@ -503,6 +503,11 @@ export const en = {
   'ui.lobby.roomCodeLabel': 'Room code',
   'ui.lobby.roomCodeLine': 'Room code: {code}',
   'ui.lobby.addressLine': 'Address: {address}',
+  'ui.lobby.shareTable': 'Share the table',
+  'ui.lobby.shareMessage':
+    'Join my Loup-Garou table.\nRoom code: {code}\nAddress: {address}',
+  'ui.lobby.shareCopied': 'Join info copied.',
+  'ui.lobby.shareUnavailable': 'Sharing is not available here.',
   'ui.lobby.unknownAddress': 'unknown — check the Wi-Fi',
   'ui.lobby.twoWays': 'Guests type one of the two: the code, or the address. Both work from the app; a browser takes the address.',
   'ui.lobby.waitingRoom': 'Waiting room',

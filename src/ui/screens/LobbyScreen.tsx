@@ -5,6 +5,7 @@ import {
   ScrollView,
   Platform,
   Pressable,
+  Share,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -99,6 +100,7 @@ export const LobbyScreen = () => {
   const [playerName, setPlayerName] = useState(initialPlayerName);
   const [players, setPlayers] = useState<Player[]>([]);
   const [error, setError] = useState('');
+  const [shareNote, setShareNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [isHost, setIsHost] = useState(false);
   // The host's table: null until the saved one is read, then the empty table
@@ -319,6 +321,47 @@ export const LobbyScreen = () => {
     startHostGame(roster, host, setupToDeal);
   };
 
+  // One tap puts the code and address in the group chat. Native opens the
+  // share sheet; a browser uses its own share or clipboard.
+  const shareTable = async () => {
+    const message = t('ui.lobby.shareMessage', {
+      code: roomCode,
+      address: lobby.getHostAddress() ?? t('ui.lobby.unknownAddress'),
+    });
+
+    setShareNote('');
+    try {
+      if (Platform.OS === 'web') {
+        const nav = (globalThis as unknown as {
+          navigator?: {
+            share?: (data: { text: string }) => Promise<void>;
+            clipboard?: { writeText: (text: string) => Promise<void> };
+          };
+        }).navigator;
+
+        if (nav?.share) {
+          await nav.share({ text: message });
+          return;
+        }
+        if (nav?.clipboard) {
+          try {
+            await nav.clipboard.writeText(message);
+            setShareNote(t('ui.lobby.shareCopied'));
+          } catch {
+            setShareNote(t('ui.lobby.shareUnavailable'));
+          }
+          return;
+        }
+        setShareNote(t('ui.lobby.shareUnavailable'));
+        return;
+      }
+
+      await Share.share({ message });
+    } catch {
+      // A dismissed share sheet is a choice, not an error to report.
+    }
+  };
+
   // Lets the host exercise a full game without extra devices. Bots act and
   // vote on their own.
   const addTestPlayer = () => {
@@ -355,6 +398,7 @@ export const LobbyScreen = () => {
     setSetup(isHost ? setup : null);
     setRoomCode('');
     setError('');
+    setShareNote('');
     setView('menu');
   };
 
@@ -491,6 +535,14 @@ export const LobbyScreen = () => {
                     address: lobby.getHostAddress() ?? t('ui.lobby.unknownAddress'),
                   })}
                 </Text>
+                <BaseButton
+                  title={t('ui.lobby.shareTable')}
+                  onPress={shareTable}
+                  variant="secondary"
+                />
+                {shareNote ? (
+                  <Text style={styles.shareNote}>{shareNote}</Text>
+                ) : null}
               </View>
             ) : null}
             {isHost && <Text style={styles.hint}>{t('ui.lobby.twoWays')}</Text>}
@@ -872,6 +924,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
     marginTop: 6,
+  },
+  shareNote: {
+    color: theme.colors.success,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 2,
+    textAlign: 'center',
   },
   text: {
     color: theme.colors.text,

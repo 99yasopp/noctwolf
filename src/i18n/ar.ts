@@ -503,6 +503,11 @@ export const ar: Partial<Catalog> = {
   'ui.lobby.roomCodeLabel': 'رمز الغرفة',
   'ui.lobby.roomCodeLine': 'رمز الغرفة: {code}',
   'ui.lobby.addressLine': 'العنوان: {address}',
+  'ui.lobby.shareTable': 'شارك الطاولة',
+  'ui.lobby.shareMessage':
+    'انضم إلى طاولة Loup-Garou.\nرمز الغرفة: {code}\nالعنوان: {address}',
+  'ui.lobby.shareCopied': 'تم نسخ معلومات الانضمام.',
+  'ui.lobby.shareUnavailable': 'المشاركة غير متاحة هنا.',
   'ui.lobby.unknownAddress': 'غير معروف — تحقق من الواي فاي',
   'ui.lobby.twoWays': 'يكتب الضيوف أحد الأمرين: الرمز أو العنوان. كلاهما يعمل من التطبيق؛ والمتصفح يأخذ العنوان.',
   'ui.lobby.waitingRoom': 'صالة الانتظار',
