@@ -1,5 +1,5 @@
 import { ChatGroup, Phase, Player, Team } from '../engine/types';
-import { SettingValue } from '../engine/setup';
+import { RoleSetup, SettingValue } from '../engine/setup';
 import { Params } from '../i18n';
 
 // Define the message types for network communication
@@ -61,6 +61,12 @@ export interface PlayerRef {
 
 export interface PlayerListPayload {
   players: Player[];
+  // The host's table travels with the roster while the room waits, so a guest
+  // sees the roles and house rules without waiting for the deal. Optional:
+  // the same message still carries a plain roster during a game.
+  setup?: RoleSetup | null;
+  // Names for roles the guest may not have locally, keyed by role id.
+  names?: Record<string, string>;
 }
 
 // The house rules, sent to the whole table when the deal is made. Guests read

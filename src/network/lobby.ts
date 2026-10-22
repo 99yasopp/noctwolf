@@ -1,8 +1,9 @@
 import { Player } from '../engine/types';
+import { RoleSetup, setupRoleById } from '../engine/setup';
 import { NarratorServer } from './socketServer';
 import { GuestClient, createGuestClient } from './socketClient';
 import { createZeroconf } from './nativeModules';
-import { NetworkMessage } from './protocol';
+import { NetworkMessage, PlayerListPayload } from './protocol';
 import { splitHostAddress } from './address';
 import { GameTransport } from '../engine/transport';
 import { Platform } from 'react-native';
@@ -69,6 +70,16 @@ export class LobbyManager implements GameTransport {
   // player joining, leaving or being removed shows up without polling.
   private rosterListeners = new Set<() => void>();
 
+  // The host's table, kept here so every roster snapshot can carry it to the
+  // waiting guests. A guest caches what the host sent.
+  private tableSetup: RoleSetup | null = null;
+  private roleNames: Record<string, string> = {};
+
+  // The active screen gets every guest message from here. The cache above is
+  // filled first, so a snapshot that arrives before the screen mounts is not
+  // lost.
+  private guestMessageHandler: ((message: NetworkMessage) => void) | null = null;
+
   onRosterChanged(listener: () => void): () => void {
     this.rosterListeners.add(listener);
     return () => {
@@ -78,6 +89,54 @@ export class LobbyManager implements GameTransport {
 
   private notifyRoster() {
     this.rosterListeners.forEach(listener => listener());
+  }
+
+  onGuestMessage(listener: (message: NetworkMessage) => void) {
+    this.guestMessageHandler = listener;
+  }
+
+  offGuestMessage() {
+    this.guestMessageHandler = null;
+  }
+
+  getTableSetup(): RoleSetup | null {
+    return this.tableSetup;
+  }
+
+  getRoleNames(): Record<string, string> {
+    return this.roleNames;
+  }
+
+  // Store the host's table and send it to the waiting room. A guest never
+  // calls this; it reads the copy that arrived with the roster.
+  setTableSetup(setup: RoleSetup | null) {
+    this.tableSetup = setup;
+    this.roleNames = setup
+      ? Object.fromEntries(
+          Object.keys(setup.counts).map(id => [id, setupRoleById(id)?.name ?? id]),
+        )
+      : {};
+    this.publishLobbyState();
+  }
+
+  // Every host-side mutation asks for this: one roster payload carries the
+  // table too, so a guest cannot see one change without the other.
+  publishLobbyState() {
+    this.broadcastPlayerList();
+  }
+
+  private handleHostMessage(message: NetworkMessage) {
+    if (message.type === 'PLAYER_LIST') {
+      const payload = message.payload as PlayerListPayload | undefined;
+      this.players = Array.isArray(payload?.players) ? payload.players : [];
+      if (payload && 'setup' in payload) {
+        this.tableSetup = payload.setup ?? null;
+        this.roleNames = payload.names ?? {};
+      }
+      this.notifyRoster();
+    }
+
+    this.guestMessageHandler?.(message);
   }
 
   private getZeroconf(): ZeroconfLike | null {
@@ -311,6 +370,9 @@ export class LobbyManager implements GameTransport {
     this.players = [];
     this.roomCode = '';
     this.hostAddress = null;
+    this.tableSetup = null;
+    this.roleNames = {};
+    this.guestMessageHandler = null;
     this.notifyRoster();
   }
 
@@ -456,6 +518,11 @@ export class LobbyManager implements GameTransport {
     this.lastHost = host;
     this.lastPort = port;
 
+    // Cache the lobby state before any screen can attach. The host usually
+    // broadcasts the first roster right after PLAYER_JOIN, often before the
+    // waiting room has mounted.
+    client.onMessage(message => this.handleHostMessage(message));
+
     // Carry the seat token across reconnects, which build a new client.
     client.seatToken = this.seatToken;
     client.onSeatToken(token => {
@@ -503,6 +570,11 @@ export class LobbyManager implements GameTransport {
   disconnectClient() {
     this.client?.disconnect();
     this.client = undefined;
+    this.guestMessageHandler = null;
+    this.players = [];
+    this.tableSetup = null;
+    this.roleNames = {};
+    this.notifyRoster();
   }
 
   // Where this device last joined, or null when it never has.
@@ -559,9 +631,15 @@ export class LobbyManager implements GameTransport {
   }
 
   private broadcastPlayerList() {
+    const payload: PlayerListPayload = {
+      players: this.publicPlayers(),
+      setup: this.tableSetup,
+      names: this.roleNames,
+    };
+
     this.server?.broadcast({
       type: 'PLAYER_LIST',
-      payload: { players: this.publicPlayers() },
+      payload,
       timestamp: Date.now(),
     });
     this.notifyRoster();

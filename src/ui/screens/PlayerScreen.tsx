@@ -35,7 +35,13 @@ import {
   SecretInfoPayload,
   VoteResultPayload,
 } from '../../network/protocol';
-import { SETTING_DEFS, Settings, settingLabel, settingName } from '../../engine/setup';
+import {
+  SETTING_DEFS,
+  Settings,
+  settingLabel,
+  settingName,
+  setupRoleLines,
+} from '../../engine/setup';
 import { TabBar } from '../components/TabBar';
 import { NotesTab } from '../components/NotesTab';
 import { ChatTab } from '../components/ChatTab';
@@ -81,6 +87,8 @@ export const PlayerScreen = () => {
   const [tieTargets, setTieTargets] = useState<{ id: string; name: string }[]>([]);
   // The house rules the deal arrived with. Only the host can change them.
   const [rules, setRules] = useState<Settings | null>(null);
+  // The host's table, carried with the lobby roster before the deal.
+  const [tableSetup, setTableSetup] = useState(lobby.getTableSetup());
   // The raven's mark, kept on this phone: the table is not told who holds it.
   const [ravenMark, setRavenMark] = useState<{ id: string; name: string } | null>(null);
   // The election is public, so every phone gets the same list.
@@ -139,7 +147,7 @@ export const PlayerScreen = () => {
       return;
     }
 
-    client.onMessage(message => {
+    lobby.onGuestMessage(message => {
       switch (message.type) {
         case 'PLAYER_LIST':
           setRoster(message.payload?.players ?? []);
@@ -332,8 +340,16 @@ export const PlayerScreen = () => {
     // to repeat what is private to us.
     client.sendMessage({ type: 'STATE_REQUEST', payload: {}, timestamp: Date.now() });
 
-    return () => client.offMessage();
+    return () => lobby.offGuestMessage();
   }, [linkVersion]);
+
+  // The table setup is cached with the roster, so the Info page can read it
+  // back without another round trip.
+  useEffect(() => {
+    const refresh = () => setTableSetup(lobby.getTableSetup());
+    refresh();
+    return lobby.onRosterChanged(refresh);
+  }, []);
 
   // One tick a second while a countdown is running, so the remaining time
   // moves without the host having to say anything.
@@ -552,9 +568,23 @@ export const PlayerScreen = () => {
   const inspected = inspect ? roster.find(entry => entry.id === inspect) : null;
   const inspectedKnown = inspect ? (reveal ?? []).find(card => card.id === inspect) : null;
 
-  // The Info tab reads by round and phase; the table's own rules close it.
+  // The Info tab reads by round and phase; the table's own composition and
+  // rules close it.
+  const tableRoles = tableSetup
+    ? setupRoleLines(
+        tableSetup,
+        lobby.getRoleNames(),
+        roster.length || undefined,
+      ).map(line => {
+        const name = roleName(line.id, line.name);
+        return line.count > 1 ? `${name} ×${line.count}` : name;
+      })
+    : [];
   const infoSections = [
     ...digestSections(publicLines, t),
+    ...(tableRoles.length
+      ? [flatSection(t('ui.lobby.tableSetup'), tableRoles)]
+      : []),
     ...(rules
       ? [
           flatSection(

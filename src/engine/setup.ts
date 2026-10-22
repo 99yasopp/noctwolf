@@ -331,6 +331,41 @@ export const setupRoleById = (id: string): PlayableRole | undefined =>
 export const setupSeatsUsed = (setup: RoleSetup): number =>
   Object.values(setup.counts).reduce((total, count) => total + Math.max(0, count), 0);
 
+export interface SetupRoleLine {
+  id: string;
+  name: string;
+  count: number;
+}
+
+// What the waiting room reads back: every role the host named, plus the
+// villagers the deal fills into any free seats. A guest that does not have a
+// custom role locally gets its name from the host.
+export const setupRoleLines = (
+  setup: RoleSetup,
+  names: Record<string, string> = {},
+  playerCount?: number,
+): SetupRoleLine[] => {
+  const counts = new Map<string, number>();
+
+  Object.entries(setup.counts).forEach(([id, count]) => {
+    const seats = Math.max(0, Math.floor(count));
+    if (seats > 0) counts.set(id, (counts.get(id) ?? 0) + seats);
+  });
+
+  // An empty table is not a table of villagers: only fill once the host has
+  // named a role.
+  if (playerCount !== undefined && counts.size > 0) {
+    const free = playerCount - setupSeatsUsed(setup);
+    if (free > 0) counts.set('villager', (counts.get('villager') ?? 0) + free);
+  }
+
+  return Array.from(counts, ([id, count]) => ({
+    id,
+    name: names[id] ?? setupRoleById(id)?.name ?? id,
+    count,
+  }));
+};
+
 export const setupWolfSeats = (setup: RoleSetup): number =>
   Object.entries(setup.counts).reduce((total, [id, count]) => {
     const role = setupRoleById(id);

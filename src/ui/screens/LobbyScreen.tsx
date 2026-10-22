@@ -25,10 +25,14 @@ import { SettingsScreen } from './SettingsScreen';
 import { RulesScreen } from './RulesScreen';
 import { SetupScreen } from './SetupScreen';
 import {
+  SETTING_DEFS,
   RoleSetup,
-  buildSetupRoles,
   defaultRoleSetup,
+  settingLabel,
+  settingName,
   setupProblem,
+  setupRoleLines,
+  setupSetting,
 } from '../../engine/setup';
 import { Player } from '../../engine/types';
 import { useGame } from '../GameContext';
@@ -143,16 +147,27 @@ export const LobbyScreen = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, isHost, setup, prefsLoaded]);
 
-  // The host owns the roster; guests receive it over the network.
+  // The host owns the roster; guests receive the same snapshot over the
+  // network. Both read the lobby cache, so a screen that mounts after the
+  // first snapshot still sees the table.
   useEffect(() => {
-    if (view !== 'waiting' || !isHost) return;
+    if (view !== 'waiting') return;
 
-    const refresh = () => setPlayers([...lobby.getPlayers()]);
+    const refresh = () => {
+      setPlayers([...lobby.getPlayers()]);
+      if (!isHost) setSetup(lobby.getTableSetup());
+    };
+
     refresh();
-
-    const interval = setInterval(refresh, 1000);
-    return () => clearInterval(interval);
+    return lobby.onRosterChanged(refresh);
   }, [view, isHost]);
+
+  // Publish the table as the host builds it. A guest sees the roles and house
+  // rules change while he waits, not only when the deal is made.
+  useEffect(() => {
+    if (!isHost || !setup) return;
+    lobby.setTableSetup(setup);
+  }, [isHost, setup]);
 
   // A guest stays in the waiting room until the host starts the game, which
   // is signalled by the first role or phase message.
@@ -166,11 +181,6 @@ export const LobbyScreen = () => {
     let handedOff = false;
 
     const handler = (message: any) => {
-      if (message?.type === 'PLAYER_LIST') {
-        setPlayers(message.payload?.players ?? []);
-        return;
-      }
-
       if (message?.type === 'KICK') {
         setError(
           message.payload?.reason === 'game-running'
@@ -193,10 +203,10 @@ export const LobbyScreen = () => {
       }
     };
 
-    client.onMessage(handler);
+    lobby.onGuestMessage(handler);
     client.onClose(() => setError(t('ui.common.lostConnection')));
     return () => {
-      if (!handedOff) client.offMessage();
+      if (!handedOff) lobby.offGuestMessage();
     };
   }, [view, isHost, enterPlayerMode]);
 
@@ -327,13 +337,12 @@ export const LobbyScreen = () => {
       isBot: true,
     });
 
-    setPlayers([...lobby.getPlayers()]);
+    lobby.publishLobbyState();
   };
 
   // A bot that no longer fits the table goes back out without a restart.
   const removeBot = (id: string) => {
     lobby.removePlayer(id);
-    setPlayers([...lobby.getPlayers()]);
     setError('');
   };
 
@@ -343,6 +352,7 @@ export const LobbyScreen = () => {
 
     setIsHost(false);
     setPlayers([]);
+    setSetup(isHost ? setup : null);
     setRoomCode('');
     setError('');
     setView('menu');
@@ -357,6 +367,18 @@ export const LobbyScreen = () => {
       ? backToMenu
       : null,
   );
+
+  const tableRoles = setup
+    ? setupRoleLines(setup, lobby.getRoleNames(), players.length).map(line => {
+        const name = roleName(line.id, line.name);
+        return line.count > 1 ? `${name} ×${line.count}` : name;
+      })
+    : [];
+  const tableRules = setup
+    ? SETTING_DEFS.filter(
+        def => !def.whenRole || (setup.counts?.[def.whenRole] ?? 0) > 0,
+      )
+    : [];
 
   const renderView = () => {
     switch (view) {
@@ -512,14 +534,25 @@ export const LobbyScreen = () => {
                 variant="secondary"
               />
             )}
-            {isHost && setup && (
-              <Text style={styles.hint}>
-                {t('ui.lobby.thisTable', {
-                  roles: buildSetupRoles(setup, Math.max(players.length, 1))
-                    .map(role => roleName(role.id, role.name))
-                    .join(', '),
-                })}
-              </Text>
+
+            {setup && (
+              <View style={styles.tableCard}>
+                <Text style={styles.tableTitle}>{t('ui.lobby.tableSetup')}</Text>
+                {tableRoles.length > 0 && (
+                  <Text style={styles.tableRoles}>
+                    {t('ui.lobby.thisTable', { roles: tableRoles.join(', ') })}
+                  </Text>
+                )}
+                <Text style={styles.tableSubtitle}>{t('ui.setup.houseRules')}</Text>
+                {tableRules.map(def => (
+                  <View key={def.id} style={styles.ruleRow}>
+                    <Text style={styles.ruleName}>{settingName(def)}</Text>
+                    <Text style={styles.ruleValue}>
+                      {settingLabel(def, setupSetting(setup, def.id))}
+                    </Text>
+                  </View>
+                ))}
+              </View>
             )}
 
             {isHost && (
@@ -755,6 +788,56 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginTop: theme.spacing.medium,
     marginBottom: 4,
+  },
+  tableCard: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.card,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    padding: 14,
+    marginTop: theme.spacing.medium,
+    marginBottom: theme.spacing.small,
+  },
+  tableTitle: {
+    color: theme.colors.text,
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: 5,
+  },
+  tableRoles: {
+    color: theme.colors.dim,
+    fontSize: 13,
+    lineHeight: 19,
+    marginBottom: 8,
+  },
+  tableSubtitle: {
+    color: theme.colors.secondary,
+    fontSize: theme.type.label,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  ruleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingVertical: 3,
+  },
+  ruleName: {
+    color: theme.colors.dim,
+    fontSize: 12,
+    lineHeight: 17,
+    flex: 1,
+  },
+  ruleValue: {
+    color: theme.colors.text,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '700',
+    textAlign: 'right',
+    flexShrink: 1,
   },
   ticket: {
     borderRadius: theme.radius.card,

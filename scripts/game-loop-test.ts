@@ -53,6 +53,7 @@ import {
   settingLabel,
   setupFromRoles,
   setupProblem,
+  setupRoleLines,
   setupSeatsUsed,
 } from '../src/engine/setup';
 import { ALLOWED_ACTIONS as VALIDATED_ACTIONS } from '../src/engine/roleGenerator';
@@ -3915,6 +3916,26 @@ console.log('\n41. the count the night and the vote agree on');
       migrated.settings.guardNoRepeat === false,
   );
   check('and every rule it never set keeps its default', migrated.settings['raven.timing'] === 'night');
+
+  const waitingLines = setupRoleLines(
+    setupFromRoles([WerewolfRole, SeerRole, WerewolfRole]),
+    {},
+    4,
+  );
+  check(
+    'the waiting room reads back every role and the villagers that fill the table',
+    waitingLines.map(line => `${line.id}:${line.count}`).join(',') ===
+      'werewolf:2,seer:1,villager:1',
+    JSON.stringify(waitingLines),
+  );
+  const hostRole = setupRoleLines(
+    { counts: { 'moon-hound': 1 }, settings: defaultSettings() },
+    { 'moon-hound': 'Moon Hound' },
+  )[0];
+  check(
+    "a guest reads the host's own role by the name it came with",
+    hostRole?.name === 'Moon Hound',
+  );
 }
 
 console.log('\n42. the private windows');
