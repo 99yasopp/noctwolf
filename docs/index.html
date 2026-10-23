@@ -1,0 +1,529 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#04060A">
+  <meta name="description" content="Noctwolf is a local-network Werewolf game for Android. We're Wolves!">
+  <meta name="github-repo" content="99yasopp/noctwolf">
+  <meta property="og:title" content="Noctwolf — We're Wolves!">
+  <meta property="og:description" content="Run a full Werewolf game from one phone. Friends join from Android or a browser on the same Wi-Fi.">
+  <meta property="og:image" content="icon.png">
+  <meta property="og:type" content="website">
+  <title>Noctwolf — Local-network Werewolf for Android</title>
+  <link rel="icon" href="icon.png" type="image/png">
+  <style>
+    :root {
+      --bg: #04060a;
+      --panel: #0c1424;
+      --surface: #121d31;
+      --border: #26344d;
+      --text: #f6f1e7;
+      --dim: #9aa8be;
+      --gold: #f6c667;
+      --gold-deep: #d9a63f;
+      --blue: #a8c7ff;
+      --green: #71e3b4;
+      --wolf: #ff7a6b;
+      --violet: #c6a8ff;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 50% -10%, rgba(168, 199, 255, .14), transparent 36rem),
+        radial-gradient(circle at 100% 30%, rgba(246, 198, 103, .07), transparent 28rem),
+        var(--bg);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body::before {
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      content: "";
+      background-image:
+        radial-gradient(circle at 18% 22%, rgba(246, 241, 231, .7) 0 1px, transparent 1.5px),
+        radial-gradient(circle at 78% 16%, rgba(168, 199, 255, .6) 0 1px, transparent 1.5px),
+        radial-gradient(circle at 64% 72%, rgba(246, 241, 231, .45) 0 1px, transparent 1.5px),
+        radial-gradient(circle at 33% 84%, rgba(246, 198, 103, .5) 0 1px, transparent 1.5px);
+      background-size: 37rem 31rem, 43rem 39rem, 29rem 41rem, 53rem 47rem;
+      opacity: .6;
+      pointer-events: none;
+    }
+
+    a { color: inherit; }
+
+    .wrap {
+      width: min(1120px, calc(100% - 40px));
+      margin: 0 auto;
+      position: relative;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 24px 0;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      color: var(--text);
+      text-decoration: none;
+      font-size: 18px;
+      font-weight: 750;
+      letter-spacing: -.02em;
+    }
+
+    .brand img {
+      width: 42px;
+      height: 42px;
+      border: 1px solid var(--border);
+      border-radius: 13px;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 22px;
+      font-size: 14px;
+    }
+
+    .nav-links a {
+      color: var(--dim);
+      text-decoration: none;
+      transition: color .15s ease;
+    }
+
+    .nav-links a:hover { color: var(--gold); }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(280px, .85fr);
+      gap: clamp(32px, 7vw, 82px);
+      align-items: center;
+      padding: clamp(42px, 8vw, 92px) 0 clamp(54px, 8vw, 100px);
+    }
+
+    .eyebrow {
+      color: var(--gold);
+      font-size: 12px;
+      font-weight: 750;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 14px 0 18px;
+      font-size: clamp(62px, 11vw, 118px);
+      font-weight: 850;
+      letter-spacing: -.065em;
+      line-height: .86;
+    }
+
+    h1 span { color: var(--gold); }
+
+    .tagline {
+      margin: 0 0 14px;
+      color: var(--gold);
+      font-size: clamp(22px, 3vw, 30px);
+      font-weight: 750;
+      letter-spacing: -.02em;
+    }
+
+    .lead {
+      max-width: 640px;
+      margin: 0;
+      color: var(--dim);
+      font-size: clamp(17px, 2.1vw, 20px);
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 28px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 50px;
+      padding: 0 20px;
+      border: 1px solid transparent;
+      border-radius: 14px;
+      font-size: 15px;
+      font-weight: 700;
+      text-decoration: none;
+      transition: transform .15s ease, background .15s ease, border-color .15s ease;
+    }
+
+    .btn:hover { transform: translateY(-1px); }
+
+    .btn-primary {
+      background: var(--gold);
+      color: #1c1405;
+    }
+
+    .btn-primary:hover { background: #ffd98a; }
+
+    .btn-secondary {
+      background: rgba(18, 29, 49, .5);
+      border-color: var(--border);
+      color: var(--text);
+    }
+
+    .btn-secondary:hover { border-color: var(--gold); }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px 18px;
+      margin-top: 22px;
+      color: var(--dim);
+      font-size: 13px;
+    }
+
+    .meta span::before {
+      display: inline-block;
+      width: 5px;
+      height: 5px;
+      margin: 0 8px 2px 0;
+      border-radius: 50%;
+      background: var(--green);
+      content: "";
+    }
+
+    .hero-art {
+      display: flex;
+      justify-content: center;
+    }
+
+    .hero-icon {
+      width: min(100%, 390px);
+      border: 1px solid rgba(246, 198, 103, .35);
+      border-radius: clamp(34px, 7vw, 74px);
+      box-shadow: 0 24px 90px rgba(0, 0, 0, .55), 0 0 80px rgba(168, 199, 255, .12);
+    }
+
+    section { padding: clamp(26px, 4vw, 44px) 0; }
+
+    .section-head {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 20px;
+      margin-bottom: 22px;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: clamp(30px, 4vw, 44px);
+      letter-spacing: -.04em;
+      line-height: 1.05;
+    }
+
+    .section-head p {
+      max-width: 390px;
+      margin: 0;
+      color: var(--dim);
+      font-size: 14px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .card {
+      min-height: 164px;
+      padding: 22px;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      background:
+        linear-gradient(145deg, rgba(246, 198, 103, .055), transparent 46%),
+        rgba(12, 20, 36, .72);
+    }
+
+    .card .mark {
+      display: block;
+      margin-bottom: 22px;
+      color: var(--gold);
+      font-size: 11px;
+      font-weight: 750;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+    }
+
+    .card h3 {
+      margin: 0 0 8px;
+      font-size: 18px;
+      letter-spacing: -.015em;
+    }
+
+    .card p {
+      margin: 0;
+      color: var(--dim);
+      font-size: 14.5px;
+    }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 22px;
+      margin-top: 8px;
+    }
+
+    .step {
+      padding: 4px 0 4px 18px;
+      border-left: 2px solid var(--gold);
+    }
+
+    .step b {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--gold);
+      font-size: 15px;
+    }
+
+    .step p {
+      margin: 0;
+      color: var(--dim);
+      font-size: 14px;
+    }
+
+    .download {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 28px;
+      margin: clamp(42px, 7vw, 80px) 0;
+      padding: clamp(26px, 5vw, 46px);
+      border: 1px solid rgba(246, 198, 103, .32);
+      border-radius: 28px;
+      background:
+        radial-gradient(circle at 100% 0, rgba(168, 199, 255, .1), transparent 24rem),
+        linear-gradient(135deg, rgba(246, 198, 103, .13), rgba(12, 20, 36, .72));
+    }
+
+    .download h2 { margin-bottom: 8px; }
+
+    .download p {
+      max-width: 620px;
+      margin: 0 0 14px;
+      color: var(--dim);
+      font-size: 15px;
+    }
+
+    .hash {
+      display: block;
+      max-width: 660px;
+      color: var(--dim);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 10.5px;
+      line-height: 1.6;
+      overflow-wrap: anywhere;
+    }
+
+    .download .actions { flex: 0 0 auto; margin-top: 0; }
+
+    footer {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 28px 0 42px;
+      border-top: 1px solid var(--border);
+      color: var(--dim);
+      font-size: 13px;
+    }
+
+    footer a { color: var(--dim); }
+    footer a:hover { color: var(--gold); }
+
+    @media (max-width: 850px) {
+      .hero { grid-template-columns: 1fr; gap: 34px; }
+      .hero-art { order: -1; justify-content: flex-start; }
+      .hero-icon { width: min(230px, 64vw); }
+      .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .steps { grid-template-columns: 1fr; }
+      .download { flex-direction: column; align-items: flex-start; }
+      .download .actions { margin-top: 4px; }
+    }
+
+    @media (max-width: 600px) {
+      .wrap { width: min(100% - 28px, 1120px); }
+      .nav-links { display: none; }
+      .grid { grid-template-columns: 1fr; }
+      .section-head { display: block; }
+      .section-head p { margin-top: 10px; }
+      .btn { width: 100%; }
+      .actions { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <a class="brand" href="./" aria-label="Noctwolf home">
+        <img src="icon.png" alt="">
+        <span>Noctwolf</span>
+      </a>
+      <nav class="nav-links" aria-label="Main">
+        <a href="#features">Features</a>
+        <a href="#play">How to play</a>
+        <a href="#download">Download</a>
+        <a data-source href="https://github.com" target="_blank" rel="noopener">Source</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div>
+          <div class="eyebrow">Local-network Werewolf</div>
+          <h1>Noctwolf<span>.</span></h1>
+          <p class="tagline">We're Wolves!</p>
+          <p class="lead">Run a full game of Werewolf / Loup-Garou from one phone. Friends join from Android or a browser on the same Wi-Fi.</p>
+          <div class="actions">
+            <a class="btn btn-primary" data-download href="#download">Download APK</a>
+            <a class="btn btn-secondary" data-source href="https://github.com" target="_blank" rel="noopener">View source</a>
+          </div>
+          <div class="meta">
+            <span>Android 7.0+</span>
+            <span>Free</span>
+            <span>Version 1.0.0</span>
+            <span>71 MB</span>
+          </div>
+        </div>
+        <div class="hero-art">
+          <img class="hero-icon" src="icon.png" alt="Noctwolf app icon">
+        </div>
+      </section>
+
+      <section id="features">
+        <div class="section-head">
+          <h2>Everything the table needs.</h2>
+          <p>One phone runs the night. Everyone else just joins the room.</p>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <span class="mark">01 / Local</span>
+            <h3>One phone hosts</h3>
+            <p>Host a table and let players join over your Wi-Fi. No account and no cloud lobby.</p>
+          </article>
+          <article class="card">
+            <span class="mark">02 / Narrator</span>
+            <h3>Run the whole night</h3>
+            <p>Phases, votes, night actions and timers live in one narrator dashboard.</p>
+          </article>
+          <article class="card">
+            <span class="mark">03 / Roles</span>
+            <h3>Full role set</h3>
+            <p>Play the classic roles or build a custom setup for your table.</p>
+          </article>
+          <article class="card">
+            <span class="mark">04 / AI</span>
+            <h3>Optional role forge</h3>
+            <p>Generate new roles with your own DeepSeek or OpenAI key. Keys never ship with the app.</p>
+          </article>
+          <article class="card">
+            <span class="mark">05 / Languages</span>
+            <h3>English, French, Arabic</h3>
+            <p>Full interface translations, with right-to-left layout for Arabic.</p>
+          </article>
+          <article class="card">
+            <span class="mark">06 / After dark</span>
+            <h3>Ghost table</h3>
+            <p>Dead players keep watching. Quick table and seer dossier keep the game moving.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="play">
+        <div class="section-head">
+          <h2>Three steps to the first night.</h2>
+          <p>No server setup. The host phone is the server.</p>
+        </div>
+        <div class="steps">
+          <div class="step">
+            <b>1. Install</b>
+            <p>Download the APK on the Android phone that will host the game. Allow install from this source when Android asks.</p>
+          </div>
+          <div class="step">
+            <b>2. Host</b>
+            <p>Put everyone on the same Wi-Fi. Open Noctwolf and start a table.</p>
+          </div>
+          <div class="step">
+            <b>3. Join</b>
+            <p>Players join from the Android app or from a browser on the same network.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="download" class="download">
+        <div>
+          <h2>Download Noctwolf</h2>
+          <p>Direct APK for Android 7.0 and newer. Google Play release is not available yet. The APK is published as a GitHub Release asset, not committed to Git history.</p>
+          <span class="hash">SHA-256: 86cfd499c07d55b63f63a320d182801d5b73ec8dbf9df8e30f5694f05b6db158</span>
+        </div>
+        <div class="actions">
+          <a class="btn btn-primary" data-download href="#download">Download APK</a>
+          <a class="btn btn-secondary" data-releases href="#download">All releases</a>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span>Noctwolf · We're Wolves!</span>
+      <span>Built with Expo and React Native · <a data-source href="https://github.com" target="_blank" rel="noopener">Source on GitHub</a> · <a data-issues href="https://github.com" target="_blank" rel="noopener">Report a bug</a></span>
+    </footer>
+  </div>
+
+  <script>
+    (() => {
+      const configured = document.querySelector('meta[name="github-repo"]')?.content.trim();
+      let owner = '';
+      let repo = '';
+
+      if (configured && configured.includes('/')) {
+        [owner, repo] = configured.split('/');
+      } else if (location.hostname.endsWith('.github.io')) {
+        owner = location.hostname.split('.')[0];
+        repo = location.pathname.split('/').filter(Boolean)[0] || '';
+      }
+
+      if (!owner || !repo) return;
+
+      const base = `https://github.com/${owner}/${repo}`;
+      const apk = `${base}/releases/latest/download/Noctwolf-1.0.0.apk`;
+
+      document.querySelectorAll('[data-download]').forEach((link) => {
+        link.href = apk;
+      });
+      document.querySelectorAll('[data-source]').forEach((link) => {
+        link.href = base;
+      });
+      document.querySelectorAll('[data-releases]').forEach((link) => {
+        link.href = `${base}/releases`;
+      });
+      document.querySelectorAll('[data-issues]').forEach((link) => {
+        link.href = `${base}/issues`;
+      });
+    })();
+  </script>
+</body>
+</html>

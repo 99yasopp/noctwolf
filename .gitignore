@@ -40,6 +40,13 @@ ios/
 *.mobileprovision
 android/keystore.properties
 
+# Local agent instructions
+.agents/
+.claude/
+AGENTS.md
+CLAUDE.md
+skills-lock.json
+
 # Editors / OS
 .DS_Store
 .idea/
