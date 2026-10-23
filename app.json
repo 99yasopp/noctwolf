@@ -8,7 +8,9 @@
     "icon": "./assets/icon.png",
     "ios": {
       "bundleIdentifier": "com.loupgarou.game",
+      "buildNumber": "1",
       "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
         "NSLocalNetworkUsageDescription": "This app needs local network access to host game rooms and connect to players.",
         "NSBonjourServices": [
           "_http._tcp"
@@ -17,6 +19,7 @@
     },
     "android": {
       "package": "com.loupgarou.game",
+      "versionCode": 2,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#04060A"
