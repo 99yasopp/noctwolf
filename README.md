@@ -10,9 +10,9 @@
 [Download the latest APK](https://github.com/99yasopp/noctwolf/releases/latest)
 
 - Android 7.0 or newer
-- Version 1.0.0
-- APK size: 71 MB
-- SHA-256: `86cfd499c07d55b63f63a320d182801d5b73ec8dbf9df8e30f5694f05b6db158`
+- Version 1.0.1
+- APK size: 73 MB
+- SHA-256: `52cd72f9667d79c3f0169ef7513ab769b9352334a49929426d48d6238375481e`
 
 The APK is attached to a GitHub Release. It is not committed to Git history.
 
