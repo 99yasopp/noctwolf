@@ -96,7 +96,11 @@ export const LobbyScreen = () => {
   const [view, setView] = useState<LobbyView>('menu');
   const [roomCode, setRoomCode] = useState('');
   const [inputCode, setInputCode] = useState('');
-  const [inputIp, setInputIp] = useState('');
+  // A guest page served by the host already knows the address it came from:
+  // prefill the field so joining is a button press, not a typing exercise.
+  const [inputIp, setInputIp] = useState(() =>
+    WEB && typeof window !== 'undefined' && window.location?.host ? window.location.host : '',
+  );
   const [playerName, setPlayerName] = useState(initialPlayerName);
   const [players, setPlayers] = useState<Player[]>([]);
   const [error, setError] = useState('');

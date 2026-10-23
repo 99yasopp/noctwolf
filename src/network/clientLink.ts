@@ -9,6 +9,7 @@ import {
   webSocketHandshakeResponse,
   WebSocketFrameReader,
 } from './webSocket';
+import { GUEST_PAGE_HTML } from './guestPage';
 
 // One connected guest, whichever wire it speaks. An app guest sends
 // newline-framed JSON over TCP; a browser guest sends the same lines inside
@@ -63,7 +64,9 @@ export class ClientLink {
       this.header = '';
       const response = webSocketHandshakeResponse(request);
       if (!response) {
-        this.destroy();
+        // A browser navigating here (no Sec-WebSocket-Key) gets the guest page
+        // served from the game port itself, so one address does both jobs.
+        this.serveGuestPage(request);
         return;
       }
 
@@ -106,6 +109,30 @@ export class ClientLink {
 
   destroy() {
     this.socket.destroy?.();
+  }
+
+  // Answer a plain browser GET with the guest page. The page opens its own
+  // WebSocket back to this same host:port, so one address does both jobs.
+  private serveGuestPage(request: string) {
+    if (!/^GET /.test(request)) {
+      this.destroy();
+      return;
+    }
+    // Content-Length is left out on purpose: the page is long and its byte
+    // length is not worth computing, and `Connection: close` already tells
+    // the browser where the body ends.
+    this.socket.write?.(
+      [
+        'HTTP/1.1 200 OK',
+        'Content-Type: text/html; charset=utf-8',
+        'Cache-Control: no-store',
+        'Connection: close',
+        '',
+        '',
+        GUEST_PAGE_HTML,
+      ].join('\r\n'),
+    );
+    this.destroy();
   }
 }
 

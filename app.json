@@ -5,6 +5,9 @@
     "version": "1.0.0",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#070B14",
+    "web": {
+      "output": "single"
+    },
     "icon": "./assets/icon.png",
     "ios": {
       "bundleIdentifier": "com.loupgarou.game",
