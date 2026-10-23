@@ -121,18 +121,24 @@ export class ClientLink {
     // Content-Length is left out on purpose: the page is long and its byte
     // length is not worth computing, and `Connection: close` already tells
     // the browser where the body ends.
-    this.socket.write?.(
-      [
-        'HTTP/1.1 200 OK',
-        'Content-Type: text/html; charset=utf-8',
-        'Cache-Control: no-store',
-        'Connection: close',
-        '',
-        '',
-        GUEST_PAGE_HTML,
-      ].join('\r\n'),
-    );
-    this.destroy();
+    const payload = [
+      'HTTP/1.1 200 OK',
+      'Content-Type: text/html; charset=utf-8',
+      'Cache-Control: no-store',
+      'Connection: close',
+      '',
+      '',
+      GUEST_PAGE_HTML,
+    ].join('\r\n');
+    // `end` flushes the write before it half-closes; `destroy` on the RN TCP
+    // socket tears the native side down immediately and drops the 1.3 MB body
+    // still sitting in the write queue. Fall back only when `end` is missing.
+    if (typeof this.socket.end === 'function') {
+      this.socket.end(payload);
+    } else {
+      this.socket.write?.(payload);
+      this.destroy();
+    }
   }
 }
 
