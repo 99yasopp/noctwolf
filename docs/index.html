@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#04060A">
+  <meta name="theme-color" content="#05070d">
   <meta name="description" content="Noctwolf is a local-network Werewolf game for Android. We're Wolves!">
   <meta name="github-repo" content="99yasopp/noctwolf">
   <meta property="og:title" content="Noctwolf — We're Wolves!">
@@ -12,20 +12,23 @@
   <meta property="og:type" content="website">
   <title>Noctwolf — Local-network Werewolf for Android</title>
   <link rel="icon" href="icon.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Grenze+Gotisch:wght@400;500;600&family=Spectral:ital,wght@0,300;0,400;0,600;1,400&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #04060a;
-      --panel: #0c1424;
-      --surface: #121d31;
-      --border: #26344d;
-      --text: #f6f1e7;
-      --dim: #9aa8be;
-      --gold: #f6c667;
-      --gold-deep: #d9a63f;
-      --blue: #a8c7ff;
-      --green: #71e3b4;
-      --wolf: #ff7a6b;
-      --violet: #c6a8ff;
+      --night: #05070d;        /* icon background */
+      --ink: #0a1120;          /* panels */
+      --fur: #16243c;          /* card tint */
+      --line: #24344f;         /* borders */
+      --text: #f2ecdf;         /* moonlit warm white */
+      --dim: #97a6bf;
+      --moon: #f5a72e;         /* icon crescent amber */
+      --moon-hi: #ffc75e;
+      --wolf: #35a7f2;         /* icon ring azure */
+      --wolf-hi: #6cc4f8;
+      --display: "Grenze Gotisch", "Palatino Linotype", Georgia, serif;
+      --body: "Spectral", Georgia, serif;
     }
 
     * { box-sizing: border-box; }
@@ -36,343 +39,464 @@
       margin: 0;
       min-height: 100vh;
       background:
-        radial-gradient(circle at 50% -10%, rgba(168, 199, 255, .14), transparent 36rem),
-        radial-gradient(circle at 100% 30%, rgba(246, 198, 103, .07), transparent 28rem),
-        var(--bg);
+        radial-gradient(circle at 50% -12%, rgba(245, 167, 46, .07), transparent 34rem),
+        radial-gradient(circle at 88% 24%, rgba(53, 167, 242, .06), transparent 30rem),
+        var(--night);
       color: var(--text);
-      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      line-height: 1.55;
+      font-family: var(--body);
+      font-size: 17px;
+      line-height: 1.65;
       -webkit-font-smoothing: antialiased;
     }
 
+    /* a sparse field of stars, four drifting layers */
     body::before {
       position: fixed;
       inset: 0;
       z-index: -1;
       content: "";
       background-image:
-        radial-gradient(circle at 18% 22%, rgba(246, 241, 231, .7) 0 1px, transparent 1.5px),
-        radial-gradient(circle at 78% 16%, rgba(168, 199, 255, .6) 0 1px, transparent 1.5px),
-        radial-gradient(circle at 64% 72%, rgba(246, 241, 231, .45) 0 1px, transparent 1.5px),
-        radial-gradient(circle at 33% 84%, rgba(246, 198, 103, .5) 0 1px, transparent 1.5px);
-      background-size: 37rem 31rem, 43rem 39rem, 29rem 41rem, 53rem 47rem;
-      opacity: .6;
+        radial-gradient(circle at 17% 21%, rgba(242, 236, 223, .55) 0 1px, transparent 1.5px),
+        radial-gradient(circle at 81% 13%, rgba(108, 196, 248, .45) 0 1px, transparent 1.5px),
+        radial-gradient(circle at 63% 74%, rgba(242, 236, 223, .3) 0 1px, transparent 1.5px),
+        radial-gradient(circle at 29% 86%, rgba(245, 167, 46, .35) 0 1px, transparent 1.5px);
+      background-size: 41rem 33rem, 47rem 43rem, 31rem 45rem, 57rem 51rem;
+      opacity: .5;
       pointer-events: none;
+    }
+
+    ::selection { background: var(--moon); color: #221502; }
+
+    :focus-visible {
+      outline: 2px solid var(--moon);
+      outline-offset: 3px;
+      border-radius: 4px;
     }
 
     a { color: inherit; }
 
     .wrap {
-      width: min(1120px, calc(100% - 40px));
+      width: min(1120px, calc(100% - 44px));
       margin: 0 auto;
-      position: relative;
     }
+
+    /* ---------- header ---------- */
 
     header {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 18px;
-      padding: 24px 0;
+      padding: 26px 0;
     }
 
     .brand {
       display: inline-flex;
       align-items: center;
       gap: 12px;
-      color: var(--text);
       text-decoration: none;
-      font-size: 18px;
-      font-weight: 750;
-      letter-spacing: -.02em;
+      font-family: var(--display);
+      font-size: 23px;
+      font-weight: 600;
+      letter-spacing: .01em;
     }
 
     .brand img {
       width: 42px;
       height: 42px;
-      border: 1px solid var(--border);
+      border: 1px solid var(--line);
       border-radius: 13px;
     }
 
     .nav-links {
       display: flex;
       align-items: center;
-      gap: 22px;
-      font-size: 14px;
+      gap: 26px;
+      font-size: 15.5px;
     }
 
     .nav-links a {
       color: var(--dim);
       text-decoration: none;
-      transition: color .15s ease;
+      transition: color .18s ease;
     }
 
-    .nav-links a:hover { color: var(--gold); }
+    .nav-links a:hover { color: var(--moon-hi); }
+
+    /* ---------- hero ---------- */
 
     .hero {
       display: grid;
-      grid-template-columns: minmax(0, 1.15fr) minmax(280px, .85fr);
-      gap: clamp(32px, 7vw, 82px);
+      grid-template-columns: minmax(0, 1.12fr) minmax(280px, .88fr);
+      gap: clamp(34px, 7vw, 84px);
       align-items: center;
-      padding: clamp(42px, 8vw, 92px) 0 clamp(54px, 8vw, 100px);
-    }
-
-    .eyebrow {
-      color: var(--gold);
-      font-size: 12px;
-      font-weight: 750;
-      letter-spacing: .18em;
-      text-transform: uppercase;
+      padding: clamp(44px, 8vw, 96px) 0 clamp(56px, 8vw, 104px);
     }
 
     h1 {
-      margin: 14px 0 18px;
-      font-size: clamp(62px, 11vw, 118px);
-      font-weight: 850;
-      letter-spacing: -.065em;
-      line-height: .86;
-    }
-
-    h1 span { color: var(--gold); }
-
-    .tagline {
-      margin: 0 0 14px;
-      color: var(--gold);
-      font-size: clamp(22px, 3vw, 30px);
-      font-weight: 750;
-      letter-spacing: -.02em;
+      margin: 0 0 20px;
+      font-family: var(--display);
+      font-size: clamp(64px, 10.5vw, 122px);
+      font-weight: 500;
+      letter-spacing: .005em;
+      line-height: .92;
+      text-wrap: balance;
     }
 
     .lead {
-      max-width: 640px;
+      max-width: 33em;
       margin: 0;
       color: var(--dim);
-      font-size: clamp(17px, 2.1vw, 20px);
+      font-size: clamp(17.5px, 2vw, 20px);
+      font-weight: 300;
     }
+
+    .lead b { color: var(--text); font-weight: 600; }
 
     .actions {
       display: flex;
       flex-wrap: wrap;
-      gap: 12px;
-      margin-top: 28px;
+      gap: 14px;
+      margin-top: 32px;
     }
 
     .btn {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      min-height: 50px;
-      padding: 0 20px;
+      min-height: 52px;
+      padding: 0 24px;
       border: 1px solid transparent;
-      border-radius: 14px;
-      font-size: 15px;
-      font-weight: 700;
+      border-radius: 12px;
+      font-family: var(--body);
+      font-size: 16px;
+      font-weight: 600;
       text-decoration: none;
-      transition: transform .15s ease, background .15s ease, border-color .15s ease;
+      transition: translate .18s ease, background .18s ease, border-color .18s ease, color .18s ease;
     }
 
-    .btn:hover { transform: translateY(-1px); }
+    .btn:hover { translate: 0 -2px; }
 
     .btn-primary {
-      background: var(--gold);
-      color: #1c1405;
+      background: var(--moon);
+      color: #221502;
     }
 
-    .btn-primary:hover { background: #ffd98a; }
+    .btn-primary:hover { background: var(--moon-hi); }
 
     .btn-secondary {
-      background: rgba(18, 29, 49, .5);
-      border-color: var(--border);
+      background: rgba(10, 17, 32, .55);
+      border-color: var(--line);
       color: var(--text);
     }
 
-    .btn-secondary:hover { border-color: var(--gold); }
+    .btn-secondary:hover { border-color: var(--wolf); color: var(--wolf-hi); }
 
     .meta {
       display: flex;
       flex-wrap: wrap;
-      gap: 7px 18px;
-      margin-top: 22px;
+      gap: 8px 22px;
+      margin-top: 26px;
       color: var(--dim);
-      font-size: 13px;
+      font-size: 14.5px;
     }
 
     .meta span::before {
       display: inline-block;
       width: 5px;
       height: 5px;
-      margin: 0 8px 2px 0;
+      margin: 0 9px 3px 0;
       border-radius: 50%;
-      background: var(--green);
+      background: var(--moon);
       content: "";
     }
 
+    /* the icon floats inside the logo's split ring */
     .hero-art {
+      position: relative;
       display: flex;
       justify-content: center;
     }
 
-    .hero-icon {
-      width: min(100%, 390px);
-      border: 1px solid rgba(246, 198, 103, .35);
-      border-radius: clamp(34px, 7vw, 74px);
-      box-shadow: 0 24px 90px rgba(0, 0, 0, .55), 0 0 80px rgba(168, 199, 255, .12);
+    .hero-art::before {
+      position: absolute;
+      inset: 6%;
+      content: "";
+      background:
+        radial-gradient(circle at 26% 50%, rgba(245, 167, 46, .16), transparent 58%),
+        radial-gradient(circle at 74% 50%, rgba(53, 167, 242, .16), transparent 58%);
+      filter: blur(6px);
     }
 
-    section { padding: clamp(26px, 4vw, 44px) 0; }
+    .ring {
+      position: absolute;
+      inset: -5%;
+      border-radius: 50%;
+      background: conic-gradient(
+        from 150deg,
+        var(--moon) 0 128deg,
+        transparent 128deg 172deg,
+        var(--wolf) 172deg 300deg,
+        transparent 300deg 360deg
+      );
+      -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+      mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+    }
+
+    .hero-icon {
+      position: relative;
+      width: min(100%, 380px);
+      border: 1px solid rgba(245, 167, 46, .28);
+      border-radius: clamp(34px, 7vw, 72px);
+      box-shadow: 0 26px 90px rgba(0, 0, 0, .6);
+    }
+
+    /* ---------- sections ---------- */
+
+    section { padding: clamp(30px, 4.5vw, 48px) 0; }
 
     .section-head {
       display: flex;
       align-items: end;
       justify-content: space-between;
-      gap: 20px;
-      margin-bottom: 22px;
+      gap: 24px;
+      margin-bottom: 30px;
     }
 
     h2 {
       margin: 0;
-      font-size: clamp(30px, 4vw, 44px);
-      letter-spacing: -.04em;
-      line-height: 1.05;
+      font-family: var(--display);
+      font-size: clamp(34px, 4.6vw, 52px);
+      font-weight: 500;
+      letter-spacing: .005em;
+      line-height: 1.02;
+      text-wrap: balance;
     }
 
     .section-head p {
-      max-width: 390px;
+      max-width: 24em;
       margin: 0;
       color: var(--dim);
-      font-size: 14px;
+      font-style: italic;
+      font-size: 15.5px;
     }
+
+    /* features: role cards dealt on the table */
 
     .grid {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 14px;
+      gap: 18px;
+      padding: 10px 0 6px;
     }
 
     .card {
-      min-height: 164px;
-      padding: 22px;
-      border: 1px solid var(--border);
-      border-radius: 20px;
-      background:
-        linear-gradient(145deg, rgba(246, 198, 103, .055), transparent 46%),
-        rgba(12, 20, 36, .72);
+      padding: 24px 24px 26px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--ink);
+      transition: rotate .25s ease, translate .25s ease, border-color .25s ease, box-shadow .25s ease;
     }
 
-    .card .mark {
-      display: block;
-      margin-bottom: 22px;
-      color: var(--gold);
-      font-size: 11px;
-      font-weight: 750;
-      letter-spacing: .16em;
-      text-transform: uppercase;
+    .card:nth-child(odd) {
+      background: linear-gradient(158deg, rgba(245, 167, 46, .1), var(--ink) 52%);
     }
+
+    .card:nth-child(even) {
+      background: linear-gradient(158deg, rgba(53, 167, 242, .1), var(--ink) 52%);
+    }
+
+    .card:nth-child(3n+1) { rotate: -1.1deg; }
+    .card:nth-child(3n+2) { rotate: .8deg; }
+    .card:nth-child(3n)   { rotate: -.45deg; }
+
+    .card:hover {
+      rotate: 0deg;
+      translate: 0 -5px;
+      border-color: rgba(245, 167, 46, .45);
+      box-shadow: 0 18px 44px rgba(0, 0, 0, .45);
+    }
+
+    .card:nth-child(even):hover { border-color: rgba(53, 167, 242, .5); }
+
+    .pip {
+      display: block;
+      width: 26px;
+      height: 26px;
+      margin-bottom: 18px;
+      color: var(--moon);
+    }
+
+    .card:nth-child(even) .pip { color: var(--wolf); }
 
     .card h3 {
       margin: 0 0 8px;
-      font-size: 18px;
-      letter-spacing: -.015em;
+      font-family: var(--display);
+      font-size: 25px;
+      font-weight: 500;
+      letter-spacing: .005em;
     }
 
     .card p {
       margin: 0;
       color: var(--dim);
-      font-size: 14.5px;
+      font-size: 15.5px;
+      font-weight: 300;
     }
+
+    /* how to play: the three deals */
 
     .steps {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 22px;
-      margin-top: 8px;
+      gap: 26px;
+      margin-top: 6px;
     }
 
-    .step {
-      padding: 4px 0 4px 18px;
-      border-left: 2px solid var(--gold);
+    .step-num {
+      display: block;
+      margin-bottom: 2px;
+      font-family: var(--display);
+      font-size: 44px;
+      font-weight: 600;
+      line-height: 1;
+      color: var(--moon);
     }
+
+    .step:nth-child(2) .step-num { color: var(--wolf); }
 
     .step b {
       display: block;
-      margin-bottom: 5px;
-      color: var(--gold);
-      font-size: 15px;
+      margin-bottom: 6px;
+      font-family: var(--display);
+      font-size: 24px;
+      font-weight: 500;
     }
 
     .step p {
       margin: 0;
       color: var(--dim);
-      font-size: 14px;
+      font-size: 15px;
+      font-weight: 300;
     }
+
+    /* download: the conic border echoes the split ring */
 
     .download {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 28px;
-      margin: clamp(42px, 7vw, 80px) 0;
-      padding: clamp(26px, 5vw, 46px);
-      border: 1px solid rgba(246, 198, 103, .32);
-      border-radius: 28px;
+      gap: 30px;
+      margin: clamp(46px, 7vw, 84px) 0;
+      padding: clamp(28px, 5vw, 48px);
+      border: 1px solid transparent;
+      border-radius: 26px;
       background:
-        radial-gradient(circle at 100% 0, rgba(168, 199, 255, .1), transparent 24rem),
-        linear-gradient(135deg, rgba(246, 198, 103, .13), rgba(12, 20, 36, .72));
+        radial-gradient(circle at 8% 0, rgba(245, 167, 46, .1), transparent 22rem),
+        radial-gradient(circle at 96% 100%, rgba(53, 167, 242, .1), transparent 22rem),
+        var(--ink) padding-box,
+        conic-gradient(
+          from 210deg,
+          rgba(245, 167, 46, .75),
+          rgba(245, 167, 46, .12) 22%,
+          rgba(53, 167, 242, .75) 50%,
+          rgba(53, 167, 242, .12) 72%,
+          rgba(245, 167, 46, .75)
+        ) border-box;
     }
 
-    .download h2 { margin-bottom: 8px; }
+    .download h2 { margin-bottom: 10px; }
 
     .download p {
-      max-width: 620px;
+      max-width: 36em;
       margin: 0 0 14px;
       color: var(--dim);
-      font-size: 15px;
+      font-size: 15.5px;
+      font-weight: 300;
     }
 
     .hash {
       display: block;
-      max-width: 660px;
+      max-width: 640px;
       color: var(--dim);
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      font-size: 10.5px;
+      font-size: 11px;
       line-height: 1.6;
       overflow-wrap: anywhere;
     }
 
     .download .actions { flex: 0 0 auto; margin-top: 0; }
 
+    /* ---------- footer ---------- */
+
     footer {
       display: flex;
       flex-wrap: wrap;
       justify-content: space-between;
       gap: 14px;
-      padding: 28px 0 42px;
-      border-top: 1px solid var(--border);
+      padding: 30px 0 44px;
+      border-top: 1px solid var(--line);
       color: var(--dim);
-      font-size: 13px;
+      font-size: 14.5px;
     }
 
-    footer a { color: var(--dim); }
-    footer a:hover { color: var(--gold); }
+    footer .howl {
+      font-family: var(--display);
+      font-size: 19px;
+      color: var(--text);
+    }
 
-    @media (max-width: 850px) {
-      .hero { grid-template-columns: 1fr; gap: 34px; }
-      .hero-art { order: -1; justify-content: flex-start; }
-      .hero-icon { width: min(230px, 64vw); }
+    footer a { color: var(--dim); transition: color .18s ease; }
+    footer a:hover { color: var(--moon-hi); }
+
+    /* ---------- one orchestrated entrance ---------- */
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: none; }
+    }
+
+    .hero-copy > * {
+      animation: rise .6s cubic-bezier(.2, .7, .3, 1) backwards;
+    }
+
+    .hero-copy > *:nth-child(1) { animation-delay: .05s; }
+    .hero-copy > *:nth-child(2) { animation-delay: .12s; }
+    .hero-copy > *:nth-child(3) { animation-delay: .19s; }
+    .hero-copy > *:nth-child(4) { animation-delay: .26s; }
+
+    .hero-art { animation: rise .7s cubic-bezier(.2, .7, .3, 1) .28s backwards; }
+
+    /* ---------- responsive ---------- */
+
+    @media (max-width: 900px) {
+      .hero { grid-template-columns: 1fr; gap: 44px; }
+      .hero-art { order: -1; }
+      .hero-icon { width: min(240px, 62vw); }
+      .ring { inset: -9%; }
       .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .steps { grid-template-columns: 1fr; }
+      .steps { grid-template-columns: 1fr; gap: 20px; }
       .download { flex-direction: column; align-items: flex-start; }
-      .download .actions { margin-top: 4px; }
+      .download .actions { margin-top: 6px; }
     }
 
-    @media (max-width: 600px) {
-      .wrap { width: min(100% - 28px, 1120px); }
+    @media (max-width: 620px) {
+      .wrap { width: min(100% - 30px, 1120px); }
       .nav-links { display: none; }
       .grid { grid-template-columns: 1fr; }
+      .card:nth-child(3n+1) { rotate: -.6deg; }
+      .card:nth-child(3n+2) { rotate: .5deg; }
       .section-head { display: block; }
       .section-head p { margin-top: 10px; }
-      .btn { width: 100%; }
-      .actions { width: 100%; }
+      .btn, .actions { width: 100%; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after {
+        animation: none !important;
+        transition: none !important;
+      }
     }
   </style>
 </head>
@@ -393,11 +517,9 @@
 
     <main>
       <section class="hero">
-        <div>
-          <div class="eyebrow">Local-network Werewolf</div>
-          <h1>Noctwolf<span>.</span></h1>
-          <p class="tagline">We're Wolves!</p>
-          <p class="lead">Run a full game of Werewolf / Loup-Garou from one phone. Friends join from Android or a browser on the same Wi-Fi.</p>
+        <div class="hero-copy">
+          <h1>We&rsquo;re Wolves!</h1>
+          <p class="lead"><b>Noctwolf</b> runs a full game of Werewolf from a single Android phone. Friends join from the app or a browser on the same Wi-Fi &mdash; no accounts, no cloud, just the table.</p>
           <div class="actions">
             <a class="btn btn-primary" data-download href="#download">Download APK</a>
             <a class="btn btn-secondary" data-source href="https://github.com" target="_blank" rel="noopener">View source</a>
@@ -410,6 +532,7 @@
           </div>
         </div>
         <div class="hero-art">
+          <div class="ring" aria-hidden="true"></div>
           <img class="hero-icon" src="icon.png" alt="Noctwolf app icon">
         </div>
       </section>
@@ -421,34 +544,34 @@
         </div>
         <div class="grid">
           <article class="card">
-            <span class="mark">01 / Local</span>
+            <svg class="pip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8Z"/></svg>
             <h3>One phone hosts</h3>
-            <p>Host a table and let players join over your Wi-Fi. No account and no cloud lobby.</p>
+            <p>Start a table on your phone and let players join over Wi-Fi. No account, no cloud lobby.</p>
           </article>
           <article class="card">
-            <span class="mark">02 / Narrator</span>
+            <svg class="pip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12Z"/><circle cx="12" cy="12" r="2.8"/></svg>
             <h3>Run the whole night</h3>
             <p>Phases, votes, night actions and timers live in one narrator dashboard.</p>
           </article>
           <article class="card">
-            <span class="mark">03 / Roles</span>
-            <h3>Full role set</h3>
-            <p>Play the classic roles or build a custom setup for your table.</p>
+            <svg class="pip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="12" height="15" rx="2"/><path d="M8 4.5A2.5 2.5 0 0 1 10.5 2H19a2 2 0 0 1 2 2v11.5"/></svg>
+            <h3>A full deck of roles</h3>
+            <p>Play the classic setup or build your own deck for the table.</p>
           </article>
           <article class="card">
-            <span class="mark">04 / AI</span>
-            <h3>Optional role forge</h3>
-            <p>Generate new roles with your own DeepSeek or OpenAI key. Keys never ship with the app.</p>
+            <svg class="pip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.4L19.5 10l-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.6Z"/><path d="M19 15.5v4M17 17.5h4"/></svg>
+            <h3>Forge new roles</h3>
+            <p>Invent roles with your own DeepSeek or OpenAI key. Keys never ship with the app.</p>
           </article>
           <article class="card">
-            <span class="mark">05 / Languages</span>
-            <h3>English, French, Arabic</h3>
-            <p>Full interface translations, with right-to-left layout for Arabic.</p>
+            <svg class="pip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M2.5 12h19"/><path d="M12 2.5a14.5 14.5 0 0 1 3.8 9.5 14.5 14.5 0 0 1-3.8 9.5 14.5 14.5 0 0 1-3.8-9.5A14.5 14.5 0 0 1 12 2.5Z"/></svg>
+            <h3>Three languages</h3>
+            <p>Full interface translations in English, French and Arabic, with right-to-left layout.</p>
           </article>
           <article class="card">
-            <span class="mark">06 / After dark</span>
-            <h3>Ghost table</h3>
-            <p>Dead players keep watching. Quick table and seer dossier keep the game moving.</p>
+            <svg class="pip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5a8 8 0 0 1 8 8V21l-2.7-2-2.65 2L12 19l-2.65 2-2.65-2L4 21V10.5a8 8 0 0 1 8-8Z"/><circle cx="9" cy="10.5" r=".9" fill="currentColor" stroke="none"/><circle cx="15" cy="10.5" r=".9" fill="currentColor" stroke="none"/></svg>
+            <h3>The ghost table</h3>
+            <p>Out of the game? Dead players keep watching with a quick table and a seer dossier.</p>
           </article>
         </div>
       </section>
@@ -460,15 +583,18 @@
         </div>
         <div class="steps">
           <div class="step">
-            <b>1. Install</b>
+            <span class="step-num" aria-hidden="true">1</span>
+            <b>Install</b>
             <p>Download the APK on the Android phone that will host the game. Allow install from this source when Android asks.</p>
           </div>
           <div class="step">
-            <b>2. Host</b>
+            <span class="step-num" aria-hidden="true">2</span>
+            <b>Host</b>
             <p>Put everyone on the same Wi-Fi. Open Noctwolf and start a table.</p>
           </div>
           <div class="step">
-            <b>3. Join</b>
+            <span class="step-num" aria-hidden="true">3</span>
+            <b>Join</b>
             <p>Players join from the Android app or from a browser on the same network.</p>
           </div>
         </div>
@@ -476,7 +602,7 @@
 
       <section id="download" class="download">
         <div>
-          <h2>Download Noctwolf</h2>
+          <h2>Take your seat.</h2>
           <p>Direct APK for Android 7.0 and newer. Google Play release is not available yet. The APK is published as a GitHub Release asset, not committed to Git history.</p>
           <span class="hash">SHA-256: 86cfd499c07d55b63f63a320d182801d5b73ec8dbf9df8e30f5694f05b6db158</span>
         </div>
@@ -488,8 +614,8 @@
     </main>
 
     <footer>
-      <span>Noctwolf · We're Wolves!</span>
-      <span>Built with Expo and React Native · <a data-source href="https://github.com" target="_blank" rel="noopener">Source on GitHub</a> · <a data-issues href="https://github.com" target="_blank" rel="noopener">Report a bug</a></span>
+      <span class="howl">Noctwolf. We&rsquo;re Wolves!</span>
+      <span>Built with Expo and React Native. <a data-source href="https://github.com" target="_blank" rel="noopener">Source on GitHub</a>. <a data-issues href="https://github.com" target="_blank" rel="noopener">Report a bug</a>.</span>
     </footer>
   </div>
 
