@@ -18,7 +18,7 @@
   <link rel="icon" href="icon.png" type="image/png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700&amp;family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700&amp;family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&amp;family=JetBrains+Mono:wght@400;600&amp;family=Noto+Kufi+Arabic:wght@400;600&amp;display=swap" rel="stylesheet">
   <style>
     :root {
       --night: #070b14;
@@ -205,9 +205,7 @@
       grid-template-columns: minmax(0, 1.05fr) minmax(320px, .95fr);
       gap: clamp(24px, 6vw, 80px);
       align-items: center;
-      min-height: calc(100vh - 72px);
-      min-height: calc(100svh - 72px);
-    }
+}
     .hero-copy { max-width: 640px; }
     .hero-copy > * { animation: copy-in .7s cubic-bezier(.2, .8, .2, 1) both; }
     .hero-copy > :nth-child(2) { animation-delay: .08s; }
@@ -396,7 +394,7 @@
     .scene-caption {
       position: absolute;
       left: 0;
-      bottom: -8px;
+      bottom: -36px;
       color: var(--dim);
       font-family: var(--font-mono);
       font-size: 9px;
@@ -604,13 +602,13 @@
     }
     .role-deck {
       display: grid;
-      grid-template-columns: repeat(5, minmax(0, 1fr));
-      gap: 14px;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 12px;
     }
     .role-card {
       position: relative;
       min-width: 0;
-      aspect-ratio: 3 / 4.4;
+      aspect-ratio: 3 / 3.6;
       padding: 0;
       border: 0;
       background: none;
@@ -637,7 +635,7 @@
       flex-direction: column;
       align-items: flex-start;
       overflow: hidden;
-      padding: 18px;
+      padding: 14px;
       border: 1px solid var(--border);
       border-radius: 18px;
       background: linear-gradient(165deg, #1a2740, #070b14);
@@ -670,8 +668,8 @@
       transform: rotateY(180deg);
     }
     .role-glyph {
-      width: 52px;
-      height: 52px;
+      width: 38px;
+      height: 38px;
       margin-bottom: auto;
       color: var(--team, var(--gold));
     }
@@ -679,7 +677,7 @@
     .role-name {
       margin: 0;
       font-family: var(--font-display);
-      font-size: clamp(1.25rem, 1.8vw, 1.55rem);
+      font-size: 1.1rem;
       font-weight: 600;
       letter-spacing: -.03em;
       line-height: 1.05;
@@ -694,9 +692,9 @@
       text-transform: uppercase;
     }
     .role-desc {
-      margin: 10px 0 16px;
+      margin: 8px 0 12px;
       color: var(--dim);
-      font-size: 13px;
+      font-size: 11px;
       line-height: 1.55;
     }
     .role-back .role-side { margin-top: auto; }
@@ -842,7 +840,7 @@
       letter-spacing: .04em;
       line-height: 1.2;
     }
-    .lang-ar { direction: rtl; color: var(--text); font-family: "Noto Naskh Arabic", "Geeza Pro", "Segoe UI", serif; font-size: 1.05rem; }
+    .lang-ar { direction: rtl; color: var(--text); font-family: "Noto Kufi Arabic", "Segoe UI", sans-serif; font-size: 1rem; line-height: 1; }
 
     .download-section {
       padding-block: clamp(80px, 10vw, 150px);
@@ -904,28 +902,28 @@
       line-height: 1.7;
     }
     .invite-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 26px; }
-    .invite-meta {
+    .invite .invite-meta {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px 16px;
-      margin-top: 20px;
+      gap: 10px 18px;
+      margin: 26px 0 0;
       color: var(--dim);
       font-family: var(--font-mono);
-      font-size: 10px;
-      letter-spacing: .06em;
-      line-height: 1.5;
+      font-size: 11px;
+      letter-spacing: .05em;
+      line-height: 1.8;
       text-transform: uppercase;
     }
     .invite-meta a { color: var(--gold); text-decoration: none; }
     .invite-meta a:hover { text-decoration: underline; text-underline-offset: 2px; }
-    .invite-hash {
+    .invite .invite-hash {
       display: block;
-      margin-top: 10px;
+      margin: 12px 0 0;
       color: var(--dim);
       font-family: var(--font-mono);
       font-size: 10px;
       letter-spacing: .02em;
-      line-height: 1.6;
+      line-height: 1.8;
       overflow-wrap: anywhere;
     }
     .install h3 {
@@ -1006,7 +1004,7 @@
       .section-copy { max-width: 720px; }
       .network { max-width: 560px; margin-inline: auto; min-height: 420px; }
       .dashboard-stack { max-width: 560px; margin-inline: auto; min-height: 440px; }
-      .role-deck { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .role-deck { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
     }
 
     @media (max-width: 700px) {
@@ -1273,108 +1271,127 @@
       <div class="wrap">
         <div class="section-head">
           <h2 id="roles-title">Every role has a tell.</h2>
-          <p>Five of the roles at the table. Forge your own too. Tap a card. Read the table. Lie well.</p>
+          <p>Every role in the deck. Forge your own too. Tap a card to read it.</p>
         </div>
 
         <div class="role-deck">
+
           <button class="role-card team-wolf" type="button" aria-pressed="false" data-role-card>
             <span class="role-card-inner" aria-hidden="true">
               <span class="role-face role-front">
-                <span class="role-glyph">
-                  <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="15" cy="15" r="3.2"/>
-                    <circle cx="24" cy="11.5" r="3.2"/>
-                    <circle cx="33" cy="15" r="3.2"/>
-                    <circle cx="39" cy="23" r="3.2"/>
-                    <path d="M14 30c0-6.2 4.5-10.5 10-10.5S34 23.8 34 30c0 5-4.2 8-10 8s-10-3-10-8Z"/>
-                  </svg>
-                </span>
+                <span class="role-glyph"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="15" cy="15" r="3.2"/><circle cx="24" cy="11.5" r="3.2"/><circle cx="33" cy="15" r="3.2"/><circle cx="39" cy="23" r="3.2"/><path d="M14 30c0-6.2 4.5-10.5 10-10.5S34 23.8 34 30c0 5-4.2 8-10 8s-10-3-10-8Z"/></svg></span>
                 <span class="role-name">Werewolf</span>
                 <span class="role-side">Wolf</span>
               </span>
               <span class="role-face role-back">
                 <span class="role-name">Werewolf</span>
-                <span class="role-desc">Each night, choose a victim. By day, lie well.</span>
+                <span class="role-desc">Each night, devour one player. By day, lie well.</span>
                 <span class="role-side">Wolf</span>
               </span>
             </span>
-            <span class="sr-only">Werewolf. Each night, choose a victim. By day, lie well.</span>
+            <span class="sr-only">Werewolf. Each night, devour one player. By day, lie well.</span>
+          </button>
+
+          <button class="role-card team-wolf" type="button" aria-pressed="false" data-role-card>
+            <span class="role-card-inner" aria-hidden="true">
+              <span class="role-face role-front">
+                <span class="role-glyph"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M24 6c-3 5-9 8-9 15 0 6 4 10 9 10s9-4 9-10c0-7-6-10-9-15Z"/><path d="M24 20v10"/></svg></span>
+                <span class="role-name">Red Wolf</span>
+                <span class="role-side">Wolf</span>
+              </span>
+              <span class="role-face role-back">
+                <span class="role-name">Red Wolf</span>
+                <span class="role-desc">Hunt with the pack, then silence one player’s powers for a full day.</span>
+                <span class="role-side">Wolf</span>
+              </span>
+            </span>
+            <span class="sr-only">Red Wolf. Hunt with the pack, then silence one player’s powers for a full day.</span>
+          </button>
+
+          <button class="role-card team-wolf" type="button" aria-pressed="false" data-role-card>
+            <span class="role-card-inner" aria-hidden="true">
+              <span class="role-face role-front">
+                <span class="role-glyph"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14 16l4 10 4-10"/><path d="M26 16l4 10 4-10"/><path d="M12 34c4 3 20 3 24 0"/></svg></span>
+                <span class="role-name">Big Bad Wolf</span>
+                <span class="role-side">Wolf</span>
+              </span>
+              <span class="role-face role-back">
+                <span class="role-name">Big Bad Wolf</span>
+                <span class="role-desc">Hunt with the pack, then take a second victim alone. Lose that bite once a wolf dies.</span>
+                <span class="role-side">Wolf</span>
+              </span>
+            </span>
+            <span class="sr-only">Big Bad Wolf. Hunt with the pack, then take a second victim alone. Lose that bite once a wolf dies.</span>
+          </button>
+
+          <button class="role-card team-wolf" type="button" aria-pressed="false" data-role-card>
+            <span class="role-card-inner" aria-hidden="true">
+              <span class="role-face role-front">
+                <span class="role-glyph"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M24 8v24"/><path d="M14 18h20"/><circle cx="24" cy="38" r="4"/></svg></span>
+                <span class="role-name">Infectious Father</span>
+                <span class="role-side">Wolf</span>
+              </span>
+              <span class="role-face role-back">
+                <span class="role-name">Infectious Father</span>
+                <span class="role-desc">Hunt with the pack. Once per game, infect the victim instead: they turn wolf.</span>
+                <span class="role-side">Wolf</span>
+              </span>
+            </span>
+            <span class="sr-only">Infectious Father. Hunt with the pack. Once per game, infect the victim instead: they turn wolf.</span>
+          </button>
+
+          <button class="role-card team-wolf" type="button" aria-pressed="false" data-role-card>
+            <span class="role-card-inner" aria-hidden="true">
+              <span class="role-face role-front">
+                <span class="role-glyph"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M30 6a14 14 0 1 0 8 20 12 12 0 0 1-8-20Z"/></svg></span>
+                <span class="role-name">White Werewolf</span>
+                <span class="role-side">Wolf</span>
+              </span>
+              <span class="role-face role-back">
+                <span class="role-name">White Werewolf</span>
+                <span class="role-desc">Hunt with the pack. Every other night, devour your own kind. Win alone.</span>
+                <span class="role-side">Wolf</span>
+              </span>
+            </span>
+            <span class="sr-only">White Werewolf. Hunt with the pack. Every other night, devour your own kind. Win alone.</span>
+          </button>
+
+          <button class="role-card team-violet" type="button" aria-pressed="false" data-role-card>
+            <span class="role-card-inner" aria-hidden="true">
+              <span class="role-face role-front">
+                <span class="role-glyph"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="24" cy="22" rx="10" ry="14"/><path d="M24 8V4"/><circle cx="24" cy="2.5" r="1.5"/><circle cx="20" cy="18" r="2"/><circle cx="28" cy="18" r="2"/></svg></span>
+                <span class="role-name">Alien</span>
+                <span class="role-side">Solitary</span>
+              </span>
+              <span class="role-face role-back">
+                <span class="role-name">Alien</span>
+                <span class="role-desc">Immune to wolves. Name roles by day: right, they die. Wrong, you do. Win alone.</span>
+                <span class="role-side">Solitary</span>
+              </span>
+            </span>
+            <span class="sr-only">Alien. Immune to wolves. Name roles by day: right, they die. Wrong, you do. Win alone.</span>
           </button>
 
           <button class="role-card team-seer" type="button" aria-pressed="false" data-role-card>
             <span class="role-card-inner" aria-hidden="true">
               <span class="role-face role-front">
-                <span class="role-glyph">
-                  <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M5 24s7.2-10.5 19-10.5S43 24 43 24 35.8 34.5 24 34.5 5 24 5 24Z"/>
-                    <circle cx="24" cy="24" r="5"/>
-                  </svg>
-                </span>
+                <span class="role-glyph"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 24s7.2-10.5 19-10.5S43 24 43 24 35.8 34.5 24 34.5 5 24 5 24Z"/><circle cx="24" cy="24" r="5"/></svg></span>
                 <span class="role-name">Seer</span>
                 <span class="role-side">Village</span>
               </span>
               <span class="role-face role-back">
                 <span class="role-name">Seer</span>
-                <span class="role-desc">Each night, learn whether one player is a Wolf.</span>
+                <span class="role-desc">Each night, learn whether one player is a Werewolf.</span>
                 <span class="role-side">Village</span>
               </span>
             </span>
-            <span class="sr-only">Seer. Each night, learn whether one player is a Wolf.</span>
+            <span class="sr-only">Seer. Each night, learn whether one player is a Werewolf.</span>
           </button>
 
           <button class="role-card team-village" type="button" aria-pressed="false" data-role-card>
             <span class="role-card-inner" aria-hidden="true">
               <span class="role-face role-front">
-                <span class="role-glyph">
-                  <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M19 7h10M21 7v9L12 36a4 4 0 0 0 3.7 5h16.6A4 4 0 0 0 36 36L27 16V7"/>
-                    <path d="M16 31h16"/>
-                  </svg>
-                </span>
-                <span class="role-name">Witch</span>
-                <span class="role-side">Village</span>
-              </span>
-              <span class="role-face role-back">
-                <span class="role-name">Witch</span>
-                <span class="role-desc">One heal. One poison. Choose when to spend them.</span>
-                <span class="role-side">Village</span>
-              </span>
-            </span>
-            <span class="sr-only">Witch. One heal. One poison. Choose when to spend them.</span>
-          </button>
-
-          <button class="role-card team-blue" type="button" aria-pressed="false" data-role-card>
-            <span class="role-card-inner" aria-hidden="true">
-              <span class="role-face role-front">
-                <span class="role-glyph">
-                  <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="24" cy="24" r="9"/>
-                    <path d="M24 5v7M24 36v7M5 24h7M36 24h7"/>
-                    <circle cx="24" cy="24" r="2"/>
-                  </svg>
-                </span>
-                <span class="role-name">Hunter</span>
-                <span class="role-side">Village</span>
-              </span>
-              <span class="role-face role-back">
-                <span class="role-name">Hunter</span>
-                <span class="role-desc">If you die, take one last shot.</span>
-                <span class="role-side">Village</span>
-              </span>
-            </span>
-            <span class="sr-only">Hunter. If you die, take one last shot.</span>
-          </button>
-
-          <button class="role-card team-village" type="button" aria-pressed="false" data-role-card>
-            <span class="role-card-inner" aria-hidden="true">
-              <span class="role-face role-front">
-                <span class="role-glyph">
-                  <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M7 23 24 9l17 14"/>
-                    <path d="M11 21v19h26V21"/>
-                    <path d="M20 40V28h8v12"/>
-                  </svg>
-                </span>
+                <span class="role-glyph"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 23 24 9l17 14"/><path d="M11 21v19h26V21"/><path d="M20 40V28h8v12"/></svg></span>
                 <span class="role-name">Villager</span>
                 <span class="role-side">Village</span>
               </span>
@@ -1385,6 +1402,294 @@
               </span>
             </span>
             <span class="sr-only">Villager. No night action. Your only weapon is the vote.</span>
+          </button>
+
+          <button class="role-card team-village" type="button" aria-pressed="false" data-role-card>
+            <span class="role-card-inner" aria-hidden="true">
+              <span class="role-face role-front">
+                <span class="role-glyph"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M24 5 8 11v12c0 10 7 17 16 20 9-3 16-10 16-20V11L24 5Z"/><path d="M17 24l5 5 9-9"/></svg></span>
+                <span class="role-name">Guard</span>
+                <span class="role-side">Village</span>
+              </span>
+              <span class="role-face role-back">
+                <span class="role-name">Guard</span>
+                <span class="role-desc">Each night, shield one player from the wolves. Never the same twice in a row.</span>
+                <span class="role-side">Village</span>
+              </span>
+            </span>
+            <span class="sr-only">Guard. Each night, shield one player from the wolves. Never the same twice in a row.</span>
+          </button>
+
+          <button class="role-card team-seer" type="button" aria-pressed="false" data-role-card>
+            <span class="role-card-inner" aria-hidden="true">
+              <span class="role-face role-front">
+                <span class="role-glyph"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 7h10M21 7v9L12 36a4 4 0 0 0 3.7 5h16.6A4 4 0 0 0 36 36L27 16V7"/><path d="M16 31h16"/></svg></span>
+                <span class="role-name">Witch</span>
+                <span class="role-side">Village</span>
+              </span>
+              <span class="role-face role-back">
+                <span class="role-name">Witch</span>
+                <span class="role-desc">One heal and one poison, each usable once in the whole game.</span>
+                <span class="role-side">Village</span>
+              </span>
+            </span>
+            <span class="sr-only">Witch. One heal and one poison, each usable once in the whole game.</span>
+          </button>
+
+          <button class="role-card team-village" type="button" aria-pressed="false" data-role-card>
+            <span class="role-card-inner" aria-hidden="true">
+              <span class="role-face role-front">
+                <span class="role-glyph"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="24" r="9"/><path d="M24 5v7M24 36v7M5 24h7M36 24h7"/><circle cx="24" cy="24" r="2"/></svg></span>
+                <span class="role-name">Hunter</span>
+                <span class="role-side">Village</span>
+              </span>
+              <span class="role-face role-back">
+                <span class="role-name">Hunter</span>
+                <span class="role-desc">No night action. When you die, take one player down with you.</span>
+                <span class="role-side">Village</span>
+              </span>
+            </span>
+            <span class="sr-only">Hunter. No night action. When you die, take one player down with you.</span>
+          </button>
+
+          <button class="role-card team-seer" type="button" aria-pressed="false" data-role-card>
+            <span class="role-card-inner" aria-hidden="true">
+              <span class="role-face role-front">
+                <span class="role-glyph"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M24 40s-14-8-14-18a8 8 0 0 1 14-5 8 8 0 0 1 14 5c0 10-14 18-14 18Z"/><path d="M8 8l8 8"/></svg></span>
+                <span class="role-name">Cupid</span>
+                <span class="role-side">Village</span>
+              </span>
+              <span class="role-face role-back">
+                <span class="role-name">Cupid</span>
+                <span class="role-desc">On the first night, tie two players as lovers. If one dies, so does the other.</span>
+                <span class="role-side">Village</span>
+              </span>
+            </span>
+            <span class="sr-only">Cupid. On the first night, tie two players as lovers. If one dies, so does the other.</span>
+          </button>
+
+          <button class="role-card team-village" type="button" aria-pressed="false" data-role-card>
+            <span class="role-card-inner" aria-hidden="true">
+              <span class="role-face role-front">
+                <span class="role-glyph"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10l5 10c-2 3-2 7 0 10l11 10 11-10c2-3 2-7 0-10l5-10-8 4a14 14 0 0 0-16 0l-8-4Z"/><circle cx="19" cy="26" r="1.5"/><circle cx="29" cy="26" r="1.5"/></svg></span>
+                <span class="role-name">Fox</span>
+                <span class="role-side">Village</span>
+              </span>
+              <span class="role-face role-back">
+                <span class="role-name">Fox</span>
+                <span class="role-desc">Sniff a player and their neighbours each night. Find nothing, lose your nose.</span>
+                <span class="role-side">Village</span>
+              </span>
+            </span>
+            <span class="sr-only">Fox. Sniff a player and their neighbours each night. Find nothing, lose your nose.</span>
+          </button>
+
+          <button class="role-card team-blue" type="button" aria-pressed="false" data-role-card>
+            <span class="role-card-inner" aria-hidden="true">
+              <span class="role-face role-front">
+                <span class="role-glyph"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="18" r="9"/><path d="M15 14c-3-3-3-7 0-9 2 2 5 3 9 3s7-1 9-3c3 2 3 6 0 9"/><path d="M17 32c-3 3-3 9 0 12M31 32c3 3 3 9 0 12"/></svg></span>
+                <span class="role-name">Little Girl</span>
+                <span class="role-side">Village</span>
+              </span>
+              <span class="role-face role-back">
+                <span class="role-name">Little Girl</span>
+                <span class="role-desc">Spy on the wolves at night. If they catch you, you die in the victim’s place.</span>
+                <span class="role-side">Village</span>
+              </span>
+            </span>
+            <span class="sr-only">Little Girl. Spy on the wolves at night. If they catch you, you die in the victim’s place.</span>
+          </button>
+
+          <button class="role-card team-village" type="button" aria-pressed="false" data-role-card>
+            <span class="role-card-inner" aria-hidden="true">
+              <span class="role-face role-front">
+                <span class="role-glyph"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="28" r="10"/><circle cx="13" cy="16" r="3.5"/><circle cx="35" cy="16" r="3.5"/><circle cx="19" cy="10" r="3"/><circle cx="29" cy="10" r="3"/></svg></span>
+                <span class="role-name">Bear Tamer</span>
+                <span class="role-side">Village</span>
+              </span>
+              <span class="role-face role-back">
+                <span class="role-name">Bear Tamer</span>
+                <span class="role-desc">Your bear growls at daybreak when a neighbour is a wolf.</span>
+                <span class="role-side">Village</span>
+              </span>
+            </span>
+            <span class="sr-only">Bear Tamer. Your bear growls at daybreak when a neighbour is a wolf.</span>
+          </button>
+
+          <button class="role-card team-blue" type="button" aria-pressed="false" data-role-card>
+            <span class="role-card-inner" aria-hidden="true">
+              <span class="role-face role-front">
+                <span class="role-glyph"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 34c0-10 6-18 16-18 8 0 14 5 14 12 0 3-2 6-6 6H10Z"/><path d="M26 16l6-6"/><circle cx="34" cy="14" r="1.5"/><path d="M14 34v6M22 34v6"/></svg></span>
+                <span class="role-name">Raven</span>
+                <span class="role-side">Village</span>
+              </span>
+              <span class="role-face role-back">
+                <span class="role-name">Raven</span>
+                <span class="role-desc">Place two secret votes against one player each night.</span>
+                <span class="role-side">Village</span>
+              </span>
+            </span>
+            <span class="sr-only">Raven. Place two secret votes against one player each night.</span>
+          </button>
+
+          <button class="role-card team-violet" type="button" aria-pressed="false" data-role-card>
+            <span class="role-card-inner" aria-hidden="true">
+              <span class="role-face role-front">
+                <span class="role-glyph"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="17" cy="24" r="9"/><circle cx="31" cy="24" r="9"/></svg></span>
+                <span class="role-name">Two Sisters</span>
+                <span class="role-side">Village</span>
+              </span>
+              <span class="role-face role-back">
+                <span class="role-name">Two Sisters</span>
+                <span class="role-desc">You and your sister know each other from the first night.</span>
+                <span class="role-side">Village</span>
+              </span>
+            </span>
+            <span class="sr-only">Two Sisters. You and your sister know each other from the first night.</span>
+          </button>
+
+          <button class="role-card team-violet" type="button" aria-pressed="false" data-role-card>
+            <span class="role-card-inner" aria-hidden="true">
+              <span class="role-face role-front">
+                <span class="role-glyph"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="28" r="7"/><circle cx="24" cy="18" r="7"/><circle cx="36" cy="28" r="7"/></svg></span>
+                <span class="role-name">Three Brothers</span>
+                <span class="role-side">Village</span>
+              </span>
+              <span class="role-face role-back">
+                <span class="role-name">Three Brothers</span>
+                <span class="role-desc">You and your brothers know each other from the first night.</span>
+                <span class="role-side">Village</span>
+              </span>
+            </span>
+            <span class="sr-only">Three Brothers. You and your brothers know each other from the first night.</span>
+          </button>
+
+          <button class="role-card team-blue" type="button" aria-pressed="false" data-role-card>
+            <span class="role-card-inner" aria-hidden="true">
+              <span class="role-face role-front">
+                <span class="role-glyph"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8l4 10h16l4-10v14a12 12 0 0 1-24 0V8Z"/><circle cx="19" cy="26" r="1.5"/><circle cx="29" cy="26" r="1.5"/><path d="M21 32c2 1.5 4 1.5 6 0"/></svg></span>
+                <span class="role-name">Wolf-Dog</span>
+                <span class="role-side">Village</span>
+              </span>
+              <span class="role-face role-back">
+                <span class="role-name">Wolf-Dog</span>
+                <span class="role-desc">On the first night, choose your camp: village or wolves.</span>
+                <span class="role-side">Village</span>
+              </span>
+            </span>
+            <span class="sr-only">Wolf-Dog. On the first night, choose your camp: village or wolves.</span>
+          </button>
+
+          <button class="role-card team-blue" type="button" aria-pressed="false" data-role-card>
+            <span class="role-card-inner" aria-hidden="true">
+              <span class="role-face role-front">
+                <span class="role-glyph"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="24" cy="20" rx="7" ry="10"/><circle cx="15" cy="9" r="2.5"/><circle cx="21" cy="6" r="2.5"/><circle cx="27" cy="6" r="2.5"/><circle cx="33" cy="9" r="2.5"/></svg></span>
+                <span class="role-name">Wild Child</span>
+                <span class="role-side">Village</span>
+              </span>
+              <span class="role-face role-back">
+                <span class="role-name">Wild Child</span>
+                <span class="role-desc">Pick a role model on the first night. When they die, you become a Werewolf.</span>
+                <span class="role-side">Village</span>
+              </span>
+            </span>
+            <span class="sr-only">Wild Child. Pick a role model on the first night. When they die, you become a Werewolf.</span>
+          </button>
+
+          <button class="role-card team-blue" type="button" aria-pressed="false" data-role-card>
+            <span class="role-card-inner" aria-hidden="true">
+              <span class="role-face role-front">
+                <span class="role-glyph"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 24c0-4 4-7 9-7s7 2 9 2 4-2 9-2 9 3 9 7-4 9-9 9c-4 0-6-3-9-3s-5 3-9 3c-5 0-9-5-9-9Z"/><circle cx="17" cy="24" r="2"/><circle cx="31" cy="24" r="2"/></svg></span>
+                <span class="role-name">Thief</span>
+                <span class="role-side">Village</span>
+              </span>
+              <span class="role-face role-back">
+                <span class="role-name">Thief</span>
+                <span class="role-desc">Two spare cards face down. Keep yours or take one, whatever it is.</span>
+                <span class="role-side">Village</span>
+              </span>
+            </span>
+            <span class="sr-only">Thief. Two spare cards face down. Keep yours or take one, whatever it is.</span>
+          </button>
+
+          <button class="role-card team-blue" type="button" aria-pressed="false" data-role-card>
+            <span class="role-card-inner" aria-hidden="true">
+              <span class="role-face role-front">
+                <span class="role-glyph"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14 12c-2 4-3 8-3 12 0 8 6 14 13 14s13-6 13-14c0-4-1-8-3-12"/><path d="M14 12c-3-3-7-3-9 0M34 12c3-3 7-3 9 0"/><circle cx="19" cy="24" r="1.5"/><circle cx="29" cy="24" r="1.5"/></svg></span>
+                <span class="role-name">Scapegoat</span>
+                <span class="role-side">Village</span>
+              </span>
+              <span class="role-face role-back">
+                <span class="role-name">Scapegoat</span>
+                <span class="role-desc">A tied vote kills you instead. Ban players from voting as you go.</span>
+                <span class="role-side">Village</span>
+              </span>
+            </span>
+            <span class="sr-only">Scapegoat. A tied vote kills you instead. Ban players from voting as you go.</span>
+          </button>
+
+          <button class="role-card team-violet" type="button" aria-pressed="false" data-role-card>
+            <span class="role-card-inner" aria-hidden="true">
+              <span class="role-face role-front">
+                <span class="role-glyph"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14 14l4 22h12l4-22-8 6-8-6Z"/><circle cx="14" cy="12" r="2.5"/><circle cx="34" cy="12" r="2.5"/><circle cx="24" cy="8" r="2.5"/></svg></span>
+                <span class="role-name">Village Idiot</span>
+                <span class="role-side">Village</span>
+              </span>
+              <span class="role-face role-back">
+                <span class="role-name">Village Idiot</span>
+                <span class="role-desc">Voted out, you are unmasked and survive, but never vote again.</span>
+                <span class="role-side">Village</span>
+              </span>
+            </span>
+            <span class="sr-only">Village Idiot. Voted out, you are unmasked and survive, but never vote again.</span>
+          </button>
+
+          <button class="role-card team-violet" type="button" aria-pressed="false" data-role-card>
+            <span class="role-card-inner" aria-hidden="true">
+              <span class="role-face role-front">
+                <span class="role-glyph"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="16" y="6" width="16" height="10" rx="2"/><path d="M24 16v14"/><path d="M14 40h20"/></svg></span>
+                <span class="role-name">Stuttering Judge</span>
+                <span class="role-side">Village</span>
+              </span>
+              <span class="role-face role-back">
+                <span class="role-name">Stuttering Judge</span>
+                <span class="role-desc">Once per game, demand a second vote right after an execution.</span>
+                <span class="role-side">Village</span>
+              </span>
+            </span>
+            <span class="sr-only">Stuttering Judge. Once per game, demand a second vote right after an execution.</span>
+          </button>
+
+          <button class="role-card team-seer" type="button" aria-pressed="false" data-role-card>
+            <span class="role-card-inner" aria-hidden="true">
+              <span class="role-face role-front">
+                <span class="role-glyph"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="24" cy="8" rx="6" ry="2.5"/><circle cx="24" cy="18" r="4"/><path d="M24 22v12"/><path d="M24 26l-8 8M24 26l8 8"/></svg></span>
+                <span class="role-name">Angel</span>
+                <span class="role-side">Village</span>
+              </span>
+              <span class="role-face role-back">
+                <span class="role-name">Angel</span>
+                <span class="role-desc">Win outright if the first attack or vote takes you. Survive, and you are a villager.</span>
+                <span class="role-side">Village</span>
+              </span>
+            </span>
+            <span class="sr-only">Angel. Win outright if the first attack or vote takes you. Survive, and you are a villager.</span>
+          </button>
+
+          <button class="role-card team-violet" type="button" aria-pressed="false" data-role-card>
+            <span class="role-card-inner" aria-hidden="true">
+              <span class="role-face role-front">
+                <span class="role-glyph"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14 38 34 10"/><path d="M14 38l-4 3"/><circle cx="30" cy="16" r="1.5"/><circle cx="33" cy="12" r="1.5"/><circle cx="27" cy="21" r="1.5"/></svg></span>
+                <span class="role-name">Pied Piper</span>
+                <span class="role-side">Solitary</span>
+              </span>
+              <span class="role-face role-back">
+                <span class="role-name">Pied Piper</span>
+                <span class="role-desc">Charm two players each night. Charm everyone and win alone.</span>
+                <span class="role-side">Solitary</span>
+              </span>
+            </span>
+            <span class="sr-only">Pied Piper. Charm two players each night. Charm everyone and win alone.</span>
           </button>
         </div>
 
