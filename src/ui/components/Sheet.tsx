@@ -159,7 +159,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.scrim,
   },
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   sheetSlot: {
     maxHeight: '92%',

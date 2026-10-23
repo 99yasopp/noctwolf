@@ -1,9 +1,12 @@
 // Headless verification of the game loop. The engine has no React Native
 // imports, so this runs in plain Node:
 //
-//   npx tsc scripts/game-loop-test.ts --outDir /tmp/opencode/build \
-//     --module commonjs --target es2020 --moduleResolution node --skipLibCheck
+//   npx tsc scripts/game-loop-test.ts --ignoreConfig --ignoreDeprecations 6.0 \
+//     --outDir /tmp/opencode/build --module commonjs --target es2020 \
+//     --moduleResolution node --skipLibCheck
 //   node /tmp/opencode/build/scripts/game-loop-test.js
+declare const process: { exit(code: number): never };
+
 import { GameManager } from '../src/engine/gameManager';
 import {
   ALL_ROLES,

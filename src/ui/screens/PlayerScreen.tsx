@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, ScrollView, InteractionManager } from 'react-native';
+import { View, StyleSheet, ScrollView, type ScrollViewInstance } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Text } from '../text';
 import { theme } from '../theme/colors';
@@ -114,7 +114,7 @@ export const PlayerScreen = () => {
   // overlay takes the screen.
   const openOverlay = (page: 'rules' | 'settings') => {
     setMenuOpen(false);
-    InteractionManager.runAfterInteractions(() => setOverlay(page));
+    setTimeout(() => setOverlay(page), 0);
   };
 
   // The public story of the game, built from what the host already tells us.
@@ -555,7 +555,7 @@ export const PlayerScreen = () => {
 
   // A new page starts at its top: the rail no longer scrolls away with the
   // old page, so it has to put the new one back at the beginning.
-  const scrollRef = React.useRef<ScrollView>(null);
+  const scrollRef = React.useRef<ScrollViewInstance>(null);
   const selectTab = (id: string) => {
     setTab(id as 'play' | 'info' | 'notes' | 'chat');
     scrollRef.current?.scrollTo({ y: 0, animated: false });

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, ScrollView, InteractionManager } from 'react-native';
+import { View, StyleSheet, ScrollView, type ScrollViewInstance } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Text } from '../text';
 import { theme } from '../theme/colors';
@@ -87,7 +87,7 @@ const NarratorDashboardLive: React.FC<NarratorDashboardLiveProps> = ({
   // overlay takes the screen.
   const openOverlay = (page: 'rules' | 'settings') => {
     setMenuOpen(false);
-    InteractionManager.runAfterInteractions(() => setOverlay(page));
+    setTimeout(() => setOverlay(page), 0);
   };
 
   useEffect(() => {
@@ -359,7 +359,7 @@ const NarratorDashboardLive: React.FC<NarratorDashboardLiveProps> = ({
   ];
   // The rail is outside the scroll now, so a page change has to send the new
   // page back to its top itself.
-  const scrollRef = React.useRef<ScrollView>(null);
+  const scrollRef = React.useRef<ScrollViewInstance>(null);
   const selectTab = (id: string) => {
     setTab(id as 'play' | 'info' | 'notes' | 'chat');
     scrollRef.current?.scrollTo({ y: 0, animated: false });

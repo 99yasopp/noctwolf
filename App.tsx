@@ -87,11 +87,7 @@ export default function App() {
 
   return (
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
-      <StatusBar
-        barStyle="light-content"
-        backgroundColor="transparent"
-        translucent
-      />
+      <StatusBar barStyle="light-content" />
       <ErrorBoundary>
         <I18nProvider language={language} onChange={changeLanguage}>
           <GameProvider>

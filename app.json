@@ -3,24 +3,9 @@
     "name": "Noctwolf",
     "slug": "werewolf-manager",
     "version": "1.0.0",
-    "newArchEnabled": false,
     "userInterfaceStyle": "dark",
     "backgroundColor": "#070B14",
     "icon": "./assets/icon.png",
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#04060A"
-    },
-    "androidStatusBar": {
-      "backgroundColor": "#070B14",
-      "barStyle": "light-content",
-      "translucent": true
-    },
-    "androidNavigationBar": {
-      "backgroundColor": "#070B14",
-      "barStyle": "light-content"
-    },
     "ios": {
       "bundleIdentifier": "com.loupgarou.game",
       "infoPlist": {
@@ -52,11 +37,12 @@
     "plugins": [
       "expo-asset",
       [
-        "expo-build-properties",
+        "expo-splash-screen",
         {
-          "android": {
-            "kotlinVersion": "1.9.25"
-          }
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#04060A"
         }
       ]
     ]

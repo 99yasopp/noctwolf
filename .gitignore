@@ -38,6 +38,7 @@ ios/
 *.p12
 *.key
 *.mobileprovision
+android/keystore.properties
 
 # Editors / OS
 .DS_Store
