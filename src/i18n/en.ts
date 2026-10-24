@@ -449,6 +449,7 @@ export const en = {
   'ui.host.stopClock': 'Stop the clock',
   'ui.host.minutes': '{count} min',
   'ui.host.putOnClock': 'Put the phase on a clock:',
+  'ui.host.startTimer': 'Start timer',
   'ui.host.left': '{time} left',
   'ui.host.stageLeft': '{time} left on this stage',
   'ui.host.aliveLine': 'Alive: {alive} / {total}',

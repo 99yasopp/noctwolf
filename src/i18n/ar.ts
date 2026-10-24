@@ -449,6 +449,7 @@ export const ar: Partial<Catalog> = {
   'ui.host.stopClock': 'أوقف الساعة',
   'ui.host.minutes': '{count} د',
   'ui.host.putOnClock': 'ضع المرحلة على ساعة:',
+  'ui.host.startTimer': 'ابدأ المؤقت',
   'ui.host.left': 'بقي {time}',
   'ui.host.stageLeft': 'بقي {time} في هذه المرحلة',
   'ui.host.aliveLine': 'الأحياء: {alive} / {total}',

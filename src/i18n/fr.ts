@@ -450,6 +450,7 @@ export const fr: Partial<Catalog> = {
   'ui.host.stopClock': 'Arrêter le chrono',
   'ui.host.minutes': '{count} min',
   'ui.host.putOnClock': 'Mettre la phase sur un chrono :',
+  'ui.host.startTimer': 'Démarrer le chrono',
   'ui.host.left': '{time} restantes',
   'ui.host.stageLeft': '{time} restantes à cette étape',
   'ui.host.aliveLine': 'Vivants : {alive} / {total}',

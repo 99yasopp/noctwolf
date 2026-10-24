@@ -13,6 +13,7 @@ import { Sheet } from '../components/Sheet';
 import { TableMenu } from '../components/TableMenu';
 import { PageOverlay } from '../components/PageOverlay';
 import { RoleTally } from '../components/RoleTally';
+import Slider from '@react-native-community/slider';
 import { TableStrip } from '../components/TableStrip';
 import { useBack } from '../back';
 import { useResponsive } from '../layout';
@@ -82,6 +83,8 @@ const NarratorDashboardLive: React.FC<NarratorDashboardLiveProps> = ({
   const [menuOpen, setMenuOpen] = useState(false);
   const [overlay, setOverlay] = useState<'rules' | 'settings' | null>(null);
   const [inspect, setInspect] = useState<string | null>(null);
+  // Custom timer duration the host picks with the slider before starting.
+  const [timerSeconds, setTimerSeconds] = useState(60);
   const { gutter } = useResponsive();
 
   // The menu is a modal of its own; let it finish closing before the page
@@ -510,19 +513,23 @@ const NarratorDashboardLive: React.FC<NarratorDashboardLiveProps> = ({
               <>
                 <Text style={styles.pending}>{t('ui.host.putOnClock')}</Text>
                 <View style={styles.timerButtons}>
-                  <BaseButton
-                    title={t('ui.host.minutes', { count: 1 })}
-                    onPress={() => manager.startTimer(60)}
-                    variant="secondary"
+                  <Text style={styles.timerLabel}>
+                    {formatRemaining(timerSeconds * 1000)}
+                  </Text>
+                  <Slider
+                    minimumValue={10}
+                    maximumValue={600}
+                    step={5}
+                    value={timerSeconds}
+                    onValueChange={value => setTimerSeconds(Math.round(value))}
+                    minimumTrackTintColor={theme.colors.primary}
+                    maximumTrackTintColor={theme.colors.border}
+                    thumbTintColor={theme.colors.primary}
+                    style={styles.timerSlider}
                   />
                   <BaseButton
-                    title={t('ui.host.minutes', { count: 2 })}
-                    onPress={() => manager.startTimer(120)}
-                    variant="secondary"
-                  />
-                  <BaseButton
-                    title={t('ui.host.minutes', { count: 5 })}
-                    onPress={() => manager.startTimer(300)}
+                    title={t('ui.host.startTimer')}
+                    onPress={() => manager.startTimer(timerSeconds)}
                     variant="secondary"
                   />
                 </View>
@@ -962,8 +969,18 @@ const styles = StyleSheet.create({
     marginTop: theme.spacing.small,
   },
   timerButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    gap: 10,
+  },
+  timerLabel: {
+    color: theme.colors.primary,
+    fontSize: 18,
+    fontWeight: '800',
+    textAlign: 'center',
+    fontVariant: ['tabular-nums'],
+  },
+  timerSlider: {
+    width: '100%',
+    height: 40,
   },
   timerText: {
     color: theme.colors.primary,
