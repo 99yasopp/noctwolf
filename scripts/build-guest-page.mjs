@@ -80,17 +80,19 @@ const MIME = {
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
   '.gif': 'image/gif', '.svg': 'image/svg+xml', '.webp': 'image/webp',
 };
-for (const rel of distFiles) {
-  if (rel === 'index.html' || rel === 'metadata.json') continue;
-  const ext = rel.slice(rel.lastIndexOf('.')).toLowerCase();
-  const mime = MIME[ext];
-  if (!mime) continue;
-  const dataUri = `data:${mime};base64,${readFileSync(join(distDir, rel)).toString('base64')}`;
-  // The JS references assets by their dist-relative path (with or without a
-  // leading slash); both are replaced.
-  html = html.split(rel).join(dataUri);
-  html = html.split('/' + rel).join(dataUri);
-}
+  // The leading-slash form (`/assets/...`) must be replaced FIRST: replacing
+  // the bare form first would strip `assets/...` out of `/assets/...` and
+  // leave a stray `/` before the data URI, which the browser then treats as
+  // a URL path instead of a data URI.
+  for (const rel of distFiles) {
+    if (rel === 'index.html' || rel === 'metadata.json') continue;
+    const ext = rel.slice(rel.lastIndexOf('.')).toLowerCase();
+    const mime = MIME[ext];
+    if (!mime) continue;
+    const dataUri = `data:${mime};base64,${readFileSync(join(distDir, rel)).toString('base64')}`;
+    html = html.split('/' + rel).join(dataUri);
+    html = html.split(rel).join(dataUri);
+  }
 
 writeFileSync(
   outFile,
