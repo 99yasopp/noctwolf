@@ -12,7 +12,7 @@
 - Android 7.0 or newer
 - Version 1.0.1
 - APK size: 73 MB
-- SHA-256: `19c3573b76ff508e9a7007f8e78252ac14117fe03a24fdea9de51823b43cf0c0`
+- SHA-256: `8d22fefc68b3545e76fd569f51f0280bda88f89f7517f35b58bb6ca98b954119`
 
 The APK is attached to a GitHub Release. It is not committed to Git history.
 
