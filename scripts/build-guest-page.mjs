@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const distDir = join(root, 'dist');
-const outFile = join(root, 'src', 'network', 'guestPage.ts');
+const outFile = join(root, 'src', 'network', 'guestPage.native.ts');
 
 execSync('npx expo export --platform web', { cwd: root, stdio: 'inherit' });
 
@@ -46,6 +46,26 @@ html = html.replace(/<link\s+rel="stylesheet"\s+href="([^"]+)"\s*\/?>/g, (tag, h
   const css = readDist(rel);
   return `<style>\n${css}\n</style>`;
 });
+
+// Inline binary assets (icon fonts, images) as base64 data URIs. Without this
+// the browser asks the phone for `assets/…/*.ttf` and gets HTML back — the
+// icon fonts never load and every button shows fallback glyphs.
+const MIME = {
+  '.ttf': 'font/ttf', '.woff': 'font/woff', '.woff2': 'font/woff2',
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif', '.svg': 'image/svg+xml', '.webp': 'image/webp',
+};
+for (const rel of distFiles) {
+  if (rel === 'index.html' || rel === 'metadata.json') continue;
+  const ext = rel.slice(rel.lastIndexOf('.')).toLowerCase();
+  const mime = MIME[ext];
+  if (!mime) continue;
+  const dataUri = `data:${mime};base64,${readFileSync(join(distDir, rel)).toString('base64')}`;
+  // The JS references assets by their dist-relative path (with or without a
+  // leading slash); both are replaced.
+  html = html.split(rel).join(dataUri);
+  html = html.split('/' + rel).join(dataUri);
+}
 
 writeFileSync(
   outFile,
