@@ -47,6 +47,31 @@ html = html.replace(/<link\s+rel="stylesheet"\s+href="([^"]+)"\s*\/?>/g, (tag, h
   return `<style>\n${css}\n</style>`;
 });
 
+// Mobile viewport: lock the page to the device width, disable pinch zoom,
+// and fill the dynamic viewport so no dead space shows below the URL bar.
+html = html.replace(
+  /<meta\s+name="viewport"[^>]*\/?>/,
+  '<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />',
+);
+html = html.replace('</head>', `<style>
+  html, body {
+    height: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    position: fixed !important;
+    width: 100% !important;
+    inset: 0;
+  }
+  #root {
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    overflow: hidden !important;
+  }
+  * { -webkit-tap-highlight-color: transparent !important; box-sizing: border-box; }
+  input, textarea, select { font-size: 16px !important; }
+</style></head>`);
+
 // Inline binary assets (icon fonts, images) as base64 data URIs. Without this
 // the browser asks the phone for `assets/…/*.ttf` and gets HTML back — the
 // icon fonts never load and every button shows fallback glyphs.
