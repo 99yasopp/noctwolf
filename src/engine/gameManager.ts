@@ -3433,8 +3433,9 @@ export class GameManager {
   }
 
   getTimerRemainingMs(): number | null {
-    if (!this.timer) return null;
-    return Math.max(0, this.timer.endsAt - Date.now());
+    if (this.timer) return Math.max(0, this.timer.endsAt - Date.now());
+    if (this.deadline) return Math.max(0, this.deadline.endsAt - Date.now());
+    return null;
   }
 
   getTimerTotalMs(): number | null {
@@ -3513,6 +3514,9 @@ export class GameManager {
     this.deadline = { endsAt: Date.now() + seconds * 1000, totalMs: seconds * 1000 };
     this.notedLate = false;
     this.deadlineRecipients().forEach(playerId => this.sendDeadlineTo(playerId));
+    // Every client sees the phase countdown, not just those who still owe an
+    // answer: a player who already submitted watches the stage tick down too.
+    this.broadcastTime();
     this.emit({ type: 'changed' });
   }
 

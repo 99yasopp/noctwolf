@@ -26,6 +26,7 @@ import {
   setupSeatsUsed,
   setupSetting,
 } from '../../engine/setup';
+import Slider from '@react-native-community/slider';
 
 interface Props {
   setup: RoleSetup;
@@ -198,19 +199,35 @@ export const SetupScreen: React.FC<Props> = ({
         def => !def.whenRole || (setup.counts?.[def.whenRole] ?? 0) > 0,
       ).map(def =>
         def.count ? (
-          <Stepper
-            key={def.id}
-            label={settingName(def)}
-            note={settingHelp(def)}
-            count={countSetting(def)}
-            unit={def.count.unit}
-            onChange={value =>
-              setSetting(
-                def.id,
-                Math.min(def.count!.max, Math.max(def.count!.min, value)),
-              )
-            }
-          />
+          <View key={def.id}>
+            <Stepper
+              label={settingName(def)}
+              note={settingHelp(def)}
+              count={countSetting(def)}
+              unit={def.count.unit}
+              onChange={value =>
+                setSetting(
+                  def.id,
+                  Math.min(def.count!.max, Math.max(def.count!.min, value)),
+                )
+              }
+            />
+            {def.count.unit && (
+              <Slider
+                minimumValue={def.count.min}
+                maximumValue={def.count.max}
+                step={1}
+                value={countSetting(def)}
+                onValueChange={value =>
+                  setSetting(def.id, Math.round(value))
+                }
+                minimumTrackTintColor={theme.colors.primary}
+                maximumTrackTintColor={theme.colors.border}
+                thumbTintColor={theme.colors.primary}
+                style={styles.slider}
+              />
+            )}
+          </View>
         ) : (
           <View key={def.id}>
             <BaseButton
@@ -233,6 +250,11 @@ export const SetupScreen: React.FC<Props> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  slider: {
+    width: '100%',
+    height: 40,
+    marginTop: 4,
   },
   content: {
     width: '100%',

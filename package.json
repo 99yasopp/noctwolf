@@ -14,6 +14,7 @@
   "dependencies": {
     "@expo/metro-runtime": "~58.0.15",
     "@expo/vector-icons": "^15.0.2",
+    "@react-native-community/slider": "5.2.1",
     "events": "^3.3.0",
     "expo": "^58.0.17",
     "expo-asset": "~58.0.18",
