@@ -12,12 +12,14 @@ import { RoleSigil } from '../components/RoleSigil';
 import { Sheet } from '../components/Sheet';
 import { TableMenu } from '../components/TableMenu';
 import { PageOverlay } from '../components/PageOverlay';
+import { RoleTally } from '../components/RoleTally';
 import { TableStrip } from '../components/TableStrip';
 import { useBack } from '../back';
 import { useResponsive } from '../layout';
 import { ActionPanel, OwnRole } from '../components/ActionPanel';
 import { useGame } from '../GameContext';
 import { lobby } from '../../network/lobby';
+import type { PlayerListPayload } from '../../network/protocol';
 import { ChatGroup, ChatLine, Phase } from '../../engine/types';
 import { packIsKnown } from '../../engine/gameManager';
 import {
@@ -74,6 +76,7 @@ export const PlayerScreen = () => {
   const [phase, setPhase] = useState<Phase | null>(null);
   const [round, setRound] = useState(1);
   const [roster, setRoster] = useState<PlayerRef[]>([]);
+  const [roleTally, setRoleTally] = useState<PlayerListPayload['roleTally'] | null>(null);
   const [deaths, setDeaths] = useState<PlayerRef[]>([]);
   const [role, setRole] = useState<RoleAssignPayload | null>(null);
   const [secrets, setSecrets] = useState<SaidLine[]>([]);
@@ -106,13 +109,13 @@ export const PlayerScreen = () => {
   const [roleHidden, setRoleHidden] = useState(false);
   const [roleOpen, setRoleOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [overlay, setOverlay] = useState<'rules' | 'settings' | null>(null);
+  const [overlay, setOverlay] = useState<'rules' | 'settings' | 'tally' | null>(null);
   const [inspect, setInspect] = useState<string | null>(null);
   const { gutter } = useResponsive();
 
   // The menu is a modal of its own; let it finish closing before the page
   // overlay takes the screen.
-  const openOverlay = (page: 'rules' | 'settings') => {
+  const openOverlay = (page: 'rules' | 'settings' | 'tally') => {
     setMenuOpen(false);
     setTimeout(() => setOverlay(page), 0);
   };
@@ -149,9 +152,11 @@ export const PlayerScreen = () => {
 
     lobby.onGuestMessage(message => {
       switch (message.type) {
-        case 'PLAYER_LIST':
+        case 'PLAYER_LIST': {
           setRoster(message.payload?.players ?? []);
+          setRoleTally(message.payload?.roleTally ?? null);
           break;
+        }
 
         case 'PHASE_UPDATE': {
           const payload = message.payload as PhaseUpdatePayload;
@@ -824,7 +829,15 @@ export const PlayerScreen = () => {
         </>
       )}
 
-      {tab === 'info' && <InfoTab sections={infoSections} />}
+      {tab === 'info' && (
+        <View style={{ gap: 16 }}>
+          <View style={styles.card}>
+            <Text style={styles.sectionHeading}>{t('ui.tally.title')}</Text>
+            <RoleTally tally={roleTally} nameFor={(id) => lobby.getRoleNames()[id] ?? id} />
+          </View>
+          <InfoTab sections={infoSections} />
+        </View>
+      )}
 
       {tab === 'notes' && (
         <NotesTab
@@ -899,15 +912,39 @@ export const PlayerScreen = () => {
         onClose={() => setMenuOpen(false)}
         onRules={() => openOverlay('rules')}
         onSettings={() => openOverlay('settings')}
+        onTally={roleTally ? () => openOverlay('tally') : undefined}
       />
 
       <PageOverlay visible={overlay === 'rules'}>
         <RulesScreen onBack={() => setOverlay(null)} />
       </PageOverlay>
 
+      <PageOverlay visible={overlay === 'tally'}>
+        <TallyOverlay tally={roleTally} onBack={() => setOverlay(null)} />
+      </PageOverlay>
+
       <PageOverlay visible={overlay === 'settings'}>
         <SettingsScreen onBack={() => setOverlay(null)} />
       </PageOverlay>
+    </View>
+  );
+};
+
+// A quiet page showing who is alive and who has left the table. The tally is
+// computed by the host and broadcast with the roster; it respects the
+// `revealOnDeath` house rule.
+const TallyOverlay: React.FC<{
+  tally: PlayerListPayload['roleTally'];
+  onBack: () => void;
+}> = ({ tally, onBack }) => {
+  const { t } = useI18n();
+  useBack(onBack);
+  const names = lobby.getRoleNames();
+
+  return (
+    <View style={styles.tallyPage}>
+      <Text style={styles.tallyTitle}>{t('ui.tally.title')}</Text>
+      <RoleTally tally={tally} nameFor={(id) => names[id] ?? id} />
     </View>
   );
 };
@@ -1053,5 +1090,33 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     textAlign: 'center',
     marginBottom: theme.spacing.medium,
+  },
+  tallyPage: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+    paddingTop: 60,
+    paddingHorizontal: theme.spacing.large,
+    gap: 20,
+  },
+  tallyTitle: {
+    color: theme.colors.text,
+    fontSize: theme.type.title,
+    fontWeight: '800',
+  },
+  card: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.card,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    padding: theme.spacing.medium,
+    marginBottom: theme.spacing.medium,
+  },
+  sectionHeading: {
+    color: theme.colors.dim,
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 12,
   },
 });

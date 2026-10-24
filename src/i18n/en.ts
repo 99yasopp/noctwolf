@@ -502,10 +502,10 @@ export const en = {
   'ui.lobby.needPlayers': 'A table needs {count} players before it can start.',
   'ui.lobby.roomCodeLabel': 'Room code',
   'ui.lobby.roomCodeLine': 'Room code: {code}',
-  'ui.lobby.addressLine': 'Address: {address}',
+  'ui.lobby.addressLine': 'Web guests open: {address}',
   'ui.lobby.shareTable': 'Share the table',
   'ui.lobby.shareMessage':
-    'Join my Noctwolf table.\nRoom code: {code}\nAddress: {address}',
+    'Join my Noctwolf table!\n\nFrom the app: room code {code}\nFrom a browser: {url}',
   'ui.lobby.shareCopied': 'Join info copied.',
   'ui.lobby.shareUnavailable': 'Sharing is not available here.',
   'ui.lobby.unknownAddress': 'unknown — check the Wi-Fi',
@@ -533,6 +533,7 @@ export const en = {
 
   // --------------------------------------------------- the pages beside the table
   'ui.rules.title': 'How to play',
+  'ui.tally.title': 'Table state',
   'ui.rules.nightOrder': 'Night order',
   'ui.rules.mayor': 'The mayor',
   'ui.rules.roles': 'Roles',

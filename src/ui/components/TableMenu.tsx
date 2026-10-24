@@ -13,6 +13,7 @@ interface Props {
   onClose: () => void;
   onRules: () => void;
   onSettings: () => void;
+  onTally?: () => void;
 }
 
 const Row: React.FC<{
@@ -43,11 +44,14 @@ const Row: React.FC<{
 
 // The quiet door out of the play space. Rules and settings are here, not in
 // the middle of the table.
-export const TableMenu: React.FC<Props> = ({ visible, onClose, onRules, onSettings }) => {
+export const TableMenu: React.FC<Props> = ({ visible, onClose, onRules, onSettings, onTally }) => {
   const { t } = useI18n();
 
   return (
     <Sheet visible={visible} onClose={onClose} title={t('ui.common.menu')}>
+      {onTally && (
+        <Row icon="pulse-outline" label={t('ui.tally.title')} onPress={onTally} />
+      )}
       <Row icon="book-outline" label={t('ui.rules.title')} onPress={onRules} />
       <Row icon="options-outline" label={t('ui.settings.title')} onPress={onSettings} />
     </Sheet>

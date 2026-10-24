@@ -13,6 +13,44 @@ type ZeroconfLike = any;
 
 export const GAME_PORT = 12345;
 
+// Reads the phone's route table and address trie to find the IP of the
+// interface that carries the hotspot (or Wi-Fi). Cellular interfaces are
+// excluded: their address is useless to a guest on the same Wi-Fi.
+// Falls back to null so the caller can use `getIpAddressAsync()` instead.
+async function detectLocalIp(): Promise<string | null> {
+  if (Platform.OS === 'web') return null;
+  try {
+    const [routeRes, trieRes] = await Promise.all([
+      fetch('file:///proc/net/route'),
+      fetch('file:///proc/net/fib_trie'),
+    ]);
+    const routes = await routeRes.text();
+    const trie = await trieRes.text();
+
+    // Find non-cellular interfaces that hold a real route.
+    const ifaces = new Set<string>();
+    for (const line of routes.split('\n').slice(1)) {
+      const cols = line.trim().split(/\s+/);
+      const [iface, dest] = cols;
+      if (!iface || !dest) continue;
+      if (dest !== '00000000' && !iface.startsWith('rmnet') && !iface.startsWith('ccmni')) {
+        ifaces.add(iface);
+      }
+    }
+    if (ifaces.size === 0) return null;
+
+    // Look for `link <iface>` in the trie and capture the IP above it.
+    for (const iface of ifaces) {
+      const re = new RegExp('(\\d+\\.\\d+\\.\\d+\\.\\d+)\\s*\\n\\s*/\\d+\\s+link\\s+' + iface);
+      const m = trie.match(re);
+      if (m) return m[1];
+    }
+  } catch {
+    // `/proc` not accessible or `file://` fetch unsupported on this platform.
+  }
+  return null;
+}
+
 // Connecting can be genuinely slow (an emulator NAT hop measured ~4s), and a
 // premature timeout would report failure for a connection that then succeeds.
 const JOIN_TIMEOUT_MS = 15000;
@@ -182,12 +220,18 @@ export class LobbyManager implements GameTransport {
   private refreshHostAddress() {
     if (Platform.OS === 'web') return;
 
-    Network.getIpAddressAsync()
+    detectLocalIp()
       .then(ip => {
-        // Android reads wifiInfo and returns "0.0.0.0" when the phone is not
-        // associated with an access point (hotspot mode, mobile data): unknown,
-        // not an address to read out. A connected guest's address wins too.
-        if (!ip || ip === '0.0.0.0' || this.hostAddress) return;
+        if (!ip) {
+          // Fall back to the address expo-network reads, which may be the
+          // cellular interface when a hotspot is running. The local-address
+          // event from the first accepted connection always corrects it.
+          return Network.getIpAddressAsync();
+        }
+        return ip;
+      })
+      .then(ip => {
+        if (!ip || ip === '0.0.0.0') return;
         this.hostAddress = ip;
         this.notifyRoster();
       })
@@ -283,10 +327,9 @@ export class LobbyManager implements GameTransport {
         console.error('Lobby server error', error);
       });
 
-      // Fill the display only when the native call reported nothing: an
-      // already-known address must not be replaced by a different interface.
+      // A real connection is the definitive answer: this is the IP a guest
+      // used to reach us, which is the one to share. Overrides any guess.
       this.server.on('local-address', (address: string) => {
-        if (this.hostAddress) return;
         this.hostAddress = address;
         this.notifyRoster();
       });
@@ -596,6 +639,10 @@ export class LobbyManager implements GameTransport {
     this.gameMessageHandler = handler;
   }
 
+  // Set alongside the game so `broadcastPlayerList` can carry the live role
+  // tally. Null before a game starts and after it ends.
+  roleTallyProvider: (() => PlayerListPayload['roleTally']) | null = null;
+
   broadcast(message: NetworkMessage) {
     this.server?.broadcast(message);
   }
@@ -635,6 +682,7 @@ export class LobbyManager implements GameTransport {
       players: this.publicPlayers(),
       setup: this.tableSetup,
       names: this.roleNames,
+      roleTally: this.roleTallyProvider?.() ?? null,
     };
 
     this.server?.broadcast({

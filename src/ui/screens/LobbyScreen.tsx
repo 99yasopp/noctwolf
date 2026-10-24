@@ -328,9 +328,11 @@ export const LobbyScreen = () => {
   // One tap puts the code and address in the group chat. Native opens the
   // share sheet; a browser uses its own share or clipboard.
   const shareTable = async () => {
+    const hostAddr = lobby.getHostAddress();
+    const url = hostAddr ? `http://${hostAddr}:${GAME_PORT}` : null;
     const message = t('ui.lobby.shareMessage', {
       code: roomCode,
-      address: lobby.getHostAddress() ?? t('ui.lobby.unknownAddress'),
+      url: url ?? t('ui.lobby.unknownAddress'),
     });
 
     setShareNote('');
@@ -509,15 +511,21 @@ export const LobbyScreen = () => {
                 />
               </>
             )}
-            <Text style={styles.fieldLabel}>{t('ui.lobby.hostIpPlaceholder')}</Text>
-            <TextInput
-              style={styles.field}
-              value={inputIp}
-              onChangeText={setInputIp}
-              keyboardType="numbers-and-punctuation"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
+            {/* A web guest's address is the one that served the page, so it
+                is already in the field — no need to show it. */}
+            {!WEB && (
+              <>
+                <Text style={styles.fieldLabel}>{t('ui.lobby.hostIpPlaceholder')}</Text>
+                <TextInput
+                  style={styles.field}
+                  value={inputIp}
+                  onChangeText={setInputIp}
+                  keyboardType="numbers-and-punctuation"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </>
+            )}
             <Text style={styles.hint}>
               {WEB ? t('ui.lobby.codeHint') : t('ui.lobby.ipHint')}
             </Text>
@@ -537,7 +545,9 @@ export const LobbyScreen = () => {
                 <Text style={styles.ticketCode}>{roomCode}</Text>
                 <Text style={styles.ticketAddress}>
                   {t('ui.lobby.addressLine', {
-                    address: lobby.getHostAddress() ?? t('ui.lobby.unknownAddress'),
+                    address: lobby.getHostAddress()
+                      ? `http://${lobby.getHostAddress()}:${GAME_PORT}`
+                      : t('ui.lobby.unknownAddress'),
                   })}
                 </Text>
                 <BaseButton

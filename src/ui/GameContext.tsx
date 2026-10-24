@@ -47,6 +47,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setupRef.current = setup ?? defaultRoleSetup();
     setManager(game);
     setLocalPlayer(host);
+    // The lobby reads the tally from the game whenever it broadcasts.
+    lobby.roleTallyProvider = () => game.getRoleTally();
 
     // Player actions arrive over the lobby server and are attributed to a
     // player id by the socket that sent them.
@@ -184,6 +186,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLocalPlayer(null);
     // Player actions have no game to reach any more.
     lobby.onGameMessage(null);
+    lobby.roleTallyProvider = null;
     setMode('lobby');
   }, []);
 

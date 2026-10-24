@@ -12,6 +12,7 @@ import { RoleSigil } from '../components/RoleSigil';
 import { Sheet } from '../components/Sheet';
 import { TableMenu } from '../components/TableMenu';
 import { PageOverlay } from '../components/PageOverlay';
+import { RoleTally } from '../components/RoleTally';
 import { TableStrip } from '../components/TableStrip';
 import { useBack } from '../back';
 import { useResponsive } from '../layout';
@@ -722,7 +723,15 @@ const NarratorDashboardLive: React.FC<NarratorDashboardLiveProps> = ({
         </>
       )}
 
-      {tab === 'info' && <InfoTab sections={infoSections} />}
+      {tab === 'info' && (
+        <View style={{ gap: 16 }}>
+          <View style={styles.card}>
+            <Text style={styles.sectionHeading}>{t('ui.tally.title')}</Text>
+            <RoleTally tally={manager.getRoleTally()} nameFor={(id) => roleName(id, lobby.getRoleNames()[id] ?? id)} />
+          </View>
+          <InfoTab sections={infoSections} />
+        </View>
+      )}
 
       {tab === 'notes' && (
         <NotesTab
@@ -994,5 +1003,21 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textAlign: 'center',
     marginTop: theme.spacing.medium,
+  },
+  card: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.card,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    padding: theme.spacing.medium,
+    marginBottom: theme.spacing.medium,
+  },
+  sectionHeading: {
+    color: theme.colors.dim,
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 12,
   },
 });

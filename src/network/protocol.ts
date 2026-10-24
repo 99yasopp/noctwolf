@@ -67,6 +67,13 @@ export interface PlayerListPayload {
   setup?: RoleSetup | null;
   // Names for roles the guest may not have locally, keyed by role id.
   names?: Record<string, string>;
+  // How many of each role were dealt and how many are still alive. Present
+  // only during a game; the waiting room has no deaths to count.
+  roleTally?: {
+    revealDead: boolean;
+    roles: Record<string, { total: number; alive: number }>;
+    deadTotal: number;
+  } | null;
 }
 
 // The house rules, sent to the whole table when the deal is made. Guests read

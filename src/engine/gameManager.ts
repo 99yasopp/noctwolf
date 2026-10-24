@@ -1715,6 +1715,30 @@ export class GameManager {
     return { ...this.settings };
   }
 
+  // How many of each role were dealt, and how many of each are still alive.
+  // When `revealOnDeath` is off the dead are not broken out by role — the
+  // panel sends a single dead count instead, so the tally stays honest.
+  getRoleTally(): {
+    revealDead: boolean;
+    roles: Record<string, { total: number; alive: number }>;
+    deadTotal: number;
+  } {
+    const revealDead = this.setting('revealOnDeath') === true;
+    const roles: Record<string, { total: number; alive: number }> = {};
+    let deadTotal = 0;
+
+    for (const player of this.state.players) {
+      const role = this.assignments.get(player.id);
+      if (!role) continue;
+      if (!roles[role.id]) roles[role.id] = { total: 0, alive: 0 };
+      roles[role.id].total += 1;
+      if (player.isAlive) roles[role.id].alive += 1;
+      else deadTotal += 1;
+    }
+
+    return { revealDead, roles, deadTotal };
+  }
+
   private setting(id: string): SettingValue {
     return this.settings[id] ?? settingDefault(id);
   }

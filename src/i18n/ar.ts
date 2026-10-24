@@ -502,10 +502,10 @@ export const ar: Partial<Catalog> = {
   'ui.lobby.needPlayers': 'تحتاج الطاولة إلى {count} لاعبين قبل أن تبدأ.',
   'ui.lobby.roomCodeLabel': 'رمز الغرفة',
   'ui.lobby.roomCodeLine': 'رمز الغرفة: {code}',
-  'ui.lobby.addressLine': 'العنوان: {address}',
+  'ui.lobby.addressLine': 'يفتح من المتصفح: {address}',
   'ui.lobby.shareTable': 'شارك الطاولة',
   'ui.lobby.shareMessage':
-    'انضم إلى طاولة Noctwolf.\nرمز الغرفة: {code}\nالعنوان: {address}',
+    'انضم إلى طاولة Noctwolf!\n\nمن التطبيق: رمز الغرفة {code}\nمن المتصفح: {url}',
   'ui.lobby.shareCopied': 'تم نسخ معلومات الانضمام.',
   'ui.lobby.shareUnavailable': 'المشاركة غير متاحة هنا.',
   'ui.lobby.unknownAddress': 'غير معروف — تحقق من الواي فاي',
@@ -533,6 +533,7 @@ export const ar: Partial<Catalog> = {
 
   // --------------------------------------------------- the pages beside the table
   'ui.rules.title': 'كيف تلعب',
+  'ui.tally.title': 'حالة الطاولة',
   'ui.rules.nightOrder': 'ترتيب الليل',
   'ui.rules.mayor': 'العمدة',
   'ui.rules.roles': 'الأدوار',
